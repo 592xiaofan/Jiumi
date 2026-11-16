@@ -1,0 +1,60 @@
+# Gradle / build output
+.gradle/
+.kotlin/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local configuration and signing material
+local.properties
+.env
+.env.*
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+*.pk8
+*.keystore.base64
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+.claude/
+
+# Build outputs, device captures and exported records
+*.apk
+*.aab
+*.apks
+*.hprof
+*.perfetto-trace
+*.log
+*.zip
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+/dist/
+/captures/
+/screenshots/
+/recordings/
+/exports/
+
+# Private workspace instructions, release staging and signing backups
+AGENTS.md
+/.project-internal/
+
+# Website source stays in the private workspace
+/website/
+
+# Maintainer-only release notes, tests and posters from real device records
+/CHANGELOG.zh.md
+/docs/
+/code/**/src/test/
+/code/third_party/libadb/tests/
+/code/images/promo-*.webp
