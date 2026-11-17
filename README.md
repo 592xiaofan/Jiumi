@@ -98,3 +98,18 @@ cd code
 欢迎提交 Issue 和 Pull Request。安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
 
 项目采用 [Apache License 2.0](LICENSE)，第三方组件及其许可见 [NOTICE](NOTICE)。请在你拥有或已获授权的设备上使用。
+
+## Star 历史
+
+<a href="https://www.star-history.com/#ybblab/Jiumi&amp;Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=ybblab/Jiumi&amp;type=Date&amp;theme=dark" />
+    <img alt="揪咪的 GitHub Star 趋势图" src="https://api.star-history.com/svg?repos=ybblab/Jiumi&amp;type=Date" />
+  </picture>
+</a>
+
+<div align="center">
+
+**如果揪咪帮你看清了手机里的应用在做什么，欢迎点个 ⭐ 支持我们！**
+
+</div>

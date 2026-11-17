@@ -98,3 +98,18 @@ Monitoring categories, attention rules and protected apps are configured in the 
 Issues and pull requests are welcome. Report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 Jiumi is licensed under the [Apache License 2.0](LICENSE). Third-party components and their licenses are listed in [NOTICE](NOTICE). Use Jiumi on devices you own or are authorized to use.
+
+## Star history
+
+<a href="https://www.star-history.com/#ybblab/Jiumi&amp;Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=ybblab/Jiumi&amp;type=Date&amp;theme=dark" />
+    <img alt="Jiumi GitHub star history chart" src="https://api.star-history.com/svg?repos=ybblab/Jiumi&amp;type=Date" />
+  </picture>
+</a>
+
+<div align="center">
+
+**If Jiumi helps you see what your apps are doing, give us a ⭐ on GitHub!**
+
+</div>
