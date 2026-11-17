@@ -157,7 +157,7 @@ fun SettingsScreen(
                             } else controller.setAdbPersistence(!persistence)
                         }
                     ) {
-                        JiumiSwitch(persistence, controller::setAdbPersistence)
+                        JiumiSwitch(persistence, onCheckedChange = controller::setAdbPersistence)
                     }
                 }
                 GroupFooter(stringResource(if (needsUsb) R.string.settings_adb_persistence_usb_required else R.string.settings_adb_persistence_desc),
@@ -446,7 +446,7 @@ private fun ExpertModeRow(on: Boolean, onChange: (Boolean) -> Unit) {
 
 /** What the setting in the card above means, in small grey type beneath it, as iOS groups explain themselves. */
 @Composable
-private fun GroupFooter(text: String, warning: Boolean = false) {
+internal fun GroupFooter(text: String, warning: Boolean = false) {
     Text(if (warning) androidx.compose.ui.text.AnnotatedString(text) else emphasizeAppName(text), style = MaterialTheme.typography.bodySmall,
         color = if (warning) StatusWarning else MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp))

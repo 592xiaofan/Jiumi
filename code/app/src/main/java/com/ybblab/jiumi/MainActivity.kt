@@ -132,7 +132,14 @@ class MainActivity : AppCompatActivity() {
                     }
                     top.startsWith("app:") -> {
                         val (uid, pkg) = top.removePrefix("app:").split('|', limit = 2)
-                        AppDetailScreen(controller, labels, AppKey(uid.toInt(), pkg.ifEmpty { null }), onBack = pop, onOpenLog = openLog)
+                        AppDetailScreen(controller, labels, AppKey(uid.toInt(), pkg.ifEmpty { null }), onBack = pop, onOpenLog = openLog,
+                            onOpenAccess = { network -> push("access:${if (network) "network" else "permissions"}|${uid}|${pkg}") })
+                    }
+                    top.startsWith("access:") -> {
+                        val (mode, uid, pkg) = top.removePrefix("access:").split('|', limit = 3)
+                        com.ybblab.jiumi.ui.AppAccessScreen(
+                            controller, labels, AppKey(uid.toInt(), pkg), network = mode == "network", onBack = pop
+                        )
                     }
                     top.startsWith("log:") -> {
                         // A record kept only in memory is gone after the process was recreated.

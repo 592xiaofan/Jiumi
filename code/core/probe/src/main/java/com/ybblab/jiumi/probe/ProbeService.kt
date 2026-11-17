@@ -143,6 +143,20 @@ internal class ProbeService(
         mainHandler.postDelayed({ ProbeMain.exit(0, "shutdown requested") }, 100)
     }
 
+    private val appAccess by lazy { AppAccess(context, dataDirectory, packageName) }
+
+    override fun appAccess(packageName: String, uid: Int, action: String, permission: String): String {
+        enforceOwner()
+        require(PACKAGE_NAME.matches(packageName))
+        val user = Binder.getCallingUid() / PER_USER_RANGE
+        val token = Binder.clearCallingIdentity()
+        return try {
+            appAccess.run(packageName, uid, user, action, permission).toString()
+        } finally {
+            Binder.restoreCallingIdentity(token)
+        }
+    }
+
     override fun managePackage(action: String, packageName: String): String {
         enforceOwner()
         // The app decides what may be changed; the monitor only refuses what is never a target.

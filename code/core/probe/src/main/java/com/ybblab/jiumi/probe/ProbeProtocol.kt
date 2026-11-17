@@ -5,7 +5,7 @@ package com.ybblab.jiumi.probe
 
 /** Contract shared by the app and the shell-identity monitor started from the same APK. */
 object ProbeProtocol {
-    const val VERSION = 12
+    const val VERSION = 13
     const val SHELL_UID = 2000
     const val MAIN_CLASS = "com.ybblab.jiumi.probe.ProbeMain"
     const val PROCESS_NAME = "jiumi_probe"

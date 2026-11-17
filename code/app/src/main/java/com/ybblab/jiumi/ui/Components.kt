@@ -195,7 +195,7 @@ fun ActionText(text: String, enabled: Boolean = true, color: Color = MaterialThe
 }
 
 @Composable
-fun JiumiSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+fun JiumiSwitch(checked: Boolean, enabled: Boolean = true, onCheckedChange: (Boolean) -> Unit) {
     // Drawn at three quarters size and laid out at that size too, so a row with a switch is no
     // taller than its neighbours; the whole row stays the touch target.
     androidx.compose.runtime.CompositionLocalProvider(
@@ -205,6 +205,7 @@ fun JiumiSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Switch(
         checked = checked,
         onCheckedChange = onCheckedChange,
+        enabled = enabled,
         modifier = Modifier.requiredSize(width = 52.dp, height = 32.dp).scale(0.75f),
         colors = SwitchDefaults.colors(
             checkedThumbColor = MaterialTheme.colorScheme.surface,

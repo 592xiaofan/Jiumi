@@ -84,7 +84,8 @@ fun AppDetailScreen(
     labels: AppLabels,
     key: AppKey,
     onBack: () -> Unit,
-    onOpenLog: (LogEntry) -> Unit
+    onOpenLog: (LogEntry) -> Unit,
+    onOpenAccess: (Boolean) -> Unit
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
     // Reload when the range changes or a sync rebuilt the report.
@@ -164,6 +165,18 @@ fun AppDetailScreen(
         // What may be done to the app comes first, right under its name.
         managed?.let { m ->
             item(key = "manage") { ManageBar(controller, m, name, monitorRunning = state.running, onDiscarded = onBack) }
+        }
+        if (key.pkg != null && (managed == null || managed?.facts?.installed == true)) {
+            item(key = "access") {
+                Spacer(Modifier.height(16.dp))
+                Card {
+                    ListRow(stringResource(R.string.access_permissions), leading = { IconTile(JiumiIcons.Lock) },
+                        onClick = { onOpenAccess(false) }) { Chevron() }
+                    InsetDivider()
+                    ListRow(stringResource(R.string.access_network), leading = { IconTile(JiumiIcons.Network) },
+                        onClick = { onOpenAccess(true) }) { Chevron() }
+                }
+            }
         }
         item {
             Segmented(

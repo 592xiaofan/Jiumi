@@ -307,6 +307,13 @@ class MonitorController(
         if (ok) ManageResult.DONE else ManageResult.FAILED
     }
 
+    suspend fun appAccess(key: com.ybblab.jiumi.data.AppKey, action: String, permission: String = ""):
+        org.json.JSONObject? = withContext(Dispatchers.IO) {
+        val pkg = key.pkg ?: return@withContext null
+        val service = ensureMonitor() ?: return@withContext null
+        runCatching { org.json.JSONObject(service.appAccess(pkg, key.uid, action, permission)) }.getOrNull()
+    }
+
     /** The running monitor, started (or resumed) first when it is not; null when it would not start. */
     private suspend fun ensureMonitor(): com.ybblab.jiumi.probe.IProbeService? {
         probe.service.value?.let { return it }
