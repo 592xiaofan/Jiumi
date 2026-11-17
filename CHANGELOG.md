@@ -4,6 +4,12 @@ Notable changes to Jiumi, newest first. The English in-app update notes come fro
 Chinese in-app notes are supplied when preparing the release.
 Versions follow [Semantic Versioning](https://semver.org).
 
+## [0.2.0]
+
+- Manage permissions from each app’s details. Turn them off individually or together, and restore permissions Jiumi previously revoked.
+- Block or restore network access per app on supported devices, without a VPN.
+- See why a control is unavailable and check the state reported by Android when a change fails.
+
 ## [0.1.0]
 
 The first public release.
