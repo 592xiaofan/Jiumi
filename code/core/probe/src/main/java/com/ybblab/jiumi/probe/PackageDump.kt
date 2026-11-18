@@ -19,6 +19,28 @@ internal class PackageDump(
         private val userLine = Regex("User (\\d+): .*\\binstalled=(true|false)\\b.*")
         private val enabled = Regex("\\benabled=(\\d+)\\b")
         private val suspended = Regex("\\bsuspended=(true|false)\\b")
+        private const val PROCESS_HEADER = "ACTIVITY MANAGER RUNNING PROCESSES (dumpsys activity processes)"
+        private const val PER_USER_RANGE = 100_000
+        private val processEntry = Regex("^\\*[A-Z]+\\* UID (\\d+) ProcessRecord\\{\\S+ (\\d+):")
+
+        /** Activity Manager filters this dump by package membership, including custom process names. */
+        fun processRunning(dump: String, user: Int): Boolean? {
+            // Some builds print a timestamp before the Activity Manager header.
+            val lines = dump.lineSequence().dropWhile { it.trim() != PROCESS_HEADER }.iterator()
+            if (!lines.hasNext()) return null
+            lines.next()
+            var unreadable = false
+            for (line in lines) {
+                val entry = line.trimStart()
+                if (!entry.startsWith('*') || "ProcessRecord{" !in entry) continue
+                val match = processEntry.find(entry)
+                val uid = match?.groupValues?.get(1)?.toIntOrNull()
+                val pid = match?.groupValues?.get(2)?.toIntOrNull()
+                if (uid == null || pid == null) unreadable = true
+                else if (uid / PER_USER_RANGE == user && pid > 0) return true
+            }
+            return if (unreadable) null else false
+        }
 
         /** Reads the current package entries, excluding the separate copies of updated system apps. */
         fun parse(dump: String, user: Int): PackageDump {

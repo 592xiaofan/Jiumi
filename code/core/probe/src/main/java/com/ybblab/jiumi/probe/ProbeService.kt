@@ -203,27 +203,15 @@ internal class ProbeService(
         val (ok, output) = runPm(listOf("pm", command, "--user", "$user", pkg))
         if (!ok) return manageResult(false, output)
         val state = runCatching { readPackageDump(pkg, user)?.userStates?.get(pkg) }.getOrNull()
-        if (state == null || !state.installed || !matches(state)) return manageResult(false, "", unverified = true)
+            ?: return manageResult(false, "", unverified = true)
+        if (!state.installed || !matches(state)) return manageResult(false, output)
         val running = if (command == "disable-user") packageProcessRunning(pkg, user) else null
         return manageResult(true, output, running = running)
     }
 
-    /** Activity Manager selects processes by package membership, including custom process names. */
     private fun packageProcessRunning(pkg: String, user: Int): Boolean? = runCatching {
         val result = Shell.run(listOf("dumpsys", "activity", "processes", pkg), timeoutMs = 5_000)
-        val lines = result.output.lineSequence()
-        if (result.exitCode != 0 || lines.firstOrNull()?.trim() != PROCESS_DUMP_HEADER) return@runCatching null
-        var unreadable = false
-        for (line in lines) {
-            val entry = line.trimStart()
-            if (!entry.startsWith('*') || "ProcessRecord{" !in entry) continue
-            val match = PROCESS_ENTRY.find(entry)
-            val uid = match?.groupValues?.get(1)?.toIntOrNull()
-            val pid = match?.groupValues?.get(2)?.toIntOrNull()
-            if (uid == null || pid == null) unreadable = true
-            else if (uid / PER_USER_RANGE == user && pid > 0) return@runCatching true
-        }
-        if (unreadable) null else false
+        if (result.exitCode == 0) PackageDump.processRunning(result.output, user) else null
     }.getOrNull()
 
     override fun alarmWakeups(packageName: String): String {
@@ -333,8 +321,6 @@ internal class ProbeService(
         const val FIRST_MAKER_OP = 1_000
         const val PER_USER_RANGE = 100_000
         const val MAX_OUTPUT = 2_000
-        const val PROCESS_DUMP_HEADER = "ACTIVITY MANAGER RUNNING PROCESSES (dumpsys activity processes)"
-        val PROCESS_ENTRY = Regex("^\\*[A-Z]+\\* UID (\\d+) ProcessRecord\\{\\S+ (\\d+):")
         /** A package first installed this soon after the system itself came with the phone. */
         const val FACTORY_WINDOW_MS = 5 * 60_000L
         val PACKAGE_NAME = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+")
