@@ -282,7 +282,7 @@ class MonitorController(
     /** How a management action ended. */
     enum class ManageStatus { DONE, DISABLED, NO_MONITOR, FAILED, PERMISSION_DENIED, NOT_APPLIED, UNVERIFIED }
 
-    data class ManageResult(val status: ManageStatus, val output: String? = null, val running: Boolean? = null)
+    data class ManageResult(val status: ManageStatus, val running: Boolean? = null)
 
     private val manageLock = Mutex()
 
@@ -322,7 +322,7 @@ class MonitorController(
             when {
                 ok && action == ManageAction.DISABLE -> ManageResult(ManageStatus.DISABLED, running = response?.opt("running") as? Boolean)
                 ok -> ManageResult(ManageStatus.DONE)
-                else -> ManageResult(status, response?.optString("output")?.trim()?.takeIf { it.isNotEmpty() })
+                else -> ManageResult(status)
             }
         }
     }

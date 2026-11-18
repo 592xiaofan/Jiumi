@@ -280,7 +280,7 @@ class ReportBuilder(
                         .sumOf { it.first.count },
                 denied = accesses.filter { it.first.denied }.sumOf { it.first.count } +
                     calls.filter { it.first in data.refusedCalls }.sumOf { it.first.count },
-                processStarts = starts[key.uid] ?: 0,
+                processStarts = starts[key] ?: 0,
                 destinations = contacts.map { labeler(names, key.uid)(it.addr) }.toSet().size,
                 traffic = trafficByKey[key],
                 uploaded = nets.sumOf { it.connection.sent ?: 0L },
@@ -310,7 +310,7 @@ class ReportBuilder(
         val names = DomainNames(store.lookups(from - DomainNames.LOOKBACK_MS, to))
         val nets = conversations(contacts, labeler(names, key.uid))
         val starts = store.processStarts(from, to, key.uid)
-            .filter { key.pkg == null || it.process == key.pkg || it.process.startsWith("${key.pkg}:") || key.uid < FIRST_APP_UID }
+            .filter { key.pkg == null || it.appKey == key }
         // Behaviors and network activity are told apart: a connection is not something the app read.
         val actions = key.pkg?.let { store.userActions(from, to, it) }.orEmpty().map { TimelineItem.ActionItem(it) }
         val items = (items(accessRows, callRows, emptyList(), starts, data) + actions).sortedByDescending { it.t }

@@ -465,8 +465,8 @@
     <string name="manage_permission_denied">Android restricts this action. Jiumi cannot perform it with debugging access.</string>
     <string name="manage_not_applied">Android did not apply the change. Jiumi could not complete the action with its current debugging access.</string>
     <string name="manage_unverified">Could not confirm the new package state</string>
-    <string name="manage_show_details">Show technical details</string>
-    <string name="manage_hide_details">Hide technical details</string>
+    <string name="manage_disabled_explanation">Android disabled this app for the current user. Earlier records stay in the timeline. Open a record to check when it happened.</string>
+    <string name="manage_suspended_explanation">Android restricts the app from opening its screens or showing notifications. It may still have background activity.</string>
     <string name="manage_process_stopped">No running process found for this app</string>
     <string name="manage_process_running">The app still has a running process</string>
     <string name="manage_process_unknown">Could not confirm whether the app has a running process</string>

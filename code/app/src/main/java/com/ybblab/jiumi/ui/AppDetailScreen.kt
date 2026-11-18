@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -163,14 +162,8 @@ fun AppDetailScreen(
                         }
                         Text(source, style = MaterialTheme.typography.labelMedium, color = com.ybblab.jiumi.ui.theme.Ink.tertiary,
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                        val packageStatus = when {
-                            !f.installed -> R.string.state_removed
-                            f.suspendedByShell -> R.string.state_suspended
-                            f.disabledByUser -> R.string.state_disabled
-                            else -> null
-                        }
-                        packageStatus?.let {
-                            Text(stringResource(it), style = MaterialTheme.typography.labelMedium,
+                        if (!f.installed) {
+                            Text(stringResource(R.string.state_removed), style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -406,14 +399,12 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
     val scope = rememberCoroutineScope()
     var asking by rememberSaveable(m.pkg) { mutableStateOf<String?>(null) }
     var outcome by rememberSaveable(m.pkg, stateSaver = manageResultSaver) { mutableStateOf<ManageResult?>(null) }
-    var showDetails by rememberSaveable(m.pkg) { mutableStateOf(false) }
     var working by remember(m.pkg) { mutableStateOf(false) }
     // The buttons always answer; a monitor that is not running is started on the way.
     val run = { action: ManageAction ->
         asking = null
         working = true
         outcome = null
-        showDetails = false
         scope.launch {
             try {
                 outcome = controller.manage(m.pkg, action)
@@ -442,45 +433,43 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
             }
         }
         val status = outcome?.status
-        val warning = when (status) {
-            ManageStatus.FAILED, ManageStatus.NO_MONITOR, ManageStatus.PERMISSION_DENIED,
-            ManageStatus.NOT_APPLIED, ManageStatus.UNVERIFIED -> true
-            else -> outcome?.running == true
+        val explanation = when (status) {
+            ManageStatus.NO_MONITOR -> R.string.manage_monitor_failed
+            ManageStatus.PERMISSION_DENIED -> R.string.manage_permission_denied
+            ManageStatus.NOT_APPLIED -> R.string.manage_not_applied
+            else -> null
         }
+        val failureTitle = when {
+            status == ManageStatus.UNVERIFIED -> R.string.manage_unverified
+            explanation != null || status == ManageStatus.FAILED -> R.string.manage_failed
+            else -> null
+        }
+        val facts = m.facts?.takeIf { it.installed }
         val note = when {
             working -> stringResource(if (monitorRunning) R.string.manage_working else R.string.manage_starting_monitor)
-            status == ManageStatus.NO_MONITOR -> stringResource(R.string.manage_monitor_failed)
-            status == ManageStatus.FAILED -> stringResource(R.string.manage_failed)
-            status == ManageStatus.PERMISSION_DENIED -> stringResource(R.string.manage_permission_denied)
-            status == ManageStatus.NOT_APPLIED -> stringResource(R.string.manage_not_applied)
-            status == ManageStatus.UNVERIFIED -> stringResource(R.string.manage_unverified)
-            status == ManageStatus.DISABLED -> stringResource(when (outcome?.running) {
-                false -> R.string.manage_process_stopped
-                true -> R.string.manage_process_running
-                null -> R.string.manage_process_unknown
-            })
+            failureTitle != null -> null
             m.refusal != null && m.expertUnlocks -> stringResource(R.string.refusal_platform_expert)
             m.refusal != null -> refusalText(m.refusal)
-            outcome == null && m.risk != null -> stringResource(R.string.risk_note)
+            outcome == null && m.risk != null && m.actions.any { !Management.isUndo(it) } -> stringResource(R.string.risk_note)
             outcome == null && m.removable -> stringResource(R.string.remove_hint)
             else -> null
         }
         note?.let {
             Text(it, style = MaterialTheme.typography.bodySmall,
-                color = if (warning) StatusWarning else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, top = if (m.actions.isNotEmpty() || discard) 8.dp else 0.dp))
         }
-        val details = outcome?.output?.lineSequence()?.map { it.trim() }?.takeWhile { !it.startsWith("at ") }
-            ?.filter { it.isNotEmpty() }?.take(4)?.joinToString("\n")?.takeIf { it.isNotEmpty() }
-        if (details != null) {
-            ActionText(stringResource(if (showDetails) R.string.manage_hide_details else R.string.manage_show_details)) {
-                showDetails = !showDetails
-            }
-            if (showDetails) {
-                SelectionContainer {
-                    Text(details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 4.dp))
-                }
+        failureTitle?.let { ManageNotice(it, explanation, warning = true) }
+        when {
+            facts?.suspendedByShell == true -> ManageNotice(R.string.state_suspended, R.string.manage_suspended_explanation)
+            facts?.disabledByUser == true -> {
+                val process = if (status == ManageStatus.DISABLED) when (outcome?.running) {
+                    false -> R.string.manage_process_stopped
+                    true -> R.string.manage_process_running
+                    null -> R.string.manage_process_unknown
+                } else null
+                ManageNotice(R.string.state_disabled, R.string.manage_disabled_explanation, process,
+                    warning = outcome?.running == true)
             }
         }
     }
@@ -497,12 +486,30 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
     }
 }
 
+@Composable
+private fun ManageNotice(title: Int, explanation: Int?, process: Int? = null, warning: Boolean = false) {
+    Spacer(Modifier.height(8.dp))
+    Card {
+        ListRow(stringResource(title), leading = { IconTile(if (warning) JiumiIcons.Warning else JiumiIcons.Info) }, extra = {
+            explanation?.let {
+                Text(stringResource(it), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+            }
+            process?.let {
+                Text(stringResource(it), style = MaterialTheme.typography.bodySmall,
+                    color = if (warning) StatusWarning else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp))
+            }
+        })
+    }
+}
+
 private val manageResultSaver = listSaver<ManageResult?, String>(
     save = { result ->
-        if (result == null) emptyList() else listOf(result.status.name, result.output.orEmpty(), result.running?.toString().orEmpty())
+        if (result == null) emptyList() else listOf(result.status.name, result.running?.toString().orEmpty())
     },
     restore = { parts ->
-        ManageResult(ManageStatus.valueOf(parts[0]), parts[1].ifEmpty { null }, parts[2].toBooleanStrictOrNull())
+        ManageResult(ManageStatus.valueOf(parts.first()), parts.last().toBooleanStrictOrNull())
     }
 )
 

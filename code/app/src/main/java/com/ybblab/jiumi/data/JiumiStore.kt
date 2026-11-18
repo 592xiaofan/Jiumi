@@ -48,7 +48,9 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
         val sentUnattended: Long? = null
     )
 
-    data class ProcessStart(val t: Long, val pid: Int, val uid: Int, val process: String, val reason: String, val component: String)
+    data class ProcessStart(val t: Long, val pid: Int, val uid: Int, val process: String, val reason: String, val component: String) {
+        val appKey get() = processStartKey(uid, process, component)
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -387,13 +389,34 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
         buildList { while (c.moveToNext()) add(ProcessStart(c.getLong(0), c.getInt(1), c.getInt(2), c.getString(3), c.getString(4), c.getString(5))) }
     }
 
-    fun processStartCounts(from: Long, to: Long): Map<Int, Int> = readableDatabase.rawQuery(
-        "SELECT uid, COUNT(*) FROM process_start WHERE t >= ? AND t <= ? GROUP BY uid", arrayOf(from.toString(), to.toString())
-    ).use { c -> buildMap { while (c.moveToNext()) put(c.getInt(0), c.getInt(1)) } }
+    fun processStartCounts(from: Long, to: Long): Map<AppKey, Int> = readableDatabase.rawQuery(
+        "SELECT uid, process, component, COUNT(*) FROM process_start WHERE t >= ? AND t <= ? GROUP BY uid, process, component",
+        arrayOf(from.toString(), to.toString())
+    ).use { c ->
+        buildMap {
+            while (c.moveToNext()) {
+                val uid = c.getInt(0)
+                val app = processStartKey(uid, c.getString(1), c.getString(2))
+                val uidOnly = AppKey(uid, null)
+                val count = c.getInt(3)
+                put(app, (get(app) ?: 0) + count)
+                put(uidOnly, (get(uidOnly) ?: 0) + count)
+            }
+        }
+    }
 
     private companion object {
         const val VERSION = 9
         /** How far before a range the monitor's rows are read for one that still covers its start. */
         const val LONGEST_MONITOR_ROW_MS = 24 * 60 * 60_000L
     }
+}
+
+private val componentPackageName = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*")
+
+/** A hosting component can identify a package even when it runs in a shared or custom process. */
+private fun processStartKey(uid: Int, process: String, component: String): AppKey {
+    val host = component.substringBefore('/', missingDelimiterValue = "").trimStart('{')
+    val pkg = host.takeIf(componentPackageName::matches) ?: process.substringBefore(':')
+    return AppKey(uid, pkg)
 }
