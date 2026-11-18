@@ -137,13 +137,18 @@ fun AppDetailScreen(
                 val fromBackup = facts == null && managed?.backup != null
                 val deleted = facts?.installed == false || fromBackup
                 val frozen = facts?.let { it.installed && it.disabledByUser && !it.suspendedByShell } == true
-                if (deleted && key.pkg != null) {
-                    DeletedAppIcon(controller, labels, key.pkg, 44, fromBackup = fromBackup)
-                } else AppIcon(labels, key.pkg, 44, grayscale = frozen)
+                val badge = when {
+                    deleted -> JiumiIcons.Trash
+                    frozen -> JiumiIcons.Snowflake
+                    else -> null
+                }
+                if (badge != null && key.pkg != null) {
+                    AppIconWithBadge(controller, labels, key.pkg, 44, badge, fromBackup = fromBackup)
+                } else AppIcon(labels, key.pkg, 44)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
-                        color = if (frozen || deleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onBackground,
+                        color = if (badge != null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onBackground,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(listOfNotNull(summary?.let { kindName(it.kind) }, key.pkg ?: "UID ${key.uid}").joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

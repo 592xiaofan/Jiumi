@@ -197,8 +197,11 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
                 item(key = "app-${app.pkg}") {
                     CardSlice(first = index == 0, last = index == list.lastIndex) {
                         if (index > 0) InsetDivider()
-                        val frozen = app.state == AppState.DISABLED
-                        val deleted = app.state == AppState.DELETED
+                        val badge = when (app.state) {
+                            AppState.DISABLED -> JiumiIcons.Snowflake
+                            AppState.DELETED -> JiumiIcons.Trash
+                            else -> null
+                        }
                         ListRow(
                             title = name,
                             subtitle = listOfNotNull(
@@ -207,11 +210,12 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
                                 app.pkg.takeIf { it != name }
                             ).joinToString(" · ").ifEmpty { null },
                             leading = {
-                                if (deleted) DeletedAppIcon(controller, labels, app.pkg, LEADING_SIZE, fromBackup = app.backup != null)
-                                else AppIcon(labels, app.pkg, LEADING_SIZE, grayscale = frozen)
+                                if (badge != null) {
+                                    AppIconWithBadge(controller, labels, app.pkg, LEADING_SIZE, badge, fromBackup = app.backup != null)
+                                } else AppIcon(labels, app.pkg, LEADING_SIZE)
                             },
                             onClick = { onOpenApp(AppKey(app.uid, app.pkg)) },
-                            titleColor = if (frozen || deleted) Ink.secondary else MaterialTheme.colorScheme.onSurface
+                            titleColor = if (badge != null) Ink.secondary else MaterialTheme.colorScheme.onSurface
                         ) { Chevron() }
                     }
                 }

@@ -70,8 +70,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -277,10 +275,8 @@ fun SubScreen(title: String, onBack: (() -> Unit)?, bottomBar: @Composable () ->
     )
 }
 
-private val grayscaleIconFilter by lazy { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) }
-
 @Composable
-fun AppIcon(labels: AppLabels, pkg: String?, sizeDp: Int, grayscale: Boolean = false) {
+fun AppIcon(labels: AppLabels, pkg: String?, sizeDp: Int) {
     // Read off the main thread, so a long list scrolls and opens without waiting on each icon.
     // Keyed by the package, so a row that comes to show another app never keeps the last one's icon.
     val icon by key(pkg) {
@@ -290,8 +286,7 @@ fun AppIcon(labels: AppLabels, pkg: String?, sizeDp: Int, grayscale: Boolean = f
     }
     val current = icon
     if (current != null) {
-        Image(current, contentDescription = null, modifier = Modifier.size(sizeDp.dp),
-            colorFilter = if (grayscale) grayscaleIconFilter else null)
+        Image(current, contentDescription = null, modifier = Modifier.size(sizeDp.dp))
     } else if (labels.iconPending(pkg)) {
         // Still reading: an empty tile of the same size, so nothing jumps when the icon arrives.
         Surface(Modifier.size(sizeDp.dp), shape = AppShapes.Control, color = Ink.fill) {}
@@ -307,7 +302,8 @@ fun AppIcon(labels: AppLabels, pkg: String?, sizeDp: Int, grayscale: Boolean = f
 }
 
 @Composable
-fun DeletedAppIcon(controller: MonitorController, labels: AppLabels, pkg: String, sizeDp: Int, fromBackup: Boolean) {
+fun AppIconWithBadge(controller: MonitorController, labels: AppLabels, pkg: String, sizeDp: Int,
+                     badge: ImageVector, fromBackup: Boolean) {
     val backupIcon = if (fromBackup) {
         produceState<ImageBitmap?>(null, pkg) {
             value = withContext(Dispatchers.IO) { controller.backupIcon(pkg)?.asImageBitmap() }
@@ -315,10 +311,9 @@ fun DeletedAppIcon(controller: MonitorController, labels: AppLabels, pkg: String
     } else null
     Box(Modifier.size(sizeDp.dp)) {
         if (backupIcon == null) {
-            AppIcon(labels, pkg, sizeDp, grayscale = true)
+            AppIcon(labels, pkg, sizeDp)
         } else {
-            Image(backupIcon, contentDescription = null, modifier = Modifier.matchParentSize().clip(AppShapes.Control),
-                colorFilter = grayscaleIconFilter)
+            Image(backupIcon, contentDescription = null, modifier = Modifier.matchParentSize().clip(AppShapes.Control))
         }
         Surface(
             modifier = Modifier.align(Alignment.BottomEnd).size((sizeDp * 0.46f).dp),
@@ -327,7 +322,7 @@ fun DeletedAppIcon(controller: MonitorController, labels: AppLabels, pkg: String
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(JiumiIcons.Trash, contentDescription = null, tint = Ink.secondary,
+                Icon(badge, contentDescription = null, tint = Ink.secondary,
                     modifier = Modifier.size((sizeDp * 0.28f).dp))
             }
         }
