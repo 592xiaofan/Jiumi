@@ -181,7 +181,7 @@ class MonitorController(
                        val expertUnlocks: Boolean = false)
 
     /** Where an app stands in the Apps tab. */
-    enum class AppState { ACTIVE, DISABLED, DELETED }
+    enum class AppState { ACTIVE, DISABLED, SUSPENDED, DELETED }
 
     /** An app as the Apps tab lists it; [backup] for an app deleted from here, which is listed by it. */
     data class ListedApp(val pkg: String, val uid: Int, val preinstalled: Boolean, val state: AppState,
@@ -221,10 +221,11 @@ class MonitorController(
             val reason = Management.refusal(f, manageRules, context.packageName)?.reason
             // Resource overlays and the like have no code and are not apps; this app is not listed.
             f.hasCode && reason != Refusal.Reason.SELF && (includeSystem ||
-                ((!f.preinstalled || f.launchable || f.disabledByUser || !f.installed) && reason != Refusal.Reason.PLATFORM))
+                ((!f.preinstalled || f.launchable || f.disabledByUser || f.suspendedByShell || !f.installed) && reason != Refusal.Reason.PLATFORM))
         }.mapNotNull { f ->
             val state = when {
                 !f.installed -> if (f.preinstalled) AppState.DELETED else return@mapNotNull null
+                f.suspendedByShell -> AppState.SUSPENDED
                 f.disabledByUser -> AppState.DISABLED
                 else -> AppState.ACTIVE
             }
@@ -278,7 +279,11 @@ class MonitorController(
     }
 
     /** How a management action ended. */
-    enum class ManageResult { DONE, NO_MONITOR, FAILED }
+    enum class ManageStatus { DONE, DISABLED, NO_MONITOR, FAILED, UNVERIFIED }
+
+    data class ManageResult(val status: ManageStatus, val output: String? = null, val running: Boolean? = null)
+
+    private val manageLock = Mutex()
 
     /**
      * Carries out [action] on [pkg] through the monitor, which alone may change packages, and
@@ -286,25 +291,35 @@ class MonitorController(
      * resuming would. An app deleted from here is first backed up, so it can be installed again.
      */
     suspend fun manage(pkg: String, action: ManageAction): ManageResult = withContext(Dispatchers.IO) {
-        val m = managedNow(pkg) ?: return@withContext ManageResult.FAILED
-        if (action !in m.actions) return@withContext ManageResult.FAILED
-        val service = ensureMonitor() ?: return@withContext ManageResult.NO_MONITOR
-        if (action == ManageAction.UNINSTALL) {
-            val app = runCatching { context.packageManager.getApplicationInfo(pkg, 0) }.getOrNull() ?: return@withContext ManageResult.FAILED
-            val pm = context.packageManager
-            val icon = runCatching { pm.getApplicationIcon(app).toBitmap(192, 192) }.getOrNull()
-            backups.create(app, app.loadLabel(pm).toString(), icon) ?: return@withContext ManageResult.FAILED
+        manageLock.withLock {
+            val failed = ManageResult(ManageStatus.FAILED)
+            val m = managedNow(pkg) ?: return@withLock failed
+            if (action !in m.actions) return@withLock failed
+            val service = ensureMonitor() ?: return@withLock ManageResult(ManageStatus.NO_MONITOR)
+            if (action == ManageAction.UNINSTALL) {
+                val pm = context.packageManager
+                val app = runCatching { pm.getApplicationInfo(pkg, 0) }.getOrNull() ?: return@withLock failed
+                val icon = runCatching { pm.getApplicationIcon(app).toBitmap(192, 192) }.getOrNull()
+                backups.create(app, app.loadLabel(pm).toString(), icon) ?: return@withLock failed
+            }
+            val response = runCatching { org.json.JSONObject(service.managePackage(action.id, pkg)) }.getOrNull()
+            val ok = response?.optBoolean("ok") == true
+            val unverified = response?.optBoolean("unverified") == true
+            when {
+                ok && action == ManageAction.REINSTALL -> backups.delete(pkg)
+                !ok && action == ManageAction.UNINSTALL -> backups.delete(pkg)
+            }
+            shellReadAt = 0L
+            if (ok || unverified) runCatching { shellPackages() }
+            if (ok) store.insertUserAction(JiumiStore.UserAction(System.currentTimeMillis(), m.facts?.uid ?: m.backup?.uid ?: -1, pkg, action.id))
+            refresh()
+            when {
+                ok && action == ManageAction.DISABLE -> ManageResult(ManageStatus.DISABLED, running = response?.opt("running") as? Boolean)
+                ok -> ManageResult(ManageStatus.DONE)
+                unverified -> ManageResult(ManageStatus.UNVERIFIED)
+                else -> ManageResult(ManageStatus.FAILED, response?.optString("output")?.trim()?.takeIf { it.isNotEmpty() })
+            }
         }
-        val ok = runCatching { org.json.JSONObject(service.managePackage(action.id, pkg)).optBoolean("ok") }.getOrDefault(false)
-        when {
-            ok && action == ManageAction.REINSTALL -> backups.delete(pkg)
-            !ok && action == ManageAction.UNINSTALL -> backups.delete(pkg)
-        }
-        // The app sees a suspension but not who made it; the shell's list does, so read it again now.
-        if (ok) shellPackages() else shellReadAt = 0L
-        if (ok) store.insertUserAction(JiumiStore.UserAction(System.currentTimeMillis(), m.facts?.uid ?: m.backup?.uid ?: -1, pkg, action.id))
-        refresh()
-        if (ok) ManageResult.DONE else ManageResult.FAILED
     }
 
     suspend fun appAccess(key: com.ybblab.jiumi.data.AppKey, action: String, permission: String = ""):

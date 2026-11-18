@@ -31,18 +31,18 @@ interface IProbeService {
     String footprint();
     void shutdown();
     /**
-     * Changes an installed package for the calling user: action "disable", "enable", "uninstall"
+     * Changes a package for the calling user: action "disable", "enable", "unsuspend", "uninstall"
      * (removes it and its data), "remove" (a preinstalled app, for this user only), "restore"
      * (brings a removed preinstalled app back) or "reinstall" (installs the APKs the app backed up
-     * under its external files, backups/<packageName>/). Returns JSON {"ok":bool,"output":text}, with
-     * "method" "disable" or "suspend" for "disable": a phone that refuses to disable a system package has
-     * it suspended and stopped instead, which "enable" lifts.
+     * under its external files, backups/<packageName>/). Returns JSON {"ok":bool,"output":text}.
+     * "unverified":true means the command returned successfully but its package state was not confirmed.
+     * "running", when available after a verified disable, reports the observed process state.
      */
     String managePackage(String action, String packageName);
     /**
      * Every package for the calling user as the shell sees it, which some phones hide from apps.
-     * JSON {"packages":[{"pkg":name,"uid":n,"system":bool,"disabled":bool,"suspended":bool,"installed":bool}]};
-     * "suspended" only for a suspension made by the shell, as "disable" makes.
+     * JSON {"packages":[{"pkg":name,"uid":n,"system":bool,"enabled":n,"suspended":bool,"installed":bool}]};
+     * "enabled" is the Package Manager setting, when known. "suspended" reports a shell suspension.
      */
     String listPackages();
     /**

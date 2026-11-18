@@ -44,7 +44,7 @@ Apps are grouped by source. Open an app's details to review its activity and dec
 
 | Action | What happens |
 | --- | --- |
-| Disable or enable | Disabling keeps the app's data. You can enable it again under Apps › Disabled. If the system refuses to disable it, Jiumi will try to suspend and stop it. |
+| Disable or enable | Jiumi verifies that Android disabled the app for the current user. Disabling keeps its data. Enable it again under Apps › Disabled. If Android refuses, Jiumi shows the reason. |
 | Delete an app you installed | Enter the full package name to confirm. Jiumi backs up the APKs before uninstalling. You can try to reinstall the app from Apps › Deleted. **Uninstalling deletes app data. The backup can only restore the installation files.** |
 | Remove a preinstalled app | Enable the option in advanced settings to remove supported preinstalled apps for the current user. The system copy and app data are kept, and you can try to restore the app from Apps › Deleted. |
 

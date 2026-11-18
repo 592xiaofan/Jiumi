@@ -4,6 +4,7 @@
 package com.ybblab.jiumi.probe
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
@@ -164,8 +165,11 @@ internal class ProbeService(
         require(packageName != this.packageName) { "the monitor does not change its own app" }
         val user = Binder.getCallingUid() / PER_USER_RANGE
         val command = when (action) {
-            "disable" -> return disable(user, packageName)
-            "enable" -> return enable(user, packageName)
+            "disable" -> return changePackageState("disable-user", user, packageName) { it.disabledByUser }
+            "enable" -> return changePackageState("enable", user, packageName) {
+                it.enabled == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            }
+            "unsuspend" -> return changePackageState("unsuspend", user, packageName) { it.suspended == false }
             "uninstall" -> listOf("pm", "uninstall", packageName)
             "remove" -> listOf("pm", "uninstall", "-k", "--user", "$user", packageName)
             "restore" -> listOf("cmd", "package", "install-existing", "--user", "$user", packageName)
@@ -178,8 +182,11 @@ internal class ProbeService(
         return manageResult(ok, output)
     }
 
-    private fun manageResult(ok: Boolean, output: String, method: String? = null) =
-        JSONObject().put("ok", ok).put("output", output.take(MAX_OUTPUT)).apply { method?.let { put("method", it) } }.toString()
+    private fun manageResult(ok: Boolean, output: String, unverified: Boolean = false, running: Boolean? = null) =
+        JSONObject().put("ok", ok).put("output", output.take(MAX_OUTPUT)).apply {
+            if (unverified) put("unverified", true)
+            if (running != null) put("running", running)
+        }.toString()
 
     /** Runs a package command; pm prints "Success" or the new state, and a failure exits non-zero or names it. */
     private fun runPm(command: List<String>): Pair<Boolean, String> {
@@ -191,28 +198,33 @@ internal class ProbeService(
         return ok to output
     }
 
-    /**
-     * Turns the app off. Some phones refuse to disable any system package, even for the shell; such an
-     * app is suspended instead and stopped, so it cannot open, show notifications or start again on its own.
-     */
-    private fun disable(user: Int, pkg: String): String {
-        val (disabled, refusal) = runPm(listOf("pm", "disable-user", "--user", "$user", pkg))
-        if (disabled) return manageResult(true, refusal, "disable")
-        val (suspended, output) = runPm(listOf("pm", "suspend", "--user", "$user", pkg))
-        if (!suspended || !output.contains("suspended state: true")) return manageResult(false, "$refusal\n$output")
-        runPm(listOf("am", "force-stop", "--user", "$user", pkg))
-        return manageResult(true, output, "suspend")
+    /** Verify the active package entry for the same user before reporting the requested state. */
+    private fun changePackageState(command: String, user: Int, pkg: String, matches: (PackageDump.UserState) -> Boolean): String {
+        val (ok, output) = runPm(listOf("pm", command, "--user", "$user", pkg))
+        if (!ok) return manageResult(false, output)
+        val state = runCatching { readPackageDump(pkg, user)?.userStates?.get(pkg) }.getOrNull()
+        if (state == null || !state.installed || !matches(state)) return manageResult(false, "", unverified = true)
+        val running = if (command == "disable-user") packageProcessRunning(pkg, user) else null
+        return manageResult(true, output, running = running)
     }
 
-    /** Turns the app back on: lifts a suspension made from here, then enables it if it was disabled. */
-    private fun enable(user: Int, pkg: String): String {
-        val (_, lifted) = runPm(listOf("pm", "unsuspend", "--user", "$user", pkg))
-        val disabled = Shell.run(listOf("pm", "list", "packages", "-d", "--user", "$user", pkg), timeoutMs = 30_000).output
-            .lineSequence().any { it.trim() == "package:$pkg" }
-        if (!disabled) return manageResult(lifted.contains("suspended state: false"), lifted)
-        val (ok, output) = runPm(listOf("pm", "enable", "--user", "$user", pkg))
-        return manageResult(ok, output)
-    }
+    /** Activity Manager selects processes by package membership, including custom process names. */
+    private fun packageProcessRunning(pkg: String, user: Int): Boolean? = runCatching {
+        val result = Shell.run(listOf("dumpsys", "activity", "processes", pkg), timeoutMs = 5_000)
+        val lines = result.output.lineSequence()
+        if (result.exitCode != 0 || lines.firstOrNull()?.trim() != PROCESS_DUMP_HEADER) return@runCatching null
+        var unreadable = false
+        for (line in lines) {
+            val entry = line.trimStart()
+            if (!entry.startsWith('*') || "ProcessRecord{" !in entry) continue
+            val match = PROCESS_ENTRY.find(entry)
+            val uid = match?.groupValues?.get(1)?.toIntOrNull()
+            val pid = match?.groupValues?.get(2)?.toIntOrNull()
+            if (uid == null || pid == null) unreadable = true
+            else if (uid / PER_USER_RANGE == user && pid > 0) return@runCatching true
+        }
+        if (unreadable) null else false
+    }.getOrNull()
 
     override fun alarmWakeups(packageName: String): String {
         enforceOwner()
@@ -258,55 +270,33 @@ internal class ProbeService(
         // When each package was first installed: the phone maker's preloads in the data partition carry
         // the time of the first boot, as the system itself does; anything the user added comes later.
         val dumpFuture = java.util.concurrent.CompletableFuture.supplyAsync {
-            runCatching { packageDump(Shell.run(listOf("dumpsys", "package", "packages"), timeoutMs = 30_000).output, user) }.getOrNull()
+            runCatching { readPackageDump("packages", user) }.getOrNull()
         }
-        val lists = listOf(arrayOf("-u", "-i"), emptyArray(), arrayOf("-s", "-u"), arrayOf("-d"))
+        val lists = listOf(arrayOf("-u", "-i"), emptyArray(), arrayOf("-s", "-u"))
             .map { flags -> java.util.concurrent.CompletableFuture.supplyAsync { list(*flags) } }
             .map { it.join() }
         val launcher = launcherFuture.join()
         val dump = dumpFuture.join()
         val firstInstall = dump?.firstInstall
-        val suspended = dump?.suspendedByShell.orEmpty()
         val firstBoot = firstInstall?.get("android")
         val all = lists[0]
         val installed = lists[1].keys
         val system = lists[2].keys
-        val disabled = lists[3].keys
         val packages = JSONArray()
         all.forEach { (pkg, uid) ->
+            val state = dump?.userStates?.get(pkg)
             packages.put(JSONObject().put("pkg", pkg).put("uid", uid).put("system", pkg in system)
-                .put("disabled", pkg in disabled).put("suspended", pkg in suspended).put("installed", pkg in installed)
-                .apply { installers[pkg]?.let { put("installer", it) }; launcher?.let { put("launcher", pkg in it) }
+                .put("suspended", state?.suspendedByShell == true).put("installed", pkg in installed)
+                .apply { state?.let { put("enabled", it.enabled) }
+                    installers[pkg]?.let { put("installer", it) }; launcher?.let { put("launcher", pkg in it) }
                     if (firstBoot != null) firstInstall[pkg]?.let { put("factory", it - firstBoot in 0..FACTORY_WINDOW_MS) } })
         }
         return JSONObject().put("packages", packages).toString()
     }
 
-    private class PackageDump(val firstInstall: Map<String, Long>, val suspendedByShell: Set<String>)
-
-    /**
-     * From `dumpsys package packages`: each package's first install time in ms (the first user's when
-     * several), and the packages the shell suspended for [user], as [disable] does where disabling is refused.
-     */
-    private fun packageDump(dump: String, user: Int): PackageDump {
-        val format = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
-        val times = HashMap<String, Long>()
-        val suspended = HashSet<String>()
-        var current: String? = null
-        var suspendedForUser = false
-        for (line in dump.lineSequence()) {
-            val t = line.trimStart()
-            when {
-                t.startsWith("Package [") -> { current = t.substringAfter('[').substringBefore(']'); suspendedForUser = false }
-                // Each user's state line; later "User n:" lines list permissions.
-                t.startsWith("User ") && " installed=" in t -> suspendedForUser = t.startsWith("User $user:") && " suspended=true" in t
-                t.startsWith("firstInstallTime=") -> current?.let { pkg ->
-                    if (pkg !in times) runCatching { format.parse(t.substringAfter('=').trim())?.time }.getOrNull()?.let { times[pkg] = it }
-                }
-                t.startsWith("suspendingPackage=") && suspendedForUser && "com.android.shell" in t -> current?.let { suspended += it }
-            }
-        }
-        return PackageDump(times, suspended)
+    private fun readPackageDump(target: String, user: Int): PackageDump? {
+        val result = Shell.run(listOf("dumpsys", "package", target), timeoutMs = 30_000)
+        return if (result.exitCode == 0) PackageDump.parse(result.output, user) else null
     }
 
     /**
@@ -343,6 +333,8 @@ internal class ProbeService(
         const val FIRST_MAKER_OP = 1_000
         const val PER_USER_RANGE = 100_000
         const val MAX_OUTPUT = 2_000
+        const val PROCESS_DUMP_HEADER = "ACTIVITY MANAGER RUNNING PROCESSES (dumpsys activity processes)"
+        val PROCESS_ENTRY = Regex("^\\*[A-Z]+\\* UID (\\d+) ProcessRecord\\{\\S+ (\\d+):")
         /** A package first installed this soon after the system itself came with the phone. */
         const val FACTORY_WINDOW_MS = 5 * 60_000L
         val PACKAGE_NAME = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+")

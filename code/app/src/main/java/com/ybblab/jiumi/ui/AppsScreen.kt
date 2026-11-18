@@ -72,6 +72,7 @@ import com.ybblab.jiumi.ui.theme.AppShapes
 private enum class AppsFilter(val label: Int, val state: AppState?) {
     ALL(R.string.apps_filter_all, null),
     DISABLED(R.string.apps_filter_disabled, AppState.DISABLED),
+    SUSPENDED(R.string.state_suspended, AppState.SUSPENDED),
     DELETED(R.string.apps_filter_deleted, AppState.DELETED)
 }
 
@@ -100,7 +101,7 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
     // Read again after every report, which follows each change made here. The phone's own list comes
     // first and at once (the last one shown, before that); the monitor's, which fills in apps some
     // phones hide, follows only when it is due, since it costs a round of shell commands.
-    val apps by produceState(lastListed, state.ledger) {
+    val apps by produceState(lastListed, state.ledger, state.running) {
         suspend fun named(list: List<ListedApp>) = withContext(Dispatchers.IO) {
             list.map { it to (it.backup?.label ?: labels.label(AppKey(it.uid, it.pkg))) }
                 .sortedWith(compareBy({ AppGroup.of(it.first).ordinal }, { it.second.lowercase() }))
@@ -183,6 +184,7 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
                 EmptyCard(stringResource(when {
                     query.isNotBlank() -> R.string.apps_empty_search
                     chosen == AppsFilter.DISABLED -> R.string.apps_empty_disabled
+                    chosen == AppsFilter.SUSPENDED -> R.string.apps_empty_suspended
                     chosen == AppsFilter.DELETED -> R.string.apps_empty_deleted
                     else -> R.string.apps_empty_search
                 }))
@@ -267,6 +269,7 @@ private var lastListed: List<Pair<ListedApp, String>>? = null
 private fun stateText(app: ListedApp): String? = when (app.state) {
     AppState.ACTIVE -> null
     AppState.DISABLED -> stringResource(R.string.state_disabled)
+    AppState.SUSPENDED -> stringResource(R.string.state_suspended)
     AppState.DELETED -> app.backup?.let { stringResource(R.string.backup_size, formatBytes(it.bytes)) } ?: stringResource(R.string.state_removed)
 }
 
@@ -337,6 +340,7 @@ private fun CardSlice(first: Boolean, last: Boolean, content: @Composable () -> 
 fun actionLabel(action: ManageAction): Int = when (action) {
     ManageAction.DISABLE -> R.string.manage_action_disable
     ManageAction.ENABLE -> R.string.manage_action_enable
+    ManageAction.UNSUSPEND -> R.string.manage_action_unsuspend
     ManageAction.UNINSTALL -> R.string.manage_action_uninstall
     ManageAction.REMOVE -> R.string.manage_action_remove
     ManageAction.RESTORE, ManageAction.REINSTALL -> R.string.manage_action_restore

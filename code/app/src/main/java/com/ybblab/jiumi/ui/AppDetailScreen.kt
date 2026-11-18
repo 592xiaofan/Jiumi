@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ybblab.jiumi.MonitorController
+import com.ybblab.jiumi.MonitorController.ManageResult
+import com.ybblab.jiumi.MonitorController.ManageStatus
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Surface
@@ -93,7 +96,8 @@ fun AppDetailScreen(
         value = controller.detail(key)
     }
     val summary = state.ledger?.apps?.firstOrNull { it.key == key }
-    val managed by produceState<MonitorController.Managed?>(null, key.pkg, state.ledger) {
+    var manageRevision by remember(key.pkg) { mutableStateOf(0) }
+    val managed by produceState<MonitorController.Managed?>(null, key.pkg, state.ledger, manageRevision) {
         value = key.pkg?.let { controller.managed(it) }
     }
     // Read from the system while the monitor runs; nothing to show without it.
@@ -158,13 +162,26 @@ fun AppDetailScreen(
                         }
                         Text(source, style = MaterialTheme.typography.labelMedium, color = com.ybblab.jiumi.ui.theme.Ink.tertiary,
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                        val packageStatus = when {
+                            !f.installed -> R.string.state_removed
+                            f.suspendedByShell -> R.string.state_suspended
+                            f.disabledByUser -> R.string.state_disabled
+                            else -> null
+                        }
+                        packageStatus?.let {
+                            Text(stringResource(it), style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
         }
         // What may be done to the app comes first, right under its name.
         managed?.let { m ->
-            item(key = "manage") { ManageBar(controller, m, name, monitorRunning = state.running, onDiscarded = onBack) }
+            item(key = "manage") {
+                ManageBar(controller, m, name, monitorRunning = state.running,
+                    onChanged = { manageRevision++ }, onDiscarded = onBack)
+            }
         }
         if (key.pkg != null && (managed == null || managed?.facts?.installed == true)) {
             item(key = "access") {
@@ -384,17 +401,24 @@ private const val DESTINATIONS_SHOWN = 8
  */
 @Composable
 private fun ManageBar(controller: MonitorController, m: MonitorController.Managed, name: String, monitorRunning: Boolean,
-                      onDiscarded: () -> Unit) {
+                      onChanged: () -> Unit, onDiscarded: () -> Unit) {
     val scope = rememberCoroutineScope()
     var asking by rememberSaveable(m.pkg) { mutableStateOf<String?>(null) }
-    var outcome by rememberSaveable(m.pkg) { mutableStateOf<MonitorController.ManageResult?>(null) }
+    var outcome by rememberSaveable(m.pkg, stateSaver = manageResultSaver) { mutableStateOf<ManageResult?>(null) }
     var working by remember(m.pkg) { mutableStateOf(false) }
     // The buttons always answer; a monitor that is not running is started on the way.
     val run = { action: ManageAction ->
         asking = null
         working = true
         outcome = null
-        scope.launch { outcome = controller.manage(m.pkg, action); working = false }
+        scope.launch {
+            try {
+                outcome = controller.manage(m.pkg, action)
+                onChanged()
+            } finally {
+                working = false
+            }
+        }
         Unit
     }
     // A deleted app's backup can also be thrown away.
@@ -414,22 +438,35 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
                 }
             }
         }
-        val failed = !working && (outcome == MonitorController.ManageResult.FAILED || outcome == MonitorController.ManageResult.NO_MONITOR)
+        val status = outcome?.status
+        val warning = status == ManageStatus.FAILED || status == ManageStatus.NO_MONITOR || status == ManageStatus.UNVERIFIED ||
+            outcome?.running == true
         val note = when {
+            working -> stringResource(if (monitorRunning) R.string.manage_working else R.string.manage_starting_monitor)
+            status == ManageStatus.NO_MONITOR -> stringResource(R.string.manage_monitor_failed)
+            status == ManageStatus.FAILED -> stringResource(R.string.manage_failed)
+            status == ManageStatus.UNVERIFIED -> stringResource(R.string.manage_unverified)
+            status == ManageStatus.DISABLED -> stringResource(when (outcome?.running) {
+                false -> R.string.manage_process_stopped
+                true -> R.string.manage_process_running
+                null -> R.string.manage_process_unknown
+            })
             m.refusal != null && m.expertUnlocks -> stringResource(R.string.refusal_platform_expert)
             m.refusal != null -> refusalText(m.refusal)
-            !working && outcome == null && m.risk != null -> stringResource(R.string.risk_note)
-            !working && outcome == null && m.removable -> stringResource(R.string.remove_hint)
-            working -> stringResource(if (monitorRunning) R.string.manage_working else R.string.manage_starting_monitor)
-            outcome == MonitorController.ManageResult.NO_MONITOR -> stringResource(R.string.manage_monitor_failed)
-            outcome == MonitorController.ManageResult.FAILED -> stringResource(R.string.manage_failed)
+            outcome == null && m.risk != null -> stringResource(R.string.risk_note)
+            outcome == null && m.removable -> stringResource(R.string.remove_hint)
             else -> null
         }
         note?.let {
             Text(it, style = MaterialTheme.typography.bodySmall,
-                color = if (failed) StatusWarning else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (warning) StatusWarning else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, top = if (m.actions.isNotEmpty() || discard) 8.dp else 0.dp))
         }
+        outcome?.output?.lineSequence()?.map { it.trim() }?.takeWhile { !it.startsWith("at ") }
+            ?.filter { it.isNotEmpty() }?.take(4)?.joinToString("\n")?.takeIf { it.isNotEmpty() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = StatusWarning,
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp))
+            }
     }
     when (val a = asking) {
         null -> Unit
@@ -443,6 +480,15 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
         }
     }
 }
+
+private val manageResultSaver = listSaver<ManageResult?, String>(
+    save = { result ->
+        if (result == null) emptyList() else listOf(result.status.name, result.output.orEmpty(), result.running?.toString().orEmpty())
+    },
+    restore = { parts ->
+        ManageResult(ManageStatus.valueOf(parts[0]), parts[1].ifEmpty { null }, parts[2].toBooleanStrictOrNull())
+    }
+)
 
 private const val DISCARD = "discard"
 
@@ -458,7 +504,7 @@ private fun actionTone(action: ManageAction) = when (action) {
 }
 
 private fun actionIcon(action: ManageAction) = when (action) {
-    ManageAction.ENABLE -> JiumiIcons.Play
+    ManageAction.ENABLE, ManageAction.UNSUSPEND -> JiumiIcons.Play
     ManageAction.RESTORE, ManageAction.REINSTALL -> JiumiIcons.Undo
     ManageAction.DISABLE -> JiumiIcons.Ban
     ManageAction.UNINSTALL, ManageAction.REMOVE -> JiumiIcons.Trash

@@ -15,7 +15,7 @@ import org.json.JSONObject
 
 /** What the user may do to an app; [id] is what the monitor and the action log call it. */
 enum class ManageAction(val id: String) {
-    DISABLE("disable"), ENABLE("enable"), UNINSTALL("uninstall"), REMOVE("remove"), RESTORE("restore"),
+    DISABLE("disable"), ENABLE("enable"), UNSUSPEND("unsuspend"), UNINSTALL("uninstall"), REMOVE("remove"), RESTORE("restore"),
     /** Installs a deleted app again from its backup. */
     REINSTALL("reinstall");
 
@@ -38,10 +38,7 @@ data class PackageFacts(
     val sharedUser: String?,
     /** Installed for this user; a preinstalled app removed for the user is not. */
     val installed: Boolean,
-    /**
-     * Turned off by the user (not by the phone maker's defaults): disabled, or suspended from here on a
-     * phone that refuses to disable system packages.
-     */
+    /** Package Manager reports COMPONENT_ENABLED_STATE_DISABLED_USER for this user. */
     val disabledByUser: Boolean,
     /** Has code of its own; resource overlays and the like have none and are not apps to manage. */
     val hasCode: Boolean = true,
@@ -55,7 +52,9 @@ data class PackageFacts(
      * Put on the phone by its maker outside the system partition, so it can be uninstalled like any
      * app the user added, but came with the phone: first installed at the first boot, with the system.
      */
-    val factoryPreload: Boolean = false
+    val factoryPreload: Boolean = false,
+    /** A shell suspension can still be lifted after upgrading from an older monitor. */
+    val suspendedByShell: Boolean = false
 )
 
 /**
@@ -113,14 +112,16 @@ object Management {
     }
 
     /**
-     * The actions offered, in order. A removed preinstalled app can only be restored and a disabled
-     * one enabled; preinstalled apps are removed for this user only, and only when [allowRemove].
+     * A removed preinstalled app can only be restored. A suspended or disabled app can be brought back.
+     * Preinstalled apps are removed for this user only, and only when [allowRemove].
      */
     fun actions(f: PackageFacts, allowRemove: Boolean): List<ManageAction> = when {
         !f.installed -> if (f.preinstalled) listOf(ManageAction.RESTORE) else emptyList()
-        f.disabledByUser -> listOfNotNull(ManageAction.ENABLE,
-            if (!f.preinstalled) ManageAction.UNINSTALL else ManageAction.REMOVE.takeIf { allowRemove })
-        else -> listOfNotNull(ManageAction.DISABLE,
+        else -> listOfNotNull(when {
+            f.suspendedByShell -> ManageAction.UNSUSPEND
+            f.disabledByUser -> ManageAction.ENABLE
+            else -> ManageAction.DISABLE
+        },
             if (!f.preinstalled) ManageAction.UNINSTALL else ManageAction.REMOVE.takeIf { allowRemove })
     }
 
@@ -162,7 +163,10 @@ object Management {
     fun isFactoryTime(firstInstall: Long, firstBoot: Long) = firstInstall - firstBoot in 0..FACTORY_WINDOW_MS
 
     /** Undoing an action never needs a guard: it puts the phone back as it was. */
-    fun isUndo(action: ManageAction) = action == ManageAction.ENABLE || action == ManageAction.RESTORE || action == ManageAction.REINSTALL
+    fun isUndo(action: ManageAction) = when (action) {
+        ManageAction.ENABLE, ManageAction.UNSUSPEND, ManageAction.RESTORE, ManageAction.REINSTALL -> true
+        else -> false
+    }
 
     private val PACKAGE_NAME = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+")
 
@@ -171,7 +175,7 @@ object Management {
 }
 
 /** A package as the monitor (the shell) lists it. */
-data class ShellPackage(val pkg: String, val uid: Int, val system: Boolean, val disabled: Boolean, val installed: Boolean,
+data class ShellPackage(val pkg: String, val uid: Int, val system: Boolean, val enabledSetting: Int?, val installed: Boolean,
                         val installer: String? = null,
                         /** Shows an icon in the launcher; null from a monitor that did not say. */
                         val launcher: Boolean? = null,
@@ -185,7 +189,7 @@ data class ShellPackage(val pkg: String, val uid: Int, val system: Boolean, val 
             val array = JSONObject(json).getJSONArray("packages")
             (0 until array.length()).map { i ->
                 val o = array.getJSONObject(i)
-                ShellPackage(o.getString("pkg"), o.optInt("uid", -1), o.optBoolean("system"), o.optBoolean("disabled"),
+                ShellPackage(o.getString("pkg"), o.optInt("uid", -1), o.optBoolean("system"), o.optInt("enabled", -1).takeIf { it >= 0 },
                     o.optBoolean("installed", true), o.optString("installer").takeIf { it.isNotEmpty() && it != "null" },
                     if (o.has("launcher")) o.optBoolean("launcher") else null, o.optBoolean("factory"), o.optBoolean("suspended"))
             }.filter { Management.isPackageName(it.pkg) }
@@ -200,12 +204,15 @@ class PackageFactsSource(private val context: Context) {
     /** [pkg]'s facts, from the [shell]'s list when the phone will not show it. */
     fun facts(pkg: String, shell: List<ShellPackage> = emptyList()): PackageFacts? {
         val roles = rolesHeld()
-        return (facts(pkg, roles)?.let { suspendedFromHere(it, shell) } ?: shell.firstOrNull { it.pkg == pkg }?.let { facts(it, roles) })
+        val listed = shell.firstOrNull { it.pkg == pkg }
+        return facts(pkg, roles)?.let { applySuspension(it, listed?.suspended == true) } ?: listed?.let { facts(it, roles) }
     }
 
-    /** The phone tells an app only that another is suspended, not by whom; the shell's list says it was from here. */
-    private fun suspendedFromHere(f: PackageFacts, shell: List<ShellPackage>): PackageFacts =
-        if (shell.any { it.pkg == f.pkg && it.suspended }) f.copy(disabledByUser = true) else f
+    /** Use the shell's suspender information while the current package state still shows a suspension. */
+    private fun applySuspension(f: PackageFacts, suspendedByShell: Boolean): PackageFacts =
+        if (suspendedByShell && runCatching { pm.isPackageSuspended(f.pkg) }.getOrDefault(true)) {
+            f.copy(suspendedByShell = true)
+        } else f
 
     /**
      * Every package on the phone for this user, removed preinstalled apps included. Some phones show
@@ -224,7 +231,7 @@ class PackageFactsSource(private val context: Context) {
         }.getOrDefault(emptySet())
         val suspended = shell.filter { it.suspended }.mapTo(HashSet()) { it.pkg }
         val local = infos.mapNotNull { info -> facts(info, roles, info.packageName in launchable, firstBoot) }
-            .map { if (it.pkg in suspended) it.copy(disabledByUser = true) else it }
+            .map { applySuspension(it, it.pkg in suspended) }
         val seen = local.mapTo(HashSet()) { it.pkg }
         return local + shell.filter { it.pkg !in seen }.map { facts(it, roles) }
     }
@@ -232,8 +239,9 @@ class PackageFactsSource(private val context: Context) {
     /** What the shell knows; without word on the launcher, a hidden system package counts as not in it. */
     private fun facts(s: ShellPackage, roles: Map<String, Set<String>>) = PackageFacts(
         pkg = s.pkg, uid = s.uid, preinstalled = s.system, persistent = false, sharedUser = null,
-        installed = s.installed, disabledByUser = s.disabled || s.suspended, hasCode = true, launchable = s.launcher ?: !s.system,
-        roles = roles[s.pkg].orEmpty(), installer = s.installer, factoryPreload = s.factory && !s.system
+        installed = s.installed, disabledByUser = s.enabledSetting == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
+        hasCode = true, launchable = s.launcher ?: !s.system,
+        roles = roles[s.pkg].orEmpty(), installer = s.installer, factoryPreload = s.factory && !s.system, suspendedByShell = s.suspended
     )
 
     private fun facts(pkg: String, roles: Map<String, Set<String>>): PackageFacts? {
