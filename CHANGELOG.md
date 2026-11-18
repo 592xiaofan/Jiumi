@@ -4,6 +4,13 @@ Notable changes to Jiumi, newest first. The English in-app update notes come fro
 Chinese in-app notes are supplied when preparing the release.
 Versions follow [Semantic Versioning](https://semver.org).
 
+## [0.2.2]
+
+- Verify app freezing and check that preinstalled apps were deleted or restored for the current user.
+- Explain when the phone blocks an action and fix freeze status checks on some ColorOS devices.
+- Add snowflake and trash badges to frozen and deleted apps while keeping their original icon colors.
+- Fix process starts appearing under the wrong app for some system components.
+
 ## [0.2.1]
 
 - Streamlined setup for root and Shizuku, with clearer authorization steps.
