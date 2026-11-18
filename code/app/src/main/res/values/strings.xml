@@ -462,7 +462,11 @@
     <string name="confirm_uninstall_title">Delete “%1$s”?</string>
     <string name="confirm_uninstall_body">Its installation files are backed up first, so you can restore it under Apps › Deleted; but its data (chats, sign-ins and so on) is deleted with it and can\'t be brought back. Type the package name to confirm:</string>
     <string name="manage_failed">The operation failed</string>
+    <string name="manage_permission_denied">Android restricts this action. Jiumi cannot perform it with debugging access.</string>
+    <string name="manage_not_applied">Android did not apply the change. Jiumi could not complete the action with its current debugging access.</string>
     <string name="manage_unverified">Could not confirm the new package state</string>
+    <string name="manage_show_details">Show technical details</string>
+    <string name="manage_hide_details">Hide technical details</string>
     <string name="manage_process_stopped">No running process found for this app</string>
     <string name="manage_process_running">The app still has a running process</string>
     <string name="manage_process_unknown">Could not confirm whether the app has a running process</string>

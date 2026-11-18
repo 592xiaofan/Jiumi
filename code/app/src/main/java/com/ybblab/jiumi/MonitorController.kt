@@ -35,6 +35,7 @@ import com.ybblab.jiumi.data.LogExport
 import com.ybblab.jiumi.data.NetworkUsage
 import com.ybblab.jiumi.data.AppKinds
 import com.ybblab.jiumi.data.AttentionRules
+import com.ybblab.jiumi.probe.PackageChangeFailure
 import com.ybblab.jiumi.probe.ProbeClient
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -279,7 +280,7 @@ class MonitorController(
     }
 
     /** How a management action ended. */
-    enum class ManageStatus { DONE, DISABLED, NO_MONITOR, FAILED, UNVERIFIED }
+    enum class ManageStatus { DONE, DISABLED, NO_MONITOR, FAILED, PERMISSION_DENIED, NOT_APPLIED, UNVERIFIED }
 
     data class ManageResult(val status: ManageStatus, val output: String? = null, val running: Boolean? = null)
 
@@ -304,20 +305,24 @@ class MonitorController(
             }
             val response = runCatching { org.json.JSONObject(service.managePackage(action.id, pkg)) }.getOrNull()
             val ok = response?.optBoolean("ok") == true
-            val unverified = response?.optBoolean("unverified") == true
             when {
                 ok && action == ManageAction.REINSTALL -> backups.delete(pkg)
                 !ok && action == ManageAction.UNINSTALL -> backups.delete(pkg)
             }
             shellReadAt = 0L
-            if (ok || unverified) runCatching { shellPackages() }
+            val status = when (response?.optString("failure")) {
+                PackageChangeFailure.PERMISSION_DENIED.name -> ManageStatus.PERMISSION_DENIED
+                PackageChangeFailure.NOT_APPLIED.name -> ManageStatus.NOT_APPLIED
+                PackageChangeFailure.UNVERIFIED.name -> ManageStatus.UNVERIFIED
+                else -> ManageStatus.FAILED
+            }
+            if (ok || status == ManageStatus.UNVERIFIED) runCatching { shellPackages() }
             if (ok) store.insertUserAction(JiumiStore.UserAction(System.currentTimeMillis(), m.facts?.uid ?: m.backup?.uid ?: -1, pkg, action.id))
             refresh()
             when {
                 ok && action == ManageAction.DISABLE -> ManageResult(ManageStatus.DISABLED, running = response?.opt("running") as? Boolean)
                 ok -> ManageResult(ManageStatus.DONE)
-                unverified -> ManageResult(ManageStatus.UNVERIFIED)
-                else -> ManageResult(ManageStatus.FAILED, response?.optString("output")?.trim()?.takeIf { it.isNotEmpty() })
+                else -> ManageResult(status, response?.optString("output")?.trim()?.takeIf { it.isNotEmpty() })
             }
         }
     }

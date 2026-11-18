@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -405,12 +406,14 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
     val scope = rememberCoroutineScope()
     var asking by rememberSaveable(m.pkg) { mutableStateOf<String?>(null) }
     var outcome by rememberSaveable(m.pkg, stateSaver = manageResultSaver) { mutableStateOf<ManageResult?>(null) }
+    var showDetails by rememberSaveable(m.pkg) { mutableStateOf(false) }
     var working by remember(m.pkg) { mutableStateOf(false) }
     // The buttons always answer; a monitor that is not running is started on the way.
     val run = { action: ManageAction ->
         asking = null
         working = true
         outcome = null
+        showDetails = false
         scope.launch {
             try {
                 outcome = controller.manage(m.pkg, action)
@@ -439,12 +442,17 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
             }
         }
         val status = outcome?.status
-        val warning = status == ManageStatus.FAILED || status == ManageStatus.NO_MONITOR || status == ManageStatus.UNVERIFIED ||
-            outcome?.running == true
+        val warning = when (status) {
+            ManageStatus.FAILED, ManageStatus.NO_MONITOR, ManageStatus.PERMISSION_DENIED,
+            ManageStatus.NOT_APPLIED, ManageStatus.UNVERIFIED -> true
+            else -> outcome?.running == true
+        }
         val note = when {
             working -> stringResource(if (monitorRunning) R.string.manage_working else R.string.manage_starting_monitor)
             status == ManageStatus.NO_MONITOR -> stringResource(R.string.manage_monitor_failed)
             status == ManageStatus.FAILED -> stringResource(R.string.manage_failed)
+            status == ManageStatus.PERMISSION_DENIED -> stringResource(R.string.manage_permission_denied)
+            status == ManageStatus.NOT_APPLIED -> stringResource(R.string.manage_not_applied)
             status == ManageStatus.UNVERIFIED -> stringResource(R.string.manage_unverified)
             status == ManageStatus.DISABLED -> stringResource(when (outcome?.running) {
                 false -> R.string.manage_process_stopped
@@ -462,11 +470,19 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
                 color = if (warning) StatusWarning else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, top = if (m.actions.isNotEmpty() || discard) 8.dp else 0.dp))
         }
-        outcome?.output?.lineSequence()?.map { it.trim() }?.takeWhile { !it.startsWith("at ") }
-            ?.filter { it.isNotEmpty() }?.take(4)?.joinToString("\n")?.takeIf { it.isNotEmpty() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = StatusWarning,
-                    modifier = Modifier.padding(start = 4.dp, top = 4.dp))
+        val details = outcome?.output?.lineSequence()?.map { it.trim() }?.takeWhile { !it.startsWith("at ") }
+            ?.filter { it.isNotEmpty() }?.take(4)?.joinToString("\n")?.takeIf { it.isNotEmpty() }
+        if (details != null) {
+            ActionText(stringResource(if (showDetails) R.string.manage_hide_details else R.string.manage_show_details)) {
+                showDetails = !showDetails
             }
+            if (showDetails) {
+                SelectionContainer {
+                    Text(details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp))
+                }
+            }
+        }
     }
     when (val a = asking) {
         null -> Unit

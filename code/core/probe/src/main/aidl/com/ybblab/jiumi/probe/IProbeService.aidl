@@ -35,7 +35,8 @@ interface IProbeService {
      * (removes it and its data), "remove" (a preinstalled app, for this user only), "restore"
      * (brings a removed preinstalled app back) or "reinstall" (installs the APKs the app backed up
      * under its external files, backups/<packageName>/). Returns JSON {"ok":bool,"output":text}.
-     * "unverified":true means the command returned successfully but its package state was not confirmed.
+     * "failure", when known, is "PERMISSION_DENIED", "NOT_APPLIED" (the observed state differs from
+     * the requested state), or "UNVERIFIED" (the state could not be read after the command).
      * "running", when available after a verified disable, reports the observed process state.
      */
     String managePackage(String action, String packageName);

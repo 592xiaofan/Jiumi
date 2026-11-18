@@ -173,18 +173,16 @@ internal class ProbeService(
             "uninstall" -> listOf("pm", "uninstall", packageName)
             "remove" -> listOf("pm", "uninstall", "-k", "--user", "$user", packageName)
             "restore" -> listOf("cmd", "package", "install-existing", "--user", "$user", packageName)
-            "reinstall" -> return reinstall(user, packageName).let { (ok, output) ->
-                JSONObject().put("ok", ok).put("output", output.take(MAX_OUTPUT)).toString()
-            }
+            "reinstall" -> return reinstall(user, packageName).let { (ok, output) -> manageResult(ok, output) }
             else -> throw IllegalArgumentException("unknown action $action")
         }
         val (ok, output) = runPm(command)
         return manageResult(ok, output)
     }
 
-    private fun manageResult(ok: Boolean, output: String, unverified: Boolean = false, running: Boolean? = null) =
+    private fun manageResult(ok: Boolean, output: String, failure: PackageChangeFailure? = null, running: Boolean? = null) =
         JSONObject().put("ok", ok).put("output", output.take(MAX_OUTPUT)).apply {
-            if (unverified) put("unverified", true)
+            if (!ok) (failure ?: PackageChangeFailure.fromCommandOutput(output))?.let { put("failure", it.name) }
             if (running != null) put("running", running)
         }.toString()
 
@@ -193,7 +191,8 @@ internal class ProbeService(
         val result = runCatching { Shell.run(command, timeoutMs = 60_000) }
         val output = result.getOrNull()?.output?.trim() ?: result.exceptionOrNull()?.message.orEmpty()
         val ok = result.getOrNull()?.let {
-            it.exitCode == 0 && !it.output.contains("Failure") && !it.output.contains("Error") && !it.output.contains("Exception")
+            it.exitCode == 0 && !it.output.contains("Failure") && !it.output.contains("Error") && !it.output.contains("Exception") &&
+                PackageChangeFailure.fromCommandOutput(output) == null
         } == true
         return ok to output
     }
@@ -203,8 +202,8 @@ internal class ProbeService(
         val (ok, output) = runPm(listOf("pm", command, "--user", "$user", pkg))
         if (!ok) return manageResult(false, output)
         val state = runCatching { readPackageDump(pkg, user)?.userStates?.get(pkg) }.getOrNull()
-            ?: return manageResult(false, "", unverified = true)
-        if (!state.installed || !matches(state)) return manageResult(false, output)
+            ?: return manageResult(false, output, failure = PackageChangeFailure.UNVERIFIED)
+        if (!state.installed || !matches(state)) return manageResult(false, output, failure = PackageChangeFailure.NOT_APPLIED)
         val running = if (command == "disable-user") packageProcessRunning(pkg, user) else null
         return manageResult(true, output, running = running)
     }

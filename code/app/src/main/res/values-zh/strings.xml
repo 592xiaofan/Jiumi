@@ -455,7 +455,11 @@
     <string name="confirm_uninstall_title">删除「%1$s」？</string>
     <string name="confirm_uninstall_body">删除前会备份安装包，之后可以在「应用 › 已删除」里恢复；但应用数据（聊天记录、登录状态等）会一起删除，无法恢复。输入包名以确认：</string>
     <string name="manage_failed">操作失败</string>
+    <string name="manage_permission_denied">手机系统限制了这项操作。揪咪的调试权限无法执行。</string>
+    <string name="manage_not_applied">手机系统没有应用这次更改。揪咪用当前调试权限未能完成操作。</string>
     <string name="manage_unverified">无法确认应用的新状态</string>
+    <string name="manage_show_details">查看技术详情</string>
+    <string name="manage_hide_details">收起技术详情</string>
     <string name="manage_process_stopped">当前未发现此应用的运行进程</string>
     <string name="manage_process_running">此应用仍有进程在运行</string>
     <string name="manage_process_unknown">无法确认此应用的进程状态</string>
