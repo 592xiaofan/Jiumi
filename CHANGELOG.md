@@ -4,9 +4,9 @@ Notable changes to Jiumi, newest first. The English in-app update notes come fro
 Chinese in-app notes are supplied when preparing the release.
 Versions follow [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [0.2.3]
 
-- Fix Root setup on managers with different `su` options and explain when Root access works but switching to the shell user fails.
+- Fix setup getting stuck after root access has been granted. Jiumi checks existing grants automatically and reports when switching to the Android shell user fails.
 
 ## [0.2.2]
 

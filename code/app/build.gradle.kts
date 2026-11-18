@@ -23,8 +23,8 @@ android {
         applicationId = "com.ybblab.jiumi"
         minSdk = 30
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.2.2"
+        versionCode = 5
+        versionName = "0.2.3"
         buildConfigField("String", "REPOSITORY", "\"$repository\"")
         externalNativeBuild { cmake { targets += "jiumi_shell" } }
     }
