@@ -32,9 +32,9 @@ A lightweight Android app behavior monitor and manager.
 | System history | Open an app's details to see the permission access records and totals Android retains, including some activity from before monitoring began. |
 | Log export | In Settings › Export logs, save records for a selected time range as a ZIP containing CSV files. |
 
-## Disable, delete and restore apps
+## Manage apps
 
-Apps are grouped by source. Open an app's details to review its activity and decide whether to make a change. App management actions start with you.
+Apps are grouped by source. Open an app's details to review its activity and decide whether to make a change. App management actions start with you. After each change, Jiumi reads the state back from Android to confirm it took effect, and shows the reason if Android refuses.
 
 <p align="center">
   <a href="code/images/app-disable.en.png"><img src="code/images/app-disable.en.png" width="250" alt="Website demo showing the confirmation to disable an app" /></a>&nbsp;
@@ -44,15 +44,17 @@ Apps are grouped by source. Open an app's details to review its activity and dec
 
 | Action | What happens |
 | --- | --- |
-| Disable or enable | Jiumi verifies that Android disabled the app for the current user. Disabling keeps its data. Enable it again under Apps › Disabled. If Android refuses, Jiumi shows the reason. |
+| Permissions | Turn permissions off or on one at a time under Permissions in the app's details. Manageable permissions turns them all off at once; turning it back on restores only the permissions Jiumi turned off. Permissions the system locks are shown as read only. |
+| Network access | On supported devices, block or restore network access for a single app with Android's own firewall, without using the VPN slot. The switch is locked with a reason when the app shares a UID with other apps, the rule was set by another tool, or Jiumi cannot confirm that only this app is affected. |
+| Disable or enable | Disabling keeps the app's data. Enable it again under Apps › Disabled. Disabled apps carry a snowflake badge. |
 | Delete an app you installed | Enter the full package name to confirm. Jiumi backs up the APKs before uninstalling. You can try to reinstall the app from Apps › Deleted. **Uninstalling deletes app data. The backup can only restore the installation files.** |
-| Remove a preinstalled app | Enable the option in advanced settings to remove supported preinstalled apps for the current user. The system copy and app data are kept, and you can try to restore the app from Apps › Deleted. |
+| Remove a preinstalled app | Enable the option in advanced settings to remove supported preinstalled apps for the current user. The system copy and app data are kept, and you can try to restore the app from Apps › Deleted. Deleted apps carry a trash badge. |
 
 Core system components are protected by default. Changing a component the phone depends on can affect system features. Jiumi displays a warning before such changes.
 
 ## How does Jiumi see background activity without root?
 
-Android provides permission access records, connection tables, system traces and event logs as apps run. The Jiumi monitor reads available system signals as the **shell user**. The app organizes them by rules and stores them in a database on your phone. Monitoring does not inject code into other apps. Actions such as disabling or deleting require you to start them in app management.
+Android provides permission access records, connection tables, system traces and event logs as apps run. The Jiumi monitor reads available system signals as the **shell user**. The app organizes them by rules and stores them in a database on your phone. Monitoring does not inject code into other apps. Actions such as disabling, deleting, or turning off permissions or network access require you to start them in app management.
 
 <p align="center"><img src="code/images/how-it-works.en.png" alt="Apps generate Android system signals. The Jiumi monitor reads them as the shell user, and the app organizes and stores the records on the phone. Optional domain recording takes DNS queries through a local VPN." width="900" /></p>
 
