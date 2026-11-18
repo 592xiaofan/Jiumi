@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.ybblab.jiumi.access;
 
-/** Runs in a short-lived process Shizuku starts as the shell; used only to start the monitor. */
+/** Runs in a short-lived process Shizuku starts as the shell or root; starts the monitor and changes packages. */
 interface IShizukuShellService {
     // Shizuku's reserved transaction for ending a user service.
     void destroy() = 16777114;

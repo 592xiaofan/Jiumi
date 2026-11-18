@@ -277,7 +277,7 @@ private var lastListed: List<Pair<ListedApp, String>>? = null
 
 @Composable
 private fun stateText(app: ListedApp): String? = when (app.state) {
-    AppState.ACTIVE -> null
+    AppState.ACTIVE -> if (app.lapsed) stringResource(R.string.state_lapsed) else null
     AppState.DISABLED -> stringResource(R.string.state_disabled)
     AppState.SUSPENDED -> stringResource(R.string.state_suspended)
     AppState.DELETED -> stringResource(R.string.state_deleted)

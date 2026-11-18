@@ -425,6 +425,7 @@
     <string name="tab_settings">设置</string>
     <string name="apps_filter_all">全部</string>
     <string name="state_disabled">已冻结</string>
+    <string name="state_lapsed">冻结已失效</string>
     <string name="state_suspended">已挂起</string>
     <string name="state_deleted">已删除</string>
     <string name="section_advanced">高级</string>
@@ -456,11 +457,14 @@
     <string name="confirm_uninstall_body">删除前会备份安装包，之后可以在「应用 › 已删除」里恢复；但应用数据（聊天记录、登录状态等）会一起删除，无法恢复。输入包名以确认：</string>
     <string name="manage_failed">操作失败</string>
     <string name="manage_failed_explanation">手机系统未能完成操作。你可以查看应用的当前状态和可用操作。</string>
-    <string name="manage_permission_denied">手机系统限制了这项操作。揪咪的调试权限无法执行。</string>
-    <string name="manage_not_applied">手机系统没有按请求更改应用状态。揪咪用当前调试权限未能完成操作。</string>
+    <string name="manage_permission_denied">手机系统不允许 shell 身份执行这项操作。改用 Root 连接方式（或以 Root 启动的 Shizuku）后，冻结会以 Root 身份执行。</string>
+    <string name="manage_permission_denied_root">已以 Root 身份执行，手机系统仍拒绝了这项操作。</string>
+    <string name="manage_not_applied">手机系统没有按请求更改应用状态。shell 身份的冻结可能被系统忽略；改用 Root 连接方式后，冻结会以 Root 身份执行。</string>
+    <string name="manage_not_applied_root">已以 Root 身份执行，但手机系统没有按请求更改应用状态。</string>
     <string name="manage_unverified">无法确认应用的新状态</string>
     <string name="manage_unverified_explanation">揪咪暂时读不到系统确认的状态。重新打开详情页可以再检查一次。</string>
     <string name="manage_disabled_explanation">当前用户下无法正常启动此应用。时间线仍保留旧记录，点开可查看发生时间。</string>
+    <string name="manage_lapsed_explanation">揪咪冻结过这个应用，之后发现它又被启用了。无法得知是谁启用的。可以再次冻结；时间线里记录了发现的时间。</string>
     <string name="manage_suspended_explanation">Android 限制了应用打开界面和显示通知，后台仍可能有活动。</string>
     <string name="manage_preinstalled_deleted_explanation">此应用仅为当前用户删除，出厂安装包仍在手机上。点「恢复」可重新安装。</string>
     <string name="manage_backup_deleted_explanation">点「恢复」可从备份重新安装。原应用数据已删除。</string>
@@ -479,6 +483,8 @@
     <string name="confirm_discard_body">清除后就不能再从这里恢复这个应用。</string>
     <string name="manage_working">正在处理…</string>
     <string name="manage_done_reinstall">恢复应用</string>
+    <string name="manage_done_lapsed">发现冻结已失效</string>
+    <string name="manage_done_refrozen">自动重新冻结</string>
     <string name="settings_about">关于</string>
     <string name="about_version">版本 %1$s</string>
     <string name="about_source">开源地址</string>
@@ -496,7 +502,7 @@
     <string name="setup_next">接下来 · %1$d/%2$d</string>
     <string name="setup_privacy">数据只留在本机</string>
     <string name="access_wireless_hint">无需 Root，本机配对一次</string>
-    <string name="access_root_hint">Magisk、KernelSU 或 APatch</string>
+    <string name="access_root_hint">Magisk、KernelSU 或 APatch，以 Root 身份冻结</string>
     <string name="access_shizuku_hint">已安装 Shizuku</string>
     <string name="setup_step_notify_title">允许通知</string>
     <string name="setup_step_notify_desc">配对码要在揪咪的通知里输入。</string>
@@ -531,6 +537,8 @@
     <string name="allow_remove_confirm">允许</string>
     <string name="settings_expert_mode">专家模式</string>
     <string name="settings_expert_mode_desc">放开大部分系统核心组件。改动可能导致手机无法开机，风险由你自行承担。</string>
+    <string name="settings_auto_refreeze">冻结失效时自动重新冻结</string>
+    <string name="settings_auto_refreeze_desc">揪咪打开且监测运行时，每隔几分钟检查一次揪咪冻结过的应用。发现某个应用又被启用时，都会记在时间线里；打开此项后还会再冻结一次。</string>
     <string name="expert_title">开启专家模式？</string>
     <string name="expert_body">开启后，你可以停用或移除和系统深度绑定的组件。这可能让相关功能失效，严重时手机无法开机，只能恢复出厂设置，手机里的数据也会丢失。\n\n揪咪无法判断每个组件的用途，也不保证改动后一定能恢复。请只改动你清楚用途的组件，风险由你自行承担。</string>
     <string name="expert_confirm">我了解，开启</string>
@@ -621,8 +629,8 @@
     <string name="access_root">Root</string>
     <string name="access_shizuku">Shizuku</string>
     <string name="access_wireless_desc">在本机用无线调试配对一次即可，不需要 Root，也不需要其他应用。</string>
-    <string name="access_root_desc">揪咪通过 Root 管理器（Magisk、KernelSU、APatch）切换到 Android 的 shell 身份，再启动监测。</string>
-    <string name="access_shizuku_desc">由 Shizuku 替揪咪启动监测。Shizuku 需要以 shell 身份运行（通过无线调试或电脑启动），不能用 Root 方式启动；如果有 Root，请直接选 Root。</string>
+    <string name="access_root_desc">揪咪通过 Root 管理器（Magisk、KernelSU、APatch）切换到 Android 的 shell 身份启动监测，监测本身仍只有 shell 的权限。和另外两种方式不同，冻结和解冻应用会直接以 Root 身份执行，能冻结手机系统不让 shell 冻结的应用。</string>
+    <string name="access_shizuku_desc">由 Shizuku 替揪咪启动监测，监测以 shell 身份运行。Shizuku 通过无线调试或电脑启动时，冻结和无线调试一样受系统限制；以 Root 方式启动时，冻结和解冻会以 Root 身份执行，和 Root 方式相同。</string>
     <string name="action_authorize">授权</string>
     <string name="action_get_shizuku">下载 Shizuku</string>
     <string name="action_open_shizuku">打开 Shizuku</string>
@@ -634,7 +642,7 @@
     <string name="root_retry">重试</string>
     <string name="shizuku_not_installed">未安装</string>
     <string name="shizuku_not_running">未运行</string>
-    <string name="shizuku_not_shell">以 Root 方式运行</string>
+    <string name="shizuku_identity">身份不受支持</string>
     <string name="shizuku_old">版本过旧</string>
     <string name="shizuku_blocked">已拒绝</string>
     <string name="shizuku_needs_auth">尚未授权</string>
@@ -642,7 +650,7 @@
     <string name="service_shizuku_needed">Shizuku 未就绪</string>
     <string name="error_root">揪咪无法取得 Root。请在 Root 管理器的超级用户列表中允许揪咪，再返回这里。</string>
     <string name="error_root_shell">揪咪已取得 Root，但未能切换到 Android 的 shell 身份。请重试，或改用无线调试。</string>
-    <string name="error_shizuku">Shizuku 没有以 shell 身份运行，或还没允许揪咪使用。请打开 Shizuku，启动它并允许揪咪。</string>
+    <string name="error_shizuku">Shizuku 没有运行，或还没允许揪咪使用。请打开 Shizuku，启动它并允许揪咪。</string>
     <string name="setup_step_root_title">授权 Root</string>
     <string name="setup_step_root_desc">请在 Root 管理器中允许揪咪。已有授权会自动检查。</string>
     <string name="setup_step_shizuku_run_title">启动 Shizuku</string>

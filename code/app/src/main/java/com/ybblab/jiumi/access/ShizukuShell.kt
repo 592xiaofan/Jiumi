@@ -21,24 +21,27 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 
 /**
- * What Shizuku offers this app: whether it is installed and running, runs as the shell, and has let
- * this app use it. Adapted from Droidance (ybblab, Apache-2.0).
+ * What Shizuku offers this app: whether it is installed and running, runs as the shell or root, and
+ * has let this app use it. Adapted from Droidance (ybblab, Apache-2.0).
  */
 data class ShizukuState(
     val installed: Boolean = false,
     val running: Boolean = false,
     val supportedVersion: Boolean = true,
-    /** Shizuku started over ADB runs as the shell; started with root it runs as root. */
-    val shellIdentity: Boolean = false,
+    /** Shizuku started over ADB runs as the shell; started with root it runs as root. Either will do. */
+    val usableIdentity: Boolean = false,
+    /** Started with root: the monitor still runs as the shell, package changes run as root. */
+    val root: Boolean = false,
     val authorized: Boolean = false,
     /** The user chose "deny and don't ask again"; only Shizuku's own app can undo it. */
     val permissionBlocked: Boolean = false
 ) {
-    val ready: Boolean get() = running && supportedVersion && shellIdentity && authorized
-    val canRequestPermission: Boolean get() = running && supportedVersion && shellIdentity && !authorized && !permissionBlocked
+    val ready: Boolean get() = running && supportedVersion && usableIdentity && authorized
+    val canRequestPermission: Boolean get() = running && supportedVersion && usableIdentity && !authorized && !permissionBlocked
 }
 
 class ShizukuShell(private val context: Context) {
+    private val launcher = java.io.File(context.applicationInfo.nativeLibraryDir, "libjiumi_shell.so")
     private val _state = MutableStateFlow(ShizukuState())
     val state: StateFlow<ShizukuState> = _state.asStateFlow()
     private val bindLock = Any()
@@ -71,8 +74,9 @@ class ShizukuShell(private val context: Context) {
             if (!Shizuku.pingBinder()) ShizukuState(installed = installed)
             else {
                 val supported = !Shizuku.isPreV11() && Shizuku.getVersion() >= MIN_VERSION
+                val uid = Shizuku.getUid()
                 ShizukuState(installed = installed, running = true, supportedVersion = supported,
-                    shellIdentity = Shizuku.getUid() == SHELL_UID,
+                    usableIdentity = uid == SHELL_UID || uid == ROOT_UID, root = uid == ROOT_UID,
                     authorized = supported && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED,
                     permissionBlocked = supported && Shizuku.shouldShowRequestPermissionRationale())
             }
@@ -104,9 +108,25 @@ class ShizukuShell(private val context: Context) {
         }
     }
 
-    /** Runs [command] as the shell through Shizuku; output, or a line starting "[SHIZUKU_" when it could not. */
+    /**
+     * Runs [command] as the shell through Shizuku; output, or a line starting "[SHIZUKU_" when it could
+     * not. Shizuku running as root first switches to the shell, as the Root way does.
+     */
     fun shell(command: String, timeoutMs: Long): String {
-        if (!refresh().ready) return "[SHIZUKU_UNAVAILABLE]"
+        val state = refresh()
+        if (!state.ready) return "[SHIZUKU_UNAVAILABLE]"
+        val asShell = if (state.root) "exec ${quote(launcher.absolutePath)} ${quote(command)}" else command
+        return execute(asShell, timeoutMs)
+    }
+
+    /** Runs [command] as root when Shizuku runs as root; null otherwise or when it could not run. */
+    fun asRoot(command: String, timeoutMs: Long): String? {
+        val state = refresh()
+        if (!state.ready || !state.root) return null
+        return execute(command, timeoutMs).takeUnless { it.startsWith("[SHIZUKU_") }
+    }
+
+    private fun execute(command: String, timeoutMs: Long): String {
         return try {
             val remote = bind() ?: return "[SHIZUKU_SERVICE_UNAVAILABLE]"
             remote.execute(command, timeoutMs)
@@ -134,7 +154,7 @@ class ShizukuShell(private val context: Context) {
         connection = callback
         Shizuku.bindUserService(serviceArgs, callback)
         if (!latch.await(BIND_TIMEOUT_S, TimeUnit.SECONDS)) { release(); return@synchronized null }
-        service?.takeIf { it.asBinder().isBinderAlive && it.uid == SHELL_UID }.also { if (it == null) release() }
+        service?.takeIf { it.asBinder().isBinderAlive && (it.uid == SHELL_UID || it.uid == ROOT_UID) }.also { if (it == null) release() }
     }
 
     /** Ends the helper process; the monitor it started runs on by itself. */
@@ -149,6 +169,8 @@ class ShizukuShell(private val context: Context) {
             runCatching { Shizuku.unbindUserService(serviceArgs, null, true) }
         }
     }
+
+    private fun quote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
     fun openManager(): Boolean = runCatching {
         val intent = context.packageManager.getLaunchIntentForPackage(PACKAGE_NAME) ?: return false
@@ -165,6 +187,7 @@ class ShizukuShell(private val context: Context) {
         const val PACKAGE_NAME = "moe.shizuku.privileged.api"
         const val DOWNLOAD_URL = "https://shizuku.rikka.app/download/"
         private const val SHELL_UID = 2000
+        private const val ROOT_UID = 0
         private const val MIN_VERSION = 12
         private const val REQUEST_CODE = 4096
         private const val BIND_TIMEOUT_S = 10L

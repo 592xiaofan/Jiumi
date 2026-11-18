@@ -5,7 +5,7 @@ package com.ybblab.jiumi.probe
 
 /** Contract shared by the app and the shell-identity monitor started from the same APK. */
 object ProbeProtocol {
-    const val VERSION = 16
+    const val VERSION = 17
     const val SHELL_UID = 2000
     const val MAIN_CLASS = "com.ybblab.jiumi.probe.ProbeMain"
     const val PROCESS_NAME = "jiumi_probe"
@@ -28,7 +28,7 @@ enum class PackageChangeFailure {
     companion object {
         private val permissionDenial = Regex("""^(?:Error:\s*)?(?:(?:java\.lang\.)?SecurityException|Permission Denial)(?::|$)""")
 
-        internal fun fromCommandOutput(output: String): PackageChangeFailure? = PERMISSION_DENIED.takeIf {
+        fun fromCommandOutput(output: String): PackageChangeFailure? = PERMISSION_DENIED.takeIf {
             output.lineSequence().any { line -> permissionDenial.containsMatchIn(line.trimStart()) }
         }
     }

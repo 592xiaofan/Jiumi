@@ -90,6 +90,7 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
         if (oldVersion < 7) createUserActionTable(db)
         if (oldVersion < 8) createLookupTable(db)
         if (oldVersion < 9) createOpHistoryTable(db)
+        if (oldVersion < 10) createPackageEventTable(db)
     }
 
     /** The system's long-term access counts, one row per app, operation and time slot (see [OpCount]). */
@@ -199,8 +200,25 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
         db.execSQL("CREATE INDEX user_action_pkg ON user_action (pkg, t)")
     }
 
-    /** Something the user did to an app from here: disable, enable, uninstall, remove or restore it. */
+    /** What happened to frozen apps without the user asking here: see [PackageEvent]. */
+    private fun createPackageEventTable(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE package_event (t INTEGER NOT NULL, uid INTEGER NOT NULL, pkg TEXT NOT NULL, event TEXT NOT NULL)")
+        db.execSQL("CREATE INDEX package_event_pkg ON package_event (pkg, t)")
+    }
+
+    /**
+     * A management record of an app: something the user did to it from here (disable, enable,
+     * uninstall, remove, restore and so on), or, from [insertPackageEvent], an [PackageEvent] seen after.
+     */
     data class UserAction(val t: Long, val uid: Int, val pkg: String, val action: String)
+
+    /** Seen about an app frozen from here, without the user asking here. */
+    enum class PackageEvent(val id: String) {
+        /** Found turned on again after it was frozen from here; who turned it on is not known. */
+        LAPSED("lapsed"),
+        /** Frozen again from here, by the setting that does so when a freeze lapses. */
+        REFROZEN("refrozen")
+    }
 
     fun insertUserAction(a: UserAction) {
         writableDatabase.insert("user_action", null, ContentValues().apply {
@@ -208,10 +226,22 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
         })
     }
 
-    fun userActions(from: Long, to: Long, pkg: String? = null): List<UserAction> = readableDatabase.rawQuery(
-        "SELECT t, uid, pkg, action FROM user_action WHERE t >= ? AND t <= ?" + (if (pkg != null) " AND pkg = ?" else "") + " ORDER BY t",
-        listOfNotNull(from.toString(), to.toString(), pkg).toTypedArray()
-    ).use { c -> buildList { while (c.moveToNext()) add(UserAction(c.getLong(0), c.getInt(1), c.getString(2), c.getString(3))) } }
+    fun insertPackageEvent(t: Long, uid: Int, pkg: String, event: PackageEvent) {
+        writableDatabase.insert("package_event", null, ContentValues().apply {
+            put("t", t); put("uid", uid); put("pkg", pkg); put("event", event.id)
+        })
+    }
+
+    /** The user's actions and the [PackageEvent]s in [from]..[to], oldest first; the event's id stands as the action. */
+    fun userActions(from: Long, to: Long, pkg: String? = null): List<UserAction> {
+        val where = "t >= ? AND t <= ?" + (if (pkg != null) " AND pkg = ?" else "")
+        val args = listOfNotNull(from.toString(), to.toString(), pkg)
+        return readableDatabase.rawQuery(
+            "SELECT t, uid, pkg, action FROM user_action WHERE $where UNION ALL " +
+                "SELECT t, uid, pkg, event FROM package_event WHERE $where ORDER BY t",
+            (args + args).toTypedArray()
+        ).use { c -> buildList { while (c.moveToNext()) add(UserAction(c.getLong(0), c.getInt(1), c.getString(2), c.getString(3))) } }
+    }
 
     private fun createSessionTables(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE session (id INTEGER PRIMARY KEY AUTOINCREMENT, start_t INTEGER NOT NULL, end_t INTEGER)")
@@ -406,7 +436,7 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
     }
 
     private companion object {
-        const val VERSION = 9
+        const val VERSION = 10
         /** How far before a range the monitor's rows are read for one that still covers its start. */
         const val LONGEST_MONITOR_ROW_MS = 24 * 60 * 60_000L
     }

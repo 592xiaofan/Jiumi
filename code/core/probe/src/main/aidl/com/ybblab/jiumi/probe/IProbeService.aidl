@@ -59,4 +59,10 @@ interface IProbeService {
     String alarmWakeups(String packageName);
     /** Reads or changes a single installed app’s access. Returns verified state and operation results. */
     String appAccess(String packageName, int uid, String action, String permission);
+    /**
+     * A package's state for the calling user, read back after a change made outside the monitor (as
+     * root). JSON {"installed":bool,"enabled":n,"suspended":bool}, plus "running" when asked for and
+     * known; {} when the state could not be read.
+     */
+    String packageState(String packageName, boolean checkRunning);
 }

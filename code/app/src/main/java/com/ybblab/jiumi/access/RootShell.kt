@@ -14,7 +14,10 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-/** Uses the root manager once per command and runs the command only after switching to shell. */
+/**
+ * Uses the root manager once per command. The monitor is started only after switching to shell;
+ * package changes the shell may not make run as root through [asRoot].
+ */
 class RootShell(context: Context) {
     enum class State { UNCHECKED, CHECKING, UNAVAILABLE, SHELL_FAILED, READY }
 
@@ -33,6 +36,35 @@ class RootShell(context: Context) {
     }
 
     @Synchronized fun shell(command: String, timeoutMs: Long): Boolean = runAsShell(command, timeoutMs)
+
+    /**
+     * Runs [command] as root (uid 0) and returns its output, or null when root could not be had.
+     * Leaves the readiness [state] alone: it describes starting the monitor.
+     */
+    @Synchronized fun asRoot(command: String, timeoutMs: Long): String? {
+        val script = "[ \"\$(/system/bin/id -u)\" = 0 ] || exit 97\nprintf '%s\\n' $ROOT_GRANTED\n$command"
+        val process = try {
+            ProcessBuilder("su", "-c", script).redirectErrorStream(true).start()
+        } catch (error: IOException) {
+            Log.w(TAG, "Could not launch su", error)
+            return null
+        }
+        val output = readers.submit<String> { process.inputStream.bufferedReader().readText() }
+        return try {
+            process.outputStream.close()
+            if (!process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) return null
+            val text = output.get(2, TimeUnit.SECONDS)
+            // Only what follows our marker is the command's; the manager may print before it.
+            if (ROOT_GRANTED !in text) null else text.substringAfter(ROOT_GRANTED).trim()
+        } catch (error: Exception) {
+            if (error is InterruptedException) Thread.currentThread().interrupt()
+            Log.w(TAG, "Root command failed", error)
+            null
+        } finally {
+            process.destroyForcibly()
+            output.cancel(true)
+        }
+    }
 
     private fun runAsShell(command: String, timeoutMs: Long): Boolean {
         val shellScript = "printf '%s\\n' $SHELL_READY\n$command"

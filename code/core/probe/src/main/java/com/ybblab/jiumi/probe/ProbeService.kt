@@ -216,6 +216,18 @@ internal class ProbeService(
         return manageResult(true, output, running = running)
     }
 
+    override fun packageState(packageName: String, checkRunning: Boolean): String {
+        enforceOwner()
+        require(PACKAGE_NAME.matches(packageName)) { "not a package name" }
+        val user = Binder.getCallingUid() / PER_USER_RANGE
+        val state = runCatching { readPackageDump(packageName, user)?.userStates?.get(packageName) }.getOrNull()
+            ?: return "{}"
+        return JSONObject().put("installed", state.installed).put("enabled", state.enabled)
+            .put("suspended", state.suspended == true).apply {
+                if (checkRunning) packageProcessRunning(packageName, user)?.let { put("running", it) }
+            }.toString()
+    }
+
     private fun packageProcessRunning(pkg: String, user: Int): Boolean? = runCatching {
         val result = Shell.run(listOf("dumpsys", "activity", "processes", pkg), timeoutMs = 5_000)
         if (result.exitCode == 0) PackageDump.processRunning(result.output, user) else null

@@ -226,6 +226,17 @@ fun SettingsScreen(
                 Spacer(Modifier.height(16.dp))
                 Card { ExpertModeRow(state.expertMode, controller::setExpertMode) }
                 GroupFooter(stringResource(R.string.settings_expert_mode_desc))
+                Spacer(Modifier.height(16.dp))
+                Card {
+                    ListRow(
+                        stringResource(R.string.settings_auto_refreeze),
+                        leading = { IconTile(JiumiIcons.Snowflake) },
+                        onClick = { controller.setAutoRefreeze(!state.autoRefreeze) }
+                    ) {
+                        JiumiSwitch(state.autoRefreeze) { controller.setAutoRefreeze(it) }
+                    }
+                }
+                GroupFooter(stringResource(R.string.settings_auto_refreeze_desc))
                 if (askAllowRemove) {
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = { askAllowRemove = false },

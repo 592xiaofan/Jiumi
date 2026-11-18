@@ -36,6 +36,7 @@ import com.ybblab.jiumi.data.LogExport
 import com.ybblab.jiumi.data.NetworkUsage
 import com.ybblab.jiumi.data.AppKinds
 import com.ybblab.jiumi.data.AttentionRules
+import com.ybblab.jiumi.data.Freezes
 import com.ybblab.jiumi.probe.PackageChangeFailure
 import com.ybblab.jiumi.probe.ProbeClient
 import kotlinx.coroutines.sync.Mutex
@@ -100,6 +101,8 @@ class MonitorController(
         val allowRemovePreinstalled: Boolean = false,
         /** Expert mode: most core system components may be changed too, each after a warning. */
         val expertMode: Boolean = false,
+        /** An app frozen from here that is found turned on again is frozen again. */
+        val autoRefreeze: Boolean = false,
         /** How the monitor is started, and whether that way is ready (paired, root granted, Shizuku allowed). */
         val method: com.ybblab.jiumi.access.AccessMethod = com.ybblab.jiumi.access.AccessMethod.WIRELESS,
         val ready: Boolean = false,
@@ -122,7 +125,8 @@ class MonitorController(
         val spoolLimitMb: Int = DEFAULT_SPOOL_MB,
         val window: Pair<Long, Long> = 0L to 0L,
         val allowRemovePreinstalled: Boolean = false,
-        val expertMode: Boolean = false
+        val expertMode: Boolean = false,
+        val autoRefreeze: Boolean = false
     )
 
     private val settings = context.getSharedPreferences("jiumi_settings", Context.MODE_PRIVATE)
@@ -164,7 +168,8 @@ class MonitorController(
         callTracing = true,
         spoolLimitMb = settings.getInt(KEY_SPOOL_MB, DEFAULT_SPOOL_MB),
         allowRemovePreinstalled = settings.getBoolean(KEY_ALLOW_REMOVE, false),
-        expertMode = settings.getBoolean(KEY_EXPERT, false)
+        expertMode = settings.getBoolean(KEY_EXPERT, false),
+        autoRefreeze = settings.getBoolean(KEY_AUTO_REFREEZE, false)
     ))
 
     private val packageFacts = PackageFactsSource(context)
@@ -180,7 +185,9 @@ class MonitorController(
                        /** A preinstalled app that could be removed once the setting allows it. */
                        val removable: Boolean = false,
                        /** A core component left alone now that expert mode would let through. */
-                       val expertUnlocks: Boolean = false)
+                       val expertUnlocks: Boolean = false,
+                       /** Frozen from here, then found turned on again at this time, and not dealt with since. */
+                       val lapsedAt: Long? = null)
 
     /** Where an app stands in the Apps tab. */
     enum class AppState { ACTIVE, DISABLED, SUSPENDED, DELETED }
@@ -193,7 +200,9 @@ class MonitorController(
                          /** The store or other package that installed it, when the system knows. */
                          val installer: String? = null,
                          /** Part of the phone rather than an app one opens: no launcher icon, or the platform itself. */
-                         val component: Boolean = false)
+                         val component: Boolean = false,
+                         /** Frozen from here, then found turned on again (see [Managed.lapsedAt]). */
+                         val lapsed: Boolean = false)
 
     suspend fun managed(pkg: String): Managed? = withContext(Dispatchers.IO) { managedNow(pkg) }
 
@@ -208,7 +217,9 @@ class MonitorController(
         val risk = if (refusal == null) Management.risk(facts, manageRules) else null
         val removable = refusal == null && facts.preinstalled && facts.installed && !local.value.allowRemovePreinstalled
         val unlocks = !expert && refusal?.reason == Refusal.Reason.PLATFORM && Management.expertMay(facts, manageRules)
-        return Managed(pkg, facts, refusal, actions, backup, risk, removable, unlocks)
+        val lapsedAt = if (facts.installed && !facts.disabled && !facts.suspendedByShell)
+            Freezes.lapsedSince(store.userActions(0, Long.MAX_VALUE, pkg))[pkg] else null
+        return Managed(pkg, facts, refusal, actions, backup, risk, removable, unlocks, lapsedAt)
     }
 
     /**
@@ -219,21 +230,23 @@ class MonitorController(
     suspend fun listedApps(fresh: Boolean = false, includeSystem: Boolean = false): List<ListedApp> = withContext(Dispatchers.IO) {
         val saved = backups.list().associateBy { it.pkg }
         val shell = if (fresh) shellPackages() else keptShellPackages()
+        if (fresh) scope.launch(Dispatchers.IO) { checkFreezes() }
+        val lapsed = Freezes.lapsedSince(store.userActions(0, Long.MAX_VALUE)).keys
         val present = packageFacts.all(shell).filter { f ->
             val reason = Management.refusal(f, manageRules, context.packageName)?.reason
             // Resource overlays and the like have no code and are not apps; this app is not listed.
             f.hasCode && reason != Refusal.Reason.SELF && (includeSystem ||
-                ((!f.preinstalled || f.launchable || f.disabledByUser || f.suspendedByShell || !f.installed) && reason != Refusal.Reason.PLATFORM))
+                ((!f.preinstalled || f.launchable || f.disabled || f.suspendedByShell || !f.installed) && reason != Refusal.Reason.PLATFORM))
         }.mapNotNull { f ->
             val state = when {
                 !f.installed -> if (f.preinstalled) AppState.DELETED else return@mapNotNull null
                 f.suspendedByShell -> AppState.SUSPENDED
-                f.disabledByUser -> AppState.DISABLED
+                f.disabled -> AppState.DISABLED
                 else -> AppState.ACTIVE
             }
             val platform = Management.refusal(f, manageRules, context.packageName)?.reason == Refusal.Reason.PLATFORM
             ListedApp(f.pkg, f.uid, f.preinstalled, state, source = Management.source(f), installer = f.installer,
-                component = platform || (f.preinstalled && !f.launchable))
+                component = platform || (f.preinstalled && !f.launchable), lapsed = state == AppState.ACTIVE && f.pkg in lapsed)
         }
         val known = present.map { it.pkg }.toSet()
         present + saved.values.filter { it.pkg !in known }.map { ListedApp(it.pkg, it.uid, false, AppState.DELETED, it) }
@@ -283,7 +296,8 @@ class MonitorController(
     /** How a management action ended. */
     enum class ManageStatus { DONE, DISABLED, REMOVED, NO_MONITOR, FAILED, PERMISSION_DENIED, NOT_APPLIED, UNVERIFIED }
 
-    data class ManageResult(val status: ManageStatus, val running: Boolean? = null)
+    /** [asRoot]: the change was tried as root, not by the monitor as the shell. */
+    data class ManageResult(val status: ManageStatus, val running: Boolean? = null, val asRoot: Boolean = false)
 
     private val manageLock = Mutex()
 
@@ -304,7 +318,7 @@ class MonitorController(
                 val icon = runCatching { pm.getApplicationIcon(app).toBitmap(192, 192) }.getOrNull()
                 backups.create(app, app.loadLabel(pm).toString(), icon) ?: return@withLock failed
             }
-            val response = runCatching { org.json.JSONObject(service.managePackage(action.id, pkg)) }.getOrNull()
+            val response = changePackage(service, pkg, action)
             val ok = response?.optBoolean("ok") == true
             when {
                 ok && action == ManageAction.REINSTALL -> backups.delete(pkg)
@@ -320,13 +334,84 @@ class MonitorController(
             if (ok || status == ManageStatus.UNVERIFIED) runCatching { shellPackages() }
             if (ok) store.insertUserAction(JiumiStore.UserAction(System.currentTimeMillis(), m.facts?.uid ?: m.backup?.uid ?: -1, pkg, action.id))
             refresh()
-            if (!ok) return@withLock ManageResult(status)
+            if (!ok) return@withLock ManageResult(status, asRoot = response?.optBoolean("root") == true)
             val running = response?.opt("running") as? Boolean
             when (action) {
                 ManageAction.DISABLE -> ManageResult(ManageStatus.DISABLED, running)
                 ManageAction.REMOVE -> ManageResult(ManageStatus.REMOVED, running)
                 else -> ManageResult(ManageStatus.DONE)
             }
+        }
+    }
+
+    /**
+     * Freezes or unfreezes [pkg] as root when the chosen way holds root, which the shell may not do
+     * for every app; otherwise, and for every other action, the monitor makes the change as the shell.
+     * The answer has the monitor's shape: {"ok","output","failure"?,"running"?}.
+     */
+    private fun changePackage(service: com.ybblab.jiumi.probe.IProbeService, pkg: String, action: ManageAction): org.json.JSONObject? =
+        changeAsRoot(service, pkg, action)
+            ?: runCatching { org.json.JSONObject(service.managePackage(action.id, pkg)) }.getOrNull()
+
+    /**
+     * pm disable as root sets the system's own DISABLED state, which the shell cannot set and some
+     * phones refuse the shell's DISABLED_USER for; the monitor then reads the result back. Null when
+     * root cannot be had, so the shell way is tried instead.
+     */
+    private fun changeAsRoot(service: com.ybblab.jiumi.probe.IProbeService, pkg: String, action: ManageAction): org.json.JSONObject? {
+        if (!Management.isPackageName(pkg)) return null
+        val user = Process.myUid() / PER_USER_RANGE
+        val command = when (action) {
+            ManageAction.DISABLE -> "pm disable --user $user $pkg"
+            ManageAction.ENABLE -> "pm enable --user $user $pkg"
+            else -> return null
+        }
+        val output = access.asRoot(command, ROOT_COMMAND_MS) ?: return null
+        val result = org.json.JSONObject().put("output", output.take(MAX_COMMAND_OUTPUT)).put("root", true)
+        PackageChangeFailure.fromCommandOutput(output)?.let { return result.put("ok", false).put("failure", it.name) }
+        val state = runCatching { org.json.JSONObject(service.packageState(pkg, action == ManageAction.DISABLE)) }.getOrNull()
+            ?.takeIf { it.has("enabled") }
+            ?: return result.put("ok", false).put("failure", PackageChangeFailure.UNVERIFIED.name)
+        val installed = state.optBoolean("installed")
+        val enabled = state.optInt("enabled", -1)
+        val applied = installed && when (action) {
+            ManageAction.DISABLE -> Management.isDisabled(enabled)
+            else -> enabled == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        }
+        if (!applied) return result.put("ok", false).put("failure", PackageChangeFailure.NOT_APPLIED.name)
+        return result.put("ok", true).apply { (state.opt("running") as? Boolean)?.let { put("running", it) } }
+    }
+
+    @Volatile private var freezesCheckedAt = 0L
+
+    /**
+     * Looks for apps frozen from here that the monitor now reads turned on again, records each once,
+     * and freezes it again when [UiState.autoRefreeze] is on. Runs at most every few minutes and only
+     * while the monitor runs, since only it reads every app's state.
+     */
+    private suspend fun checkFreezes() {
+        val service = probe.service.value ?: return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (freezesCheckedAt != 0L && now - freezesCheckedAt < FREEZE_CHECK_MS) return
+        freezesCheckedAt = now
+        val found = manageLock.withLock {
+            val records = store.userActions(0, Long.MAX_VALUE)
+            if (Freezes.standings(records).values.none { it.first == Freezes.Standing.FROZEN }) return@withLock 0
+            // Read after the record, under the lock, so a change made here meanwhile is never taken for a lapse.
+            val lapsed = Freezes.lapsed(records, shellPackages())
+            lapsed.forEach { p ->
+                store.insertPackageEvent(System.currentTimeMillis(), p.uid, p.pkg, JiumiStore.PackageEvent.LAPSED)
+                if (!local.value.autoRefreeze || managedNow(p.pkg)?.actions?.contains(ManageAction.DISABLE) != true) return@forEach
+                if (changePackage(service, p.pkg, ManageAction.DISABLE)?.optBoolean("ok") == true) {
+                    store.insertPackageEvent(System.currentTimeMillis(), p.uid, p.pkg, JiumiStore.PackageEvent.REFROZEN)
+                }
+            }
+            if (lapsed.isNotEmpty()) shellReadAt = 0L
+            lapsed.size
+        }
+        if (found > 0) {
+            android.util.Log.i(TAG, "freezes lapsed: $found")
+            refresh()
         }
     }
 
@@ -385,6 +470,15 @@ class MonitorController(
         local.update { it.copy(expertMode = on) }
     }
 
+    fun setAutoRefreeze(on: Boolean) {
+        settings.edit().putBoolean(KEY_AUTO_REFREEZE, on).apply()
+        local.update { it.copy(autoRefreeze = on) }
+        if (on) {
+            freezesCheckedAt = 0L
+            scope.launch(Dispatchers.IO) { checkFreezes() }
+        }
+    }
+
     fun setAllowRemovePreinstalled(on: Boolean) {
         settings.edit().putBoolean(KEY_ALLOW_REMOVE, on).apply()
         local.update { it.copy(allowRemovePreinstalled = on) }
@@ -406,7 +500,7 @@ class MonitorController(
         val problem = l.problem?.takeUnless { ready && it == Problem.SHIZUKU }
         UiState(pairingState, e.trust, failure, service != null, l.busy, problem, l.footprint, l.range,
             l.ledger, l.callTracing, l.session, l.spoolLimitMb, l.window, l.allowRemovePreinstalled, l.expertMode,
-            e.method, ready, e.shizuku, e.root)
+            l.autoRefreeze, e.method, ready, e.shizuku, e.root)
     }.stateIn(scope, SharingStarted.Eagerly, UiState())
 
     init {
@@ -681,6 +775,7 @@ class MonitorController(
                 }
                 rebuild()
             }
+            checkFreezes()
         }
     }
 
@@ -701,6 +796,7 @@ class MonitorController(
         } finally {
             syncLock.unlock()
         }
+        checkFreezes()
     }
 
     private fun rebuild() {
@@ -862,6 +958,12 @@ class MonitorController(
             (0 until a.length()).map { a.getJSONObject(it).getString("pkg") }.toSet()
         }.getOrDefault(emptySet())
         const val SHELL_LIST_MAX_AGE_MS = 60_000L
+        /** How often apps frozen from here are checked while the app is open and the monitor runs. */
+        const val FREEZE_CHECK_MS = 5 * 60_000L
+        const val ROOT_COMMAND_MS = 60_000L
+        const val MAX_COMMAND_OUTPUT = 4_000
+        const val PER_USER_RANGE = 100_000
+        const val KEY_AUTO_REFREEZE = "auto_refreeze"
         /** The app-list permission some phone makers add; granted where the phone defines it. */
         const val GET_INSTALLED_APPS = "com.android.permission.GET_INSTALLED_APPS"
     }

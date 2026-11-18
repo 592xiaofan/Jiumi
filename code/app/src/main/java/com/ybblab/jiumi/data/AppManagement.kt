@@ -38,8 +38,11 @@ data class PackageFacts(
     val sharedUser: String?,
     /** Installed for this user; a preinstalled app removed for the user is not. */
     val installed: Boolean,
-    /** Package Manager reports COMPONENT_ENABLED_STATE_DISABLED_USER for this user. */
-    val disabledByUser: Boolean,
+    /**
+     * Package Manager reports it turned off for this user: COMPONENT_ENABLED_STATE_DISABLED_USER (as
+     * the shell turns it off) or COMPONENT_ENABLED_STATE_DISABLED (as root or the system does).
+     */
+    val disabled: Boolean,
     /** Has code of its own; resource overlays and the like have none and are not apps to manage. */
     val hasCode: Boolean = true,
     /** Shows an icon in the launcher. */
@@ -119,7 +122,7 @@ object Management {
         !f.installed -> if (f.preinstalled) listOf(ManageAction.RESTORE) else emptyList()
         else -> listOfNotNull(when {
             f.suspendedByShell -> ManageAction.UNSUSPEND
-            f.disabledByUser -> ManageAction.ENABLE
+            f.disabled -> ManageAction.ENABLE
             else -> ManageAction.DISABLE
         },
             if (!f.preinstalled) ManageAction.UNINSTALL else ManageAction.REMOVE.takeIf { allowRemove })
@@ -161,6 +164,10 @@ object Management {
     const val FACTORY_WINDOW_MS = 5 * 60_000L
 
     fun isFactoryTime(firstInstall: Long, firstBoot: Long) = firstInstall - firstBoot in 0..FACTORY_WINDOW_MS
+
+    /** An enabled setting that keeps the app from running: turned off by the user, root or the system. */
+    fun isDisabled(setting: Int?) = setting == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER ||
+        setting == PackageManager.COMPONENT_ENABLED_STATE_DISABLED
 
     /** Undoing an action never needs a guard: it puts the phone back as it was. */
     fun isUndo(action: ManageAction) = when (action) {
@@ -239,7 +246,7 @@ class PackageFactsSource(private val context: Context) {
     /** What the shell knows; without word on the launcher, a hidden system package counts as not in it. */
     private fun facts(s: ShellPackage, roles: Map<String, Set<String>>) = PackageFacts(
         pkg = s.pkg, uid = s.uid, preinstalled = s.system, persistent = false, sharedUser = null,
-        installed = s.installed, disabledByUser = s.enabledSetting == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
+        installed = s.installed, disabled = Management.isDisabled(s.enabledSetting),
         hasCode = true, launchable = s.launcher ?: !s.system,
         roles = roles[s.pkg].orEmpty(), installer = s.installer, factoryPreload = s.factory && !s.system, suspendedByShell = s.suspended
     )
@@ -264,7 +271,7 @@ class PackageFactsSource(private val context: Context) {
             persistent = app.flags and ApplicationInfo.FLAG_PERSISTENT != 0,
             sharedUser = info.sharedUserId,
             installed = app.flags and ApplicationInfo.FLAG_INSTALLED != 0,
-            disabledByUser = state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
+            disabled = Management.isDisabled(state),
             hasCode = app.flags and ApplicationInfo.FLAG_HAS_CODE != 0,
             launchable = launchable,
             roles = roles[pkg].orEmpty(),

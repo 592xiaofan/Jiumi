@@ -149,7 +149,8 @@ class LogExport(
                         false, null, null, null, null, null, null, null, null)
                 }
                 is TimelineItem.ActionItem -> with(item.action) {
-                    listOf(Csv.time(t), Csv.time(t), t) + app + listOf("user_action", null, null, name("manage_done_", action), action, 1,
+                    listOf(Csv.time(t), Csv.time(t), t) + app + listOf(
+                        if (JiumiStore.PackageEvent.entries.any { it.id == action }) "package_event" else "user_action", null, null, name("manage_done_", action), action, 1,
                         null, null, false, null, null, null, null, null, null, null, null)
                 }
                 is TimelineItem.Segment -> emptyList()

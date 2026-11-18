@@ -58,7 +58,7 @@ fun shizukuStatus(state: ShizukuState): String = stringResource(when {
     !state.installed && !state.running -> R.string.shizuku_not_installed
     !state.running -> R.string.shizuku_not_running
     !state.supportedVersion -> R.string.shizuku_old
-    !state.shellIdentity -> R.string.shizuku_not_shell
+    !state.usableIdentity -> R.string.shizuku_identity
     state.permissionBlocked -> R.string.shizuku_blocked
     else -> R.string.shizuku_needs_auth
 })
@@ -66,7 +66,7 @@ fun shizukuStatus(state: ShizukuState): String = stringResource(when {
 /** The one thing to do next for Shizuku: get it, open it to start it, or allow this app. */
 fun shizukuNextAction(state: ShizukuState): Int = when {
     !state.installed && !state.running -> R.string.action_get_shizuku
-    !state.running || !state.supportedVersion || !state.shellIdentity || state.permissionBlocked -> R.string.action_open_shizuku
+    !state.running || !state.supportedVersion || !state.usableIdentity || state.permissionBlocked -> R.string.action_open_shizuku
     else -> R.string.action_authorize
 }
 

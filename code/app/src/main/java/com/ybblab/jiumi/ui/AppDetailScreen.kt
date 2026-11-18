@@ -136,7 +136,7 @@ fun AppDetailScreen(
                 val facts = managed?.facts
                 val fromBackup = facts == null && managed?.backup != null
                 val deleted = facts?.installed == false || fromBackup
-                val frozen = facts?.let { it.installed && it.disabledByUser && !it.suspendedByShell } == true
+                val frozen = facts?.let { it.installed && it.disabled && !it.suspendedByShell } == true
                 val badge = when {
                     deleted -> JiumiIcons.Trash
                     frozen -> JiumiIcons.Snowflake
@@ -432,8 +432,9 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
         val status = outcome?.status
         val explanation = when (status) {
             ManageStatus.NO_MONITOR -> R.string.manage_monitor_failed
-            ManageStatus.PERMISSION_DENIED -> R.string.manage_permission_denied
-            ManageStatus.NOT_APPLIED -> R.string.manage_not_applied
+            ManageStatus.PERMISSION_DENIED ->
+                if (outcome?.asRoot == true) R.string.manage_permission_denied_root else R.string.manage_permission_denied
+            ManageStatus.NOT_APPLIED -> if (outcome?.asRoot == true) R.string.manage_not_applied_root else R.string.manage_not_applied
             ManageStatus.UNVERIFIED -> R.string.manage_unverified_explanation
             ManageStatus.FAILED -> R.string.manage_failed_explanation
             else -> null
@@ -474,9 +475,11 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
             facts?.installed == false -> ManageNotice(R.string.state_deleted, null)
             facts?.installed == true && facts.suspendedByShell ->
                 ManageNotice(R.string.state_suspended, R.string.manage_suspended_explanation)
-            facts?.installed == true && facts.disabledByUser ->
+            facts?.installed == true && facts.disabled ->
                 ManageNotice(R.string.state_disabled, R.string.manage_disabled_explanation, process,
                     warning = outcome?.running == true)
+            facts?.installed == true && m.lapsedAt != null ->
+                ManageNotice(R.string.state_lapsed, R.string.manage_lapsed_explanation, warning = true)
         }
     }
     when (val a = asking) {

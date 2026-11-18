@@ -432,6 +432,7 @@
     <string name="tab_settings">Settings</string>
     <string name="apps_filter_all">All</string>
     <string name="state_disabled">Frozen</string>
+    <string name="state_lapsed">Freeze lifted</string>
     <string name="state_suspended">Suspended</string>
     <string name="state_deleted">Deleted</string>
     <string name="section_advanced">Advanced</string>
@@ -463,11 +464,14 @@
     <string name="confirm_uninstall_body">Its installation files are backed up first, so you can restore it under Apps › Deleted; but its data (chats, sign-ins and so on) is deleted with it and can\'t be brought back. Type the package name to confirm:</string>
     <string name="manage_failed">The operation failed</string>
     <string name="manage_failed_explanation">The phone could not complete the action. Check which actions are available for the app.</string>
-    <string name="manage_permission_denied">Android restricts this action. Jiumi cannot perform it with debugging access.</string>
-    <string name="manage_not_applied">Android did not apply the change. Jiumi could not complete the action with its current debugging access.</string>
+    <string name="manage_permission_denied">Android does not let the shell do this. With the Root way (or Shizuku started with root), freezing runs as root.</string>
+    <string name="manage_permission_denied_root">Tried as root. Android still refused this action.</string>
+    <string name="manage_not_applied">Android did not apply the change. It may ignore a freeze made as the shell; with the Root way, freezing runs as root.</string>
+    <string name="manage_not_applied_root">Tried as root, but Android did not apply the change.</string>
     <string name="manage_unverified">Could not confirm the new package state</string>
     <string name="manage_unverified_explanation">Jiumi could not read the confirmed state from Android. Reopen this page to check again.</string>
     <string name="manage_disabled_explanation">Android disabled this app for the current user. Earlier records stay in the timeline. Open a record to check when it happened.</string>
+    <string name="manage_lapsed_explanation">Jiumi froze this app, and later found it turned on again. Who turned it on is not known. You can freeze it again; the timeline records when it was found.</string>
     <string name="manage_suspended_explanation">Android restricts the app from opening its screens or showing notifications. It may still have background activity.</string>
     <string name="manage_preinstalled_deleted_explanation">This app was deleted for the current user. The factory copy is still on the phone. Tap Restore to reinstall it.</string>
     <string name="manage_backup_deleted_explanation">Tap Restore to reinstall the app from its backup. The app data was deleted.</string>
@@ -486,6 +490,8 @@
     <string name="confirm_discard_body">The app can then no longer be restored from here.</string>
     <string name="manage_working">Working…</string>
     <string name="manage_done_reinstall">Restore the app</string>
+    <string name="manage_done_lapsed">Found the freeze lifted</string>
+    <string name="manage_done_refrozen">Frozen again automatically</string>
     <string name="settings_about">About</string>
     <string name="about_version">Version %1$s</string>
     <string name="about_source">Source on GitHub</string>
@@ -503,7 +509,7 @@
     <string name="setup_next">Next · %1$d/%2$d</string>
     <string name="setup_privacy">Your data stays on this phone</string>
     <string name="access_wireless_hint">No root. Pair once on this phone</string>
-    <string name="access_root_hint">Magisk, KernelSU or APatch</string>
+    <string name="access_root_hint">Magisk, KernelSU or APatch. Freezes as root</string>
     <string name="access_shizuku_hint">Shizuku is installed</string>
     <string name="setup_step_notify_title">Allow notifications</string>
     <string name="setup_step_notify_desc">You enter the pairing code in Jiumi\'s notification.</string>
@@ -538,6 +544,8 @@
     <string name="allow_remove_confirm">Allow</string>
     <string name="settings_expert_mode">Expert mode</string>
     <string name="settings_expert_mode_desc">Opens up most core system components. A change may stop the phone from starting; the risk is yours.</string>
+    <string name="settings_auto_refreeze">Freeze again when a freeze is lifted</string>
+    <string name="settings_auto_refreeze_desc">While Jiumi is open and the monitor runs, the apps Jiumi froze are checked every few minutes. An app found turned on again is always recorded in the timeline; with this on, it is also frozen again.</string>
     <string name="expert_title">Turn on expert mode?</string>
     <string name="expert_body">You can then disable or remove components bound deeply into the system. This can break related features, or at worst stop the phone from starting, leaving only a factory reset, which erases what is on it.\n\nJiumi cannot tell what each component does and does not promise a change can be undone. Change only components whose purpose you know; the risk is yours.</string>
     <string name="expert_confirm">I understand, turn on</string>
@@ -629,8 +637,8 @@
     <string name="access_root">Root</string>
     <string name="access_shizuku">Shizuku</string>
     <string name="access_wireless_desc">Pair once with Wireless debugging on this phone. Needs no root and no other app.</string>
-    <string name="access_root_desc">Jiumi uses your root manager (Magisk, KernelSU, APatch) to switch to the Android shell user before starting the monitor.</string>
-    <string name="access_shizuku_desc">Shizuku, started once over ADB, starts the monitor for Jiumi. Shizuku must run as the shell (started with Wireless debugging or a computer), not with root; if you have root, choose Root instead.</string>
+    <string name="access_root_desc">Jiumi uses your root manager (Magisk, KernelSU, APatch) to switch to the Android shell user and start the monitor, which keeps only the shell\'s rights. Unlike the other two ways, freezing and unfreezing apps run as root, so Jiumi can freeze apps Android does not let the shell freeze.</string>
+    <string name="access_shizuku_desc">Shizuku starts the monitor for Jiumi, which runs as the shell. When Shizuku was started with Wireless debugging or a computer, freezing has the same limits as Wireless debugging. When it was started with root, freezing and unfreezing run as root, as with the Root way.</string>
     <string name="action_authorize">Authorize</string>
     <string name="action_get_shizuku">Get Shizuku</string>
     <string name="action_open_shizuku">Open Shizuku</string>
@@ -642,7 +650,7 @@
     <string name="root_retry">Retry</string>
     <string name="shizuku_not_installed">Not installed</string>
     <string name="shizuku_not_running">Not running</string>
-    <string name="shizuku_not_shell">Running with root</string>
+    <string name="shizuku_identity">Unsupported identity</string>
     <string name="shizuku_old">Too old</string>
     <string name="shizuku_blocked">Denied</string>
     <string name="shizuku_needs_auth">Not allowed yet</string>
@@ -650,7 +658,7 @@
     <string name="service_shizuku_needed">Shizuku not ready</string>
     <string name="error_root">Jiumi couldn’t get root access. Allow Jiumi in your root manager’s superuser list, then return here.</string>
     <string name="error_root_shell">Jiumi received root access but couldn’t switch to the Android shell user. Retry, or choose Wireless debugging.</string>
-    <string name="error_shizuku">Shizuku isn\'t running as the shell, or hasn\'t allowed Jiumi. Open Shizuku, start it, and allow Jiumi.</string>
+    <string name="error_shizuku">Shizuku isn\'t running or hasn\'t allowed Jiumi. Open Shizuku, start it, and allow Jiumi.</string>
     <string name="setup_step_root_title">Grant root</string>
     <string name="setup_step_root_desc">Allow Jiumi in your root manager. If you’ve already granted access, Jiumi checks it automatically.</string>
     <string name="setup_step_shizuku_run_title">Start Shizuku</string>

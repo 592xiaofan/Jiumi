@@ -130,7 +130,7 @@ fun SetupScreen(
         com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> listOf(
             Step(R.string.setup_step_shizuku_run_title, R.string.setup_step_shizuku_run_desc,
                 if (!shizuku.installed && !shizuku.running) R.string.action_get_shizuku else R.string.action_open_shizuku,
-                done = paired || (shizuku.running && shizuku.supportedVersion && shizuku.shellIdentity)) {
+                done = paired || (shizuku.running && shizuku.supportedVersion && shizuku.usableIdentity)) {
                 if (!shizuku.installed && !shizuku.running) controller.access.shizuku.openDownload()
                 else controller.access.shizuku.openManager()
             },
@@ -237,7 +237,7 @@ fun SetupScreen(
                             }
                             if (!paired && method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU && i == current &&
                                 (state.problem == MonitorController.Problem.SHIZUKU ||
-                                    (i == 0 && shizuku.running && (!shizuku.supportedVersion || !shizuku.shellIdentity)) ||
+                                    (i == 0 && shizuku.running && (!shizuku.supportedVersion || !shizuku.usableIdentity)) ||
                                     (i == 1 && shizuku.permissionBlocked))) {
                                 Text(stringResource(R.string.error_shizuku), style = MaterialTheme.typography.bodySmall,
                                     color = StatusWarning, modifier = Modifier.padding(top = 8.dp))

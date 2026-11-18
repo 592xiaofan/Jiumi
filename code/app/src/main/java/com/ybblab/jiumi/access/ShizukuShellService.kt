@@ -9,15 +9,16 @@ import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
 /**
- * Started by Shizuku in a process of its own, as the shell. It only runs the few commands that start
- * the monitor, which then lives on by itself; this process is let go right after.
+ * Started by Shizuku in a process of its own, as the shell or, when Shizuku was started with root, as
+ * root. It only runs the few commands that start the monitor (which then lives on by itself) or change
+ * a package; this process is let go right after.
  */
 @Keep
 class ShizukuShellService : IShizukuShellService.Stub() {
     override fun getUid(): Int = Process.myUid()
 
     override fun execute(command: String, timeoutMs: Long): String {
-        if (Process.myUid() != SHELL_UID) return "[SHIZUKU_NOT_SHELL] uid=${Process.myUid()}"
+        if (Process.myUid() != SHELL_UID && Process.myUid() != ROOT_UID) return "[SHIZUKU_IDENTITY] uid=${Process.myUid()}"
         return try {
             val process = ProcessBuilder("sh", "-c", command).redirectErrorStream(true).start()
             val reader = process.inputStream.bufferedReader()
@@ -40,6 +41,7 @@ class ShizukuShellService : IShizukuShellService.Stub() {
 
     private companion object {
         const val SHELL_UID = 2000
+        const val ROOT_UID = 0
         const val MAX_OUTPUT_CHARS = 128_000
         const val MAX_TIMEOUT_MS = 120_000L
     }
