@@ -101,13 +101,13 @@ fun SettingsScreen(
                 Card {
                     ListRow(stringResource(R.string.access_root), leading = { IconTile(JiumiIcons.Shield) },
                         onClick = controller::authorizeRoot) {
-                        TrailingValue(stringResource(if (state.ready) R.string.root_granted else R.string.root_not_granted),
-                            color = if (state.ready) MaterialTheme.colorScheme.onSurfaceVariant else StatusWarning)
+                        TrailingValue(stringResource(rootStatus(state.root)),
+                            color = if (rootError(state.root) == null) MaterialTheme.colorScheme.onSurfaceVariant else StatusWarning)
                         Chevron()
                     }
                 }
                 // Why the last try failed comes first; what this way is, after.
-                if (state.problem == MonitorController.Problem.ROOT) GroupFooter(stringResource(R.string.error_root), warning = true)
+                rootError(state.root)?.let { GroupFooter(stringResource(it), warning = true) }
                 GroupFooter(accessDescription(state.method))
             }
             if (state.method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU) item {

@@ -4,6 +4,10 @@ Notable changes to Jiumi, newest first. The English in-app update notes come fro
 Chinese in-app notes are supplied when preparing the release.
 Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+- Fix Root setup on managers with different `su` options and explain when Root access works but switching to the shell user fails.
+
 ## [0.2.2]
 
 - Verify app freezing and check that preinstalled apps were deleted or restored for the current user.

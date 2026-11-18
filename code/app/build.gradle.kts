@@ -17,6 +17,7 @@ require(repository.isEmpty() || repository.matches(Regex("[A-Za-z0-9_.-]+/[A-Za-
 android {
     namespace = "com.ybblab.jiumi"
     compileSdk = 35
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.ybblab.jiumi"
@@ -25,7 +26,17 @@ android {
         versionCode = 4
         versionName = "0.2.2"
         buildConfigField("String", "REPOSITORY", "\"$repository\"")
+        externalNativeBuild { cmake { targets += "jiumi_shell" } }
     }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+    // The shell launcher runs from the installer-owned native library directory.
+    packaging { jniLibs.useLegacyPackaging = true }
 
     androidResources {
         localeFilters += listOf("en", "zh")

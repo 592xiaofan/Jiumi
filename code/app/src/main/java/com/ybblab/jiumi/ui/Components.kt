@@ -482,10 +482,11 @@ fun PrimaryButton(text: String, busy: Boolean = false, onClick: () -> Unit) {
 
 /** The one action at the foot of a page, above the navigation bar: filled to go on, outlined to cancel. */
 @Composable
-fun BottomAction(text: String, filled: Boolean = true, onClick: () -> Unit) {
+fun BottomAction(text: String, filled: Boolean = true, enabled: Boolean = true, onClick: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth().navigationBarsPadding()) {
         Surface(
             onClick = onClick,
+            enabled = enabled,
             shape = AppShapes.Large,
             color = if (filled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surface,
             contentColor = if (filled) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface,

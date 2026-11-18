@@ -69,6 +69,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ybblab.jiumi.MonitorController
+import com.ybblab.jiumi.access.RootShell
 import com.ybblab.jiumi.R
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingState
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingTrustState
@@ -94,6 +95,7 @@ fun SetupScreen(
     val context = LocalContext.current
     val state by controller.state.collectAsStateWithLifecycle()
     val method = state.method
+    val checkingRoot = method == com.ybblab.jiumi.access.AccessMethod.ROOT && state.root == RootShell.State.CHECKING
     // Ready by the chosen way: paired, root granted, or Shizuku allowed.
     val paired = state.ready
     val inFlow = method == com.ybblab.jiumi.access.AccessMethod.WIRELESS && state.pairingState in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE, PairingState.PAIRING,
@@ -123,7 +125,7 @@ fun SetupScreen(
     val steps = when (method) {
         com.ybblab.jiumi.access.AccessMethod.ROOT -> listOf(
             Step(R.string.setup_step_root_title, R.string.setup_step_root_desc,
-                R.string.action_authorize, done = paired) { controller.authorizeRoot() }
+                rootAction(state.root), done = paired) { controller.authorizeRoot() }
         )
         com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> listOf(
             Step(R.string.setup_step_shizuku_run_title, R.string.setup_step_shizuku_run_desc,
@@ -174,7 +176,9 @@ fun SetupScreen(
                     Text(stringResource(R.string.setup_privacy), style = MaterialTheme.typography.labelMedium, color = Ink.tertiary)
                 }
                 if (current < 0) BottomAction(stringResource(R.string.setup_start), onClick = onDone)
-                else BottomAction(stringResource(steps[current].action)) { opened = null; steps[current].run() }
+                else BottomAction(stringResource(steps[current].action), enabled = !checkingRoot) {
+                    opened = null; steps[current].run()
+                }
             }
         }
     ) { padding ->
@@ -225,10 +229,11 @@ fun SetupScreen(
                             // The last step tells how pairing is going while it runs.
                             if (i == steps.lastIndex && !paired) PairingProgress(state.pairingState, inFlow,
                                 onCancel = controller::cancelPairing)
-                            if (!paired && method == com.ybblab.jiumi.access.AccessMethod.ROOT &&
-                                state.problem == MonitorController.Problem.ROOT) {
-                                Text(stringResource(R.string.error_root), style = MaterialTheme.typography.bodySmall,
-                                    color = StatusWarning, modifier = Modifier.padding(top = 8.dp))
+                            if (method == com.ybblab.jiumi.access.AccessMethod.ROOT) {
+                                rootError(state.root)?.let { error ->
+                                    Text(stringResource(error), style = MaterialTheme.typography.bodySmall,
+                                        color = StatusWarning, modifier = Modifier.padding(top = 8.dp))
+                                }
                             }
                             if (!paired && method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU && i == current &&
                                 (state.problem == MonitorController.Problem.SHIZUKU ||

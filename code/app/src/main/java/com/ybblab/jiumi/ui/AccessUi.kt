@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import com.ybblab.jiumi.MonitorController
 import com.ybblab.jiumi.R
 import com.ybblab.jiumi.access.AccessMethod
+import com.ybblab.jiumi.access.RootShell
 import com.ybblab.jiumi.access.ShizukuState
 
 @Composable
@@ -29,6 +30,26 @@ fun accessDescription(method: AccessMethod): String = stringResource(when (metho
     AccessMethod.ROOT -> R.string.access_root_desc
     AccessMethod.SHIZUKU -> R.string.access_shizuku_desc
 })
+
+fun rootStatus(state: RootShell.State): Int = when (state) {
+    RootShell.State.UNCHECKED -> R.string.root_unchecked
+    RootShell.State.CHECKING -> R.string.root_checking
+    RootShell.State.UNAVAILABLE -> R.string.root_not_granted
+    RootShell.State.SHELL_FAILED -> R.string.root_shell_failed
+    RootShell.State.READY -> R.string.root_granted
+}
+
+fun rootError(state: RootShell.State): Int? = when (state) {
+    RootShell.State.UNAVAILABLE -> R.string.error_root
+    RootShell.State.SHELL_FAILED -> R.string.error_root_shell
+    else -> null
+}
+
+fun rootAction(state: RootShell.State): Int = when (state) {
+    RootShell.State.CHECKING -> R.string.root_checking
+    RootShell.State.SHELL_FAILED -> R.string.root_retry
+    else -> R.string.action_authorize
+}
 
 /** Where Shizuku stands, in the order the user has to fix it. */
 @Composable

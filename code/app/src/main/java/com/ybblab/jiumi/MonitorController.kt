@@ -12,6 +12,7 @@ import com.ybblab.jiumi.adb.AirModePairingManager.PairingState
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingTrustState
 import com.ybblab.jiumi.adb.AirPairingFailure
 import androidx.core.graphics.drawable.toBitmap
+import com.ybblab.jiumi.access.RootShell
 import com.ybblab.jiumi.data.AppBackups
 import com.ybblab.jiumi.data.AppSource
 import com.ybblab.jiumi.data.ManageAction
@@ -77,8 +78,7 @@ class MonitorController(
     data class SessionView(val session: JiumiStore.Session, val coverage: Coverage.Result, val latest: Boolean) {
         val running: Boolean get() = session.end == null
     }
-    /** CONNECT: Wireless debugging could not be reached; ROOT, SHIZUKU: that way is not granted or not running. */
-    enum class Problem { CONNECT, START, ROOT, SHIZUKU }
+    enum class Problem { CONNECT, START, SHIZUKU }
 
     data class UiState(
         val pairingState: PairingState = PairingState.IDLE,
@@ -103,7 +103,8 @@ class MonitorController(
         /** How the monitor is started, and whether that way is ready (paired, root granted, Shizuku allowed). */
         val method: com.ybblab.jiumi.access.AccessMethod = com.ybblab.jiumi.access.AccessMethod.WIRELESS,
         val ready: Boolean = false,
-        val shizuku: com.ybblab.jiumi.access.ShizukuState = com.ybblab.jiumi.access.ShizukuState()
+        val shizuku: com.ybblab.jiumi.access.ShizukuState = com.ybblab.jiumi.access.ShizukuState(),
+        val root: RootShell.State = RootShell.State.UNCHECKED
     ) {
         /** The user started monitoring and has not stopped it, whether or not the monitor runs now. */
         val sessionOpen: Boolean get() = session?.latest == true && session.running
@@ -390,22 +391,22 @@ class MonitorController(
     }
 
     private data class Env(val method: com.ybblab.jiumi.access.AccessMethod, val trust: PairingTrustState,
-                           val root: Boolean, val shizuku: com.ybblab.jiumi.access.ShizukuState)
+                           val root: RootShell.State, val shizuku: com.ybblab.jiumi.access.ShizukuState)
 
-    private val env = combine(access.method, pairing.pairingTrustState, access.root.granted, access.shizuku.state, ::Env)
+    private val env = combine(access.method, pairing.pairingTrustState, access.root.state, access.shizuku.state, ::Env)
 
     val state: StateFlow<UiState> = combine(
         pairing.state, pairing.failure, probe.service, local, env
     ) { pairingState, failure, service, l, e ->
         val ready = when (e.method) {
             com.ybblab.jiumi.access.AccessMethod.WIRELESS -> e.trust == PairingTrustState.PAIRED
-            com.ybblab.jiumi.access.AccessMethod.ROOT -> e.root
+            com.ybblab.jiumi.access.AccessMethod.ROOT -> e.root == RootShell.State.READY
             com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> e.shizuku.ready
         }
-        val problem = l.problem?.takeUnless { ready && (it == Problem.ROOT || it == Problem.SHIZUKU) }
+        val problem = l.problem?.takeUnless { ready && it == Problem.SHIZUKU }
         UiState(pairingState, e.trust, failure, service != null, l.busy, problem, l.footprint, l.range,
             l.ledger, l.callTracing, l.session, l.spoolLimitMb, l.window, l.allowRemovePreinstalled, l.expertMode,
-            e.method, ready, e.shizuku)
+            e.method, ready, e.shizuku, e.root)
     }.stateIn(scope, SharingStarted.Eagerly, UiState())
 
     init {
@@ -486,10 +487,8 @@ class MonitorController(
                 }
                 problem = when (access.method.value) {
                     com.ybblab.jiumi.access.AccessMethod.WIRELESS -> startOverWireless(restoreWirelessDebugging)
-                    com.ybblab.jiumi.access.AccessMethod.ROOT -> startWith(Problem.ROOT) { cmd, timeout ->
-                        access.root.shell(cmd, timeout).takeUnless { it.startsWith("[ROOT_") } }
-                    com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> startWith(Problem.SHIZUKU) { cmd, timeout ->
-                        access.shizuku.shell(cmd, timeout).takeUnless { it.startsWith("[SHIZUKU_") } }
+                    com.ybblab.jiumi.access.AccessMethod.ROOT -> startOverRoot()
+                    com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> startOverShizuku()
                 }
                 if (problem == null) openSessionIfNone()
             } finally {
@@ -508,33 +507,37 @@ class MonitorController(
                 }
                 if (!pairing.isShellReady) return Problem.CONNECT
             }
-            grantOwnPermissions { pairing.shell(it) }
+            pairing.shell(ownPermissionsCommand())
             pairing.shell(probe.startCommand())
-            return if (withTimeoutOrNull(START_TIMEOUT_MS) { probe.service.first { it != null } } == null) Problem.START else null
+            return waitForProbe()
         } finally {
             // The monitor does not depend on ADB; never keep the session open.
             pairing.disconnect()
         }
     }
 
-    /**
-     * Through root or Shizuku: [run] executes a command as the shell, returning null when that way is
-     * not available ([unavailable] then says which). The monitor runs on by itself once started.
-     */
-    private suspend fun startWith(unavailable: Problem, run: (String, Long) -> String?): Problem? {
-        if (run("id -u", PROBE_SHELL_MS)?.trim() != "2000") return unavailable
-        grantOwnPermissions { run(it, PROBE_SHELL_MS).orEmpty() }
-        run(probe.startCommand(), START_TIMEOUT_MS) ?: return unavailable
-        val started = withTimeoutOrNull(START_TIMEOUT_MS) { probe.service.first { it != null } } != null
-        // Shizuku's helper process has done its part.
-        access.shizuku.release()
-        return if (started) null else Problem.START
+    private suspend fun startOverRoot(): Problem? {
+        val command = ownPermissionsCommand() + "\n" + probe.startCommand()
+        if (!access.root.shell(command, PROBE_SHELL_MS)) return Problem.START
+        return waitForProbe()
     }
+
+    private suspend fun startOverShizuku(): Problem? {
+        if (access.shizuku.shell("id -u", PROBE_SHELL_MS).trim() != "2000") return Problem.SHIZUKU
+        access.shizuku.shell(ownPermissionsCommand(), PROBE_SHELL_MS)
+        if (access.shizuku.shell(probe.startCommand(), START_TIMEOUT_MS).startsWith("[SHIZUKU_")) return Problem.SHIZUKU
+        val problem = waitForProbe()
+        access.shizuku.release()
+        return problem
+    }
+
+    private suspend fun waitForProbe(): Problem? =
+        if (withTimeoutOrNull(START_TIMEOUT_MS) { probe.service.first { it != null } } == null) Problem.START else null
 
     /** Whether the chosen way can start the monitor without asking the user anything. */
     private fun canStartUnattended(): Boolean = when (access.method.value) {
         com.ybblab.jiumi.access.AccessMethod.WIRELESS -> isPaired
-        com.ybblab.jiumi.access.AccessMethod.ROOT -> access.root.granted.value
+        com.ybblab.jiumi.access.AccessMethod.ROOT -> access.root.wasReady
         com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> access.shizuku.refresh().ready
     }
 
@@ -543,12 +546,10 @@ class MonitorController(
     /** Asks the root manager for root (its own dialog, where supported), or checks whether root was granted. */
     fun authorizeRoot() {
         if (local.value.busy != null || !checkGate.beginRoot()) return
+        local.update { it.copy(problem = null) }
         scope.launch(Dispatchers.IO) {
             try {
-                val ok = access.root.authorize()
-                local.update {
-                    it.copy(problem = if (ok || access.method.value != com.ybblab.jiumi.access.AccessMethod.ROOT) null else Problem.ROOT)
-                }
+                access.root.authorize()
             } finally {
                 checkGate.endRoot()
             }
@@ -577,7 +578,7 @@ class MonitorController(
         when (method) {
             com.ybblab.jiumi.access.AccessMethod.WIRELESS -> Unit
             com.ybblab.jiumi.access.AccessMethod.ROOT -> {
-                if (checkGate.onSelectRoot(changed, access.root.granted.value)) authorizeRoot()
+                if (checkGate.onSelectRoot(changed, access.root.ready)) authorizeRoot()
             }
             com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> {
                 if (checkGate.onSelectShizuku(access.shizuku.refresh())) authorizeShizuku()
@@ -593,7 +594,7 @@ class MonitorController(
         when (access.method.value) {
             com.ybblab.jiumi.access.AccessMethod.WIRELESS -> checkGate.onResumeWireless()
             com.ybblab.jiumi.access.AccessMethod.ROOT -> {
-                if (checkGate.onResumeRoot(access.root.granted.value)) authorizeRoot()
+                if (checkGate.onResumeRoot(access.root.ready)) authorizeRoot()
             }
             com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> {
                 val s = access.shizuku.refresh()
@@ -806,13 +807,11 @@ class MonitorController(
     }
 
     /** These grants change only this app: restoring Wireless debugging later and reading per-app traffic. */
-    private fun grantOwnPermissions(shell: (String) -> String) {
+    private fun ownPermissionsCommand(): String {
         val pkg = context.packageName
-        shell(
-            "pm grant $pkg android.permission.WRITE_SECURE_SETTINGS; " +
-                "appops set $pkg GET_USAGE_STATS allow" +
-                (if (definesPermission(GET_INSTALLED_APPS)) "; pm grant $pkg $GET_INSTALLED_APPS" else "")
-        )
+        return "pm grant $pkg android.permission.WRITE_SECURE_SETTINGS; " +
+            "appops set $pkg GET_USAGE_STATS allow" +
+            (if (definesPermission(GET_INSTALLED_APPS)) "; pm grant $pkg $GET_INSTALLED_APPS" else "")
     }
 
     private fun definesPermission(name: String) = runCatching { context.packageManager.getPermissionInfo(name, 0) }.isSuccess

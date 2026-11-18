@@ -75,6 +75,7 @@ import com.ybblab.jiumi.MonitorController
 import com.ybblab.jiumi.MonitorController.Busy
 import com.ybblab.jiumi.MonitorController.Problem
 import com.ybblab.jiumi.MonitorController.Range
+import com.ybblab.jiumi.access.RootShell
 import com.ybblab.jiumi.R
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingState
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingTrustState
@@ -491,7 +492,7 @@ private fun ServiceCard(
         live = false,
         title = when {
             pairingFlow -> stringResource(R.string.pairing_in_progress)
-            !paired && state.method == com.ybblab.jiumi.access.AccessMethod.ROOT -> stringResource(R.string.service_root_needed)
+            !paired && state.method == com.ybblab.jiumi.access.AccessMethod.ROOT -> stringResource(rootStatus(state.root))
             !paired && state.method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> stringResource(R.string.service_shizuku_needed)
             !paired -> stringResource(if (state.trust == PairingTrustState.PAIRING_REQUIRED) R.string.service_repair else R.string.service_unpaired)
             state.busy == Busy.STARTING && state.pairingState == PairingState.CONNECTING -> stringResource(R.string.pairing_connecting)
@@ -500,7 +501,8 @@ private fun ServiceCard(
         },
         corner = when {
             !paired && state.method == com.ybblab.jiumi.access.AccessMethod.ROOT -> { {
-                CornerButton(stringResource(R.string.action_authorize), onClick = controller::authorizeRoot)
+                CornerButton(stringResource(rootAction(state.root)), busy = state.root == RootShell.State.CHECKING,
+                    onClick = controller::authorizeRoot)
             } }
             !paired && state.method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> { {
                 CornerButton(stringResource(shizukuNextAction(state.shizuku))) { runShizukuNextAction(controller, state.shizuku) }
@@ -671,6 +673,9 @@ fun attentionName(id: String): String = stringResource(
  */
 @Composable
 fun statusMessage(state: MonitorController.UiState): String? {
+    if (state.method == com.ybblab.jiumi.access.AccessMethod.ROOT) {
+        rootError(state.root)?.let { return stringResource(it) }
+    }
     // Wireless debugging's own reasons say nothing about root or Shizuku.
     val failure = state.pairingFailure?.takeIf { state.method == com.ybblab.jiumi.access.AccessMethod.WIRELESS }
         ?.let { stringResource(it.messageRes()) }
@@ -686,7 +691,6 @@ private fun problemText(problem: Problem): String = stringResource(
     when (problem) {
         Problem.CONNECT -> R.string.error_connect
         Problem.START -> R.string.error_service_start
-        Problem.ROOT -> R.string.error_root
         Problem.SHIZUKU -> R.string.error_shizuku
     }
 )

@@ -21,7 +21,7 @@
 
 ### 构建与测试
 
-需要 JDK 17 和 Android SDK。
+需要 JDK 17、Android SDK、NDK 28.2.13676358 和 CMake 3.22.1。接受 SDK 许可证后，Gradle 可以自动下载构建工具。
 
 ```sh
 cd code
@@ -93,7 +93,7 @@ Thanks for helping improve Jiumi. Please read the following before opening an is
 
 ### Building and testing
 
-Requires JDK 17 and the Android SDK.
+Requires JDK 17, the Android SDK, NDK 28.2.13676358, and CMake 3.22.1. Gradle can download the build tools after you accept the SDK licenses.
 
 ```sh
 cd code
