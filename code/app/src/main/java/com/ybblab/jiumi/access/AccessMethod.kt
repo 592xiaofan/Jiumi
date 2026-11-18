@@ -36,3 +36,50 @@ class Access(context: Context) {
         const val KEY_METHOD = "access_method"
     }
 }
+
+/**
+ * Decides when selecting an [AccessMethod] or returning to Jiumi should ask for or re-check Root or
+ * Shizuku, without re-opening a permission dialog that just closed on top of Jiumi.
+ */
+internal class AccessCheckGate {
+    private val authorizingRoot = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val authorizingShizuku = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var checkOnResume = true
+    @Volatile private var shizukuWasAskable = false
+
+    fun beginRoot(): Boolean = authorizingRoot.compareAndSet(false, true)
+    fun endRoot() = authorizingRoot.set(false)
+
+    fun beginShizuku(): Boolean = authorizingShizuku.compareAndSet(false, true)
+    fun endShizuku() = authorizingShizuku.set(false)
+
+    fun onPaused() {
+        if (!authorizingRoot.get() && !authorizingShizuku.get()) checkOnResume = true
+    }
+
+    fun onSelectRoot(changed: Boolean, granted: Boolean): Boolean = changed || !granted
+
+    fun onSelectShizuku(state: ShizukuState): Boolean {
+        shizukuWasAskable = state.running && state.supportedVersion && state.shellIdentity && !state.permissionBlocked
+        return state.canRequestPermission
+    }
+
+    fun onResumeWireless() {
+        checkOnResume = false
+    }
+
+    fun onResumeRoot(granted: Boolean): Boolean {
+        val check = checkOnResume
+        checkOnResume = false
+        return check && !granted
+    }
+
+    fun onResumeShizuku(state: ShizukuState): Boolean {
+        val check = checkOnResume
+        checkOnResume = false
+        val askable = state.running && state.supportedVersion && state.shellIdentity && !state.permissionBlocked
+        val newlyAskable = !shizukuWasAskable && askable
+        shizukuWasAskable = askable
+        return !state.ready && check && newlyAskable
+    }
+}

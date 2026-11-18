@@ -623,7 +623,7 @@
     <string name="shizuku_ready">已就绪</string>
     <string name="service_root_needed">未获得 Root 授权</string>
     <string name="service_shizuku_needed">Shizuku 未就绪</string>
-    <string name="error_root">没有获得 Root 授权。Magisk 会弹窗询问；KernelSU、APatch 不会弹窗，需要在它们的应用里把揪咪加入超级用户（允许 Root），再点一次授权。</string>
+    <string name="error_root">没有获得 Root 授权。Magisk 会弹窗询问；KernelSU、APatch 等不会弹窗，请打开对应的 Root 管理应用，允许揪咪使用超级用户权限后再返回。</string>
     <string name="error_shizuku">Shizuku 没有以 shell 身份运行，或还没允许揪咪使用。请打开 Shizuku，启动它并允许揪咪。</string>
     <string name="setup_step_root_title">授权 Root</string>
     <string name="setup_step_root_desc">Root 管理器会询问一次，揪咪不会一直持有 Root。</string>
@@ -671,4 +671,6 @@
     <string name="access_group_health">健康与运动</string>
     <string name="access_group_other">其他权限</string>
     <string name="access_group_locked">只读权限</string>
+    <string name="toast_enable_developer_first">请先在「关于手机」中连点版本号 7 次开启开发者选项</string>
+    <string name="toast_open_developer_manually">系统未允许直接跳转，请在设置中打开「开发者选项 › 无线调试」</string>
 </resources>

@@ -35,6 +35,7 @@ data class ShizukuState(
     val permissionBlocked: Boolean = false
 ) {
     val ready: Boolean get() = running && supportedVersion && shellIdentity && authorized
+    val canRequestPermission: Boolean get() = running && supportedVersion && shellIdentity && !authorized && !permissionBlocked
 }
 
 class ShizukuShell(private val context: Context) {
@@ -84,7 +85,7 @@ class ShizukuShell(private val context: Context) {
     suspend fun requestAuthorization(): Boolean {
         val current = refresh()
         if (current.ready) return true
-        if (!current.running || !current.supportedVersion || !current.shellIdentity || current.permissionBlocked) return false
+        if (!current.canRequestPermission) return false
         return suspendCancellableCoroutine { continuation ->
             lateinit var listener: Shizuku.OnRequestPermissionResultListener
             listener = Shizuku.OnRequestPermissionResultListener { code, result ->

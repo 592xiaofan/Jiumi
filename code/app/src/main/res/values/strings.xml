@@ -631,7 +631,7 @@
     <string name="shizuku_ready">Ready</string>
     <string name="service_root_needed">Root not granted</string>
     <string name="service_shizuku_needed">Shizuku not ready</string>
-    <string name="error_root">Root wasn\'t granted. Magisk asks with a dialog; KernelSU and APatch don\'t: open their app and allow Jiumi in its superuser list, then tap again.</string>
+    <string name="error_root">Root wasn\'t granted. Magisk asks with a dialog; KernelSU and APatch don\'t: open your root manager, allow Jiumi in its superuser list, and return here.</string>
     <string name="error_shizuku">Shizuku isn\'t running as the shell, or hasn\'t allowed Jiumi. Open Shizuku, start it, and allow Jiumi.</string>
     <string name="setup_step_root_title">Grant root</string>
     <string name="setup_step_root_desc">Your root manager asks once. Jiumi doesn\'t keep root.</string>
@@ -679,4 +679,6 @@
     <string name="access_group_health">Health and activity</string>
     <string name="access_group_other">Other permissions</string>
     <string name="access_group_locked">Read-only permissions</string>
+    <string name="toast_enable_developer_first">Turn on Developer options first by tapping Build number 7 times in About phone</string>
+    <string name="toast_open_developer_manually">Couldn\'t open Developer options directly. In Settings, open Developer options › Wireless debugging.</string>
 </resources>

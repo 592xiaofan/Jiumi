@@ -152,9 +152,8 @@ fun SettingsScreen(
                         stringResource(R.string.settings_adb_persistence),
                         leading = { IconTile(JiumiIcons.Link) },
                         onClick = {
-                            if (needsUsb) {
-                                runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
-                            } else controller.setAdbPersistence(!persistence)
+                            if (needsUsb) openDeveloperOptions(context, KEY_USB_DEBUGGING)
+                            else controller.setAdbPersistence(!persistence)
                         }
                     ) {
                         JiumiSwitch(persistence, onCheckedChange = controller::setAdbPersistence)

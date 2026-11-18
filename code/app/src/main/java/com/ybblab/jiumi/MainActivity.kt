@@ -4,12 +4,9 @@
 package com.ybblab.jiumi
 
 import android.Manifest
-import android.content.ComponentName
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -170,7 +167,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        controller.onAppResumed()
         controller.refresh()
+    }
+
+    override fun onPause() {
+        controller.onAppPaused()
+        super.onPause()
     }
 
     private fun pair() {
@@ -187,19 +190,8 @@ class MainActivity : AppCompatActivity() {
         if (controller.startPairing()) openWirelessDebugging()
     }
 
-    /** Opens Wireless debugging directly where the ROM allows it, otherwise Developer options. */
     private fun openWirelessDebugging() {
-        val subSettings = ComponentName("com.android.settings", "com.android.settings.SubSettings")
-        val exported = runCatching {
-            packageManager.getActivityInfo(subSettings, PackageManager.MATCH_DISABLED_COMPONENTS)
-        }.getOrNull()?.let { it.exported && it.enabled } == true
-        if (exported) {
-            val deepLink = Intent(Intent.ACTION_MAIN).setComponent(subSettings)
-                .putExtra(":settings:show_fragment", "com.android.settings.development.WirelessDebuggingFragment")
-                .putExtra(":settings:show_fragment_as_subsetting", true)
-            if (runCatching { startActivity(deepLink) }.isSuccess) return
-        }
-        runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
+        com.ybblab.jiumi.ui.openDeveloperOptions(this)
     }
 }
 

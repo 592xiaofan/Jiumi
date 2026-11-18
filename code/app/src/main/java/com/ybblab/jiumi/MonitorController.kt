@@ -380,7 +380,8 @@ class MonitorController(
             com.ybblab.jiumi.access.AccessMethod.ROOT -> e.root
             com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> e.shizuku.ready
         }
-        UiState(pairingState, e.trust, failure, service != null, l.busy, l.problem, l.footprint, l.range,
+        val problem = l.problem?.takeUnless { ready && (it == Problem.ROOT || it == Problem.SHIZUKU) }
+        UiState(pairingState, e.trust, failure, service != null, l.busy, problem, l.footprint, l.range,
             l.ledger, l.callTracing, l.session, l.spoolLimitMb, l.window, l.allowRemovePreinstalled, l.expertMode,
             e.method, ready, e.shizuku)
     }.stateIn(scope, SharingStarted.Eagerly, UiState())
@@ -515,27 +516,73 @@ class MonitorController(
         com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> access.shizuku.refresh().ready
     }
 
-    /** Asks the root manager for root (its own dialog), on the user's tap. */
+    private val checkGate = com.ybblab.jiumi.access.AccessCheckGate()
+
+    /** Asks the root manager for root (its own dialog, where supported), or checks whether root was granted. */
     fun authorizeRoot() {
-        if (local.value.busy != null) return
+        if (local.value.busy != null || !checkGate.beginRoot()) return
         scope.launch(Dispatchers.IO) {
-            val ok = access.root.authorize()
-            local.update { it.copy(problem = if (ok) null else Problem.ROOT) }
+            try {
+                val ok = access.root.authorize()
+                local.update {
+                    it.copy(problem = if (ok || access.method.value != com.ybblab.jiumi.access.AccessMethod.ROOT) null else Problem.ROOT)
+                }
+            } finally {
+                checkGate.endRoot()
+            }
         }
     }
 
-    /** Asks Shizuku to let this app use it (Shizuku's own dialog), on the user's tap. */
+    /** Asks Shizuku to let this app use it (Shizuku's own dialog). */
     fun authorizeShizuku() {
+        if (!checkGate.beginShizuku()) return
         scope.launch {
-            val ok = access.shizuku.requestAuthorization()
-            local.update { it.copy(problem = if (ok) null else Problem.SHIZUKU) }
+            try {
+                val ok = access.shizuku.requestAuthorization()
+                local.update {
+                    it.copy(problem = if (ok || access.method.value != com.ybblab.jiumi.access.AccessMethod.SHIZUKU) null else Problem.SHIZUKU)
+                }
+            } finally {
+                checkGate.endShizuku()
+            }
         }
     }
 
     fun selectAccess(method: com.ybblab.jiumi.access.AccessMethod) {
+        val changed = access.method.value != method
         access.select(method)
-        if (method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU) access.shizuku.refresh()
         local.update { it.copy(problem = null) }
+        when (method) {
+            com.ybblab.jiumi.access.AccessMethod.WIRELESS -> Unit
+            com.ybblab.jiumi.access.AccessMethod.ROOT -> {
+                if (checkGate.onSelectRoot(changed, access.root.granted.value)) authorizeRoot()
+            }
+            com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> {
+                if (checkGate.onSelectShizuku(access.shizuku.refresh())) authorizeShizuku()
+            }
+        }
+    }
+
+    /** Records that the user left Jiumi (including via a floating window) while no prompt of ours was running. */
+    fun onAppPaused() = checkGate.onPaused()
+
+    /** Updates Root or Shizuku readiness when returning from a root manager or Shizuku without restarting. */
+    fun onAppResumed() {
+        when (access.method.value) {
+            com.ybblab.jiumi.access.AccessMethod.WIRELESS -> checkGate.onResumeWireless()
+            com.ybblab.jiumi.access.AccessMethod.ROOT -> {
+                if (checkGate.onResumeRoot(access.root.granted.value)) authorizeRoot()
+            }
+            com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> {
+                val s = access.shizuku.refresh()
+                val shouldAsk = checkGate.onResumeShizuku(s)
+                if (s.ready) {
+                    local.update { if (it.problem == Problem.SHIZUKU) it.copy(problem = null) else it }
+                } else if (shouldAsk) {
+                    authorizeShizuku()
+                }
+            }
+        }
     }
 
     /** Ends the session; the monitor stops if it runs (after an interruption it may not). */

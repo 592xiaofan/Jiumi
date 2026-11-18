@@ -109,12 +109,9 @@ fun SetupScreen(
     val notifications = remember(refresh) {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || granted(context, Manifest.permission.POST_NOTIFICATIONS)
     }
-    // Wireless debugging lives in Developer options. USB debugging is not needed to pair or to start
-    // the monitor (only ADB persistence uses it), so it is not a step here; it being on still shows
-    // Developer options are on.
-    val developer = remember(refresh) {
-        globalOn(context, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED) || globalOn(context, Settings.Global.ADB_ENABLED)
-    }
+    // Wireless debugging lives in Developer options. USB debugging alone does not mean the Developer
+    // options menu itself is unlocked on all phones, so check DEVELOPMENT_SETTINGS_ENABLED directly.
+    val developer = remember(refresh) { isDeveloperOptionsEnabled(context) }
     // A permission the system no longer offers to ask for is granted in the app's settings instead.
     var askedNotifications by rememberSaveable { mutableStateOf(false) }
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -122,44 +119,46 @@ fun SetupScreen(
         if (it) controller.reshowIndicator()
     }
 
-    // Shizuku may have been installed or started on the way back.
-    androidx.compose.runtime.LaunchedEffect(refresh, method) {
-        if (method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU) controller.access.shizuku.refresh()
-    }
     val shizuku = state.shizuku
-    val notifyStep =
-        Step(R.string.setup_step_notify_title, R.string.setup_step_notify_desc,
-            if (askedNotifications) R.string.setup_step_notify_settings else R.string.setup_step_notify_action,
-            done = notifications || paired) {
-            if (askedNotifications || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) openAppSettings(context)
-            else notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
     val steps = when (method) {
-        com.ybblab.jiumi.access.AccessMethod.ROOT -> listOf(notifyStep,
+        com.ybblab.jiumi.access.AccessMethod.ROOT -> listOf(
             Step(R.string.setup_step_root_title, R.string.setup_step_root_desc,
-                R.string.action_authorize, done = paired) { controller.authorizeRoot() })
-        com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> listOf(notifyStep,
+                R.string.action_authorize, done = paired) { controller.authorizeRoot() }
+        )
+        com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> listOf(
             Step(R.string.setup_step_shizuku_run_title, R.string.setup_step_shizuku_run_desc,
-                shizukuNextAction(shizuku).takeIf { it != R.string.action_authorize } ?: R.string.action_open_shizuku,
-                done = paired || shizuku.running && shizuku.supportedVersion && shizuku.shellIdentity && !shizuku.permissionBlocked) {
-                runShizukuNextAction(controller, shizuku)
+                if (!shizuku.installed && !shizuku.running) R.string.action_get_shizuku else R.string.action_open_shizuku,
+                done = paired || (shizuku.running && shizuku.supportedVersion && shizuku.shellIdentity)) {
+                if (!shizuku.installed && !shizuku.running) controller.access.shizuku.openDownload()
+                else controller.access.shizuku.openManager()
             },
             Step(R.string.setup_step_shizuku_auth_title, R.string.setup_step_shizuku_auth_desc,
-                R.string.action_authorize, done = paired) { controller.authorizeShizuku() })
-        com.ybblab.jiumi.access.AccessMethod.WIRELESS -> listOf(notifyStep,
-        Step(R.string.setup_step_developer_title, R.string.setup_step_developer_desc,
-            R.string.setup_step_developer_action, done = developer || paired) {
-            open(context, Settings.ACTION_DEVICE_INFO_SETTINGS)
-        },
-        Step(R.string.setup_step_pair_title, R.string.setup_step_pair_desc,
-            if (inFlow) R.string.action_open_wireless_debugging else R.string.action_start_pairing, done = paired) {
-            if (inFlow) onOpenWirelessDebugging() else onPair()
-        })
+                if (shizuku.permissionBlocked) R.string.action_open_shizuku else R.string.action_authorize,
+                done = paired) {
+                if (shizuku.permissionBlocked) controller.access.shizuku.openManager() else controller.authorizeShizuku()
+            }
+        )
+        com.ybblab.jiumi.access.AccessMethod.WIRELESS -> listOf(
+            Step(R.string.setup_step_notify_title, R.string.setup_step_notify_desc,
+                if (askedNotifications) R.string.setup_step_notify_settings else R.string.setup_step_notify_action,
+                done = notifications || paired) {
+                if (askedNotifications || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) openAppSettings(context)
+                else notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            },
+            Step(R.string.setup_step_developer_title, R.string.setup_step_developer_desc,
+                R.string.setup_step_developer_action, done = developer || paired) {
+                openAboutPhone(context)
+            },
+            Step(R.string.setup_step_pair_title, R.string.setup_step_pair_desc,
+                if (inFlow) R.string.action_open_wireless_debugging else R.string.action_start_pairing, done = paired) {
+                if (inFlow) onOpenWirelessDebugging() else onPair()
+            }
+        )
     }
     val current = steps.indexOfFirst { !it.done }
     // A step tapped open stays open; otherwise the step at hand is.
     var opened by rememberSaveable { mutableStateOf<Int?>(null) }
-    val expanded = opened ?: current
+    val expanded = opened?.takeIf { it < steps.size } ?: current
 
     var comparing by rememberSaveable { mutableStateOf(false) }
     if (comparing) MethodComparison(onClose = { comparing = false })
@@ -226,11 +225,17 @@ fun SetupScreen(
                             // The last step tells how pairing is going while it runs.
                             if (i == steps.lastIndex && !paired) PairingProgress(state.pairingState, inFlow,
                                 onCancel = controller::cancelPairing)
-                            if (i == steps.lastIndex && !paired) state.problem?.takeIf {
-                                it == MonitorController.Problem.ROOT || it == MonitorController.Problem.SHIZUKU
-                            }?.let {
-                                Text(stringResource(if (it == MonitorController.Problem.ROOT) R.string.error_root else R.string.error_shizuku),
-                                    style = MaterialTheme.typography.bodySmall, color = StatusWarning, modifier = Modifier.padding(top = 8.dp))
+                            if (!paired && method == com.ybblab.jiumi.access.AccessMethod.ROOT &&
+                                state.problem == MonitorController.Problem.ROOT) {
+                                Text(stringResource(R.string.error_root), style = MaterialTheme.typography.bodySmall,
+                                    color = StatusWarning, modifier = Modifier.padding(top = 8.dp))
+                            }
+                            if (!paired && method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU && i == current &&
+                                (state.problem == MonitorController.Problem.SHIZUKU ||
+                                    (i == 0 && shizuku.running && (!shizuku.supportedVersion || !shizuku.shellIdentity)) ||
+                                    (i == 1 && shizuku.permissionBlocked))) {
+                                Text(stringResource(R.string.error_shizuku), style = MaterialTheme.typography.bodySmall,
+                                    color = StatusWarning, modifier = Modifier.padding(top = 8.dp))
                             }
                             if (i == steps.lastIndex && method == com.ybblab.jiumi.access.AccessMethod.WIRELESS) state.pairingFailure?.let {
                                 Text(stringResource(it.messageRes()), style = MaterialTheme.typography.bodySmall,
@@ -419,16 +424,11 @@ private fun PairingProgress(pairing: PairingState, inFlow: Boolean, onCancel: ()
 private fun granted(context: Context, permission: String) =
     ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
-private fun globalOn(context: Context, key: String) =
-    runCatching { Settings.Global.getInt(context.contentResolver, key, 0) == 1 }.getOrDefault(false)
-
-private fun open(context: Context, action: String) {
-    runCatching { context.startActivity(Intent(action)) }
-        .onFailure { runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) } }
-}
-
 private fun openAppSettings(context: Context) {
     runCatching {
-        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+        context.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        )
     }
 }

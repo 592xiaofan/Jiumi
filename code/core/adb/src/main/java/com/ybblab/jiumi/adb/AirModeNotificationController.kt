@@ -277,7 +277,8 @@ class AirModeNotificationController(
     fun showPairingRequired() {
         ensureChannel()
         val settingsIntent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra(":settings:fragment_args_key", "toggle_adb_wireless")
         val contentIntent = PendingIntent.getActivity(
             context,
             1,

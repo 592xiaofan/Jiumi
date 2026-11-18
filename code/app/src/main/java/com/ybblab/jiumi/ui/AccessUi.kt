@@ -3,8 +3,14 @@
 
 package com.ybblab.jiumi.ui
 
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
+import androidx.core.content.ContextCompat
 import com.ybblab.jiumi.MonitorController
 import com.ybblab.jiumi.R
 import com.ybblab.jiumi.access.AccessMethod
@@ -51,3 +57,50 @@ fun runShizukuNextAction(controller: MonitorController, state: ShizukuState) {
         else -> controller.authorizeShizuku()
     }
 }
+
+const val KEY_WIRELESS_DEBUGGING = "toggle_adb_wireless"
+const val KEY_USB_DEBUGGING = "enable_adb"
+private const val EXTRA_FRAGMENT_ARG_KEY = ":settings:fragment_args_key"
+private const val EXTRA_SHOW_FRAGMENT_ARGS = ":settings:show_fragment_args"
+private const val ACTION_LEGACY_DEVELOPMENT_SETTINGS = "com.android.settings.APPLICATION_DEVELOPMENT_SETTINGS"
+
+fun isDeveloperOptionsEnabled(context: Context): Boolean =
+    runCatching { Settings.Global.getInt(context.contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1 }
+        .getOrDefault(false)
+
+fun openAboutPhone(context: Context): Boolean =
+    startSettings(context, Intent(Settings.ACTION_DEVICE_INFO_SETTINGS)) ||
+        startSettings(context, Intent(Settings.ACTION_SETTINGS))
+
+/**
+ * Opens Developer options (highlighting [highlightKey] where the ROM supports it) without touching
+ * SubSettings/WirelessDebuggingFragment directly, which renders blank on several OEM skins.
+ */
+fun openDeveloperOptions(context: Context, highlightKey: String = KEY_WIRELESS_DEBUGGING) {
+    val localized = ContextCompat.getContextForLanguage(context)
+    if (!isDeveloperOptionsEnabled(context)) {
+        openAboutPhone(context)
+        Toast.makeText(localized, localized.getString(R.string.toast_enable_developer_first), Toast.LENGTH_LONG).show()
+        return
+    }
+    if (startDeveloperIntent(context, Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS, highlightKey) ||
+        startDeveloperIntent(context, ACTION_LEGACY_DEVELOPMENT_SETTINGS, highlightKey) ||
+        startSettings(context, Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))) {
+        return
+    }
+    startSettings(context, Intent(Settings.ACTION_SETTINGS))
+    Toast.makeText(localized, localized.getString(R.string.toast_open_developer_manually), Toast.LENGTH_LONG).show()
+}
+
+private fun startDeveloperIntent(context: Context, action: String, highlightKey: String): Boolean {
+    val args = Bundle().apply { putString(EXTRA_FRAGMENT_ARG_KEY, highlightKey) }
+    val intent = Intent(action)
+        .putExtra(EXTRA_FRAGMENT_ARG_KEY, highlightKey)
+        .putExtra(EXTRA_SHOW_FRAGMENT_ARGS, args)
+    return startSettings(context, intent)
+}
+
+private fun startSettings(context: Context, intent: Intent): Boolean = runCatching {
+    context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
+    true
+}.getOrDefault(false)
