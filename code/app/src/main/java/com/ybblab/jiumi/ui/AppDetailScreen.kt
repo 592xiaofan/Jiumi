@@ -134,6 +134,7 @@ fun AppDetailScreen(
         }
         item {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
+                val frozen = managed?.facts?.let { it.installed && it.disabledByUser && !it.suspendedByShell } == true
                 val backupIcon = managed?.backup?.let { b ->
                     produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, b.pkg) {
                         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -144,11 +145,12 @@ fun AppDetailScreen(
                 if (backupIcon != null && managed?.facts == null) {
                     androidx.compose.foundation.Image(backupIcon, null,
                         Modifier.size(44.dp).clip(com.ybblab.jiumi.ui.theme.AppShapes.Card))
-                } else AppIcon(labels, key.pkg, 44)
+                } else AppIcon(labels, key.pkg, 44, grayscale = frozen)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onBackground, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        color = if (frozen) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onBackground,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(listOfNotNull(summary?.let { kindName(it.kind) }, key.pkg ?: "UID ${key.uid}").joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -203,7 +203,8 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
                             title = name,
                             subtitle = listOfNotNull(stateText(app), app.pkg.takeIf { it != name }).joinToString(" · ").ifEmpty { null },
                             leading = { ListedIcon(controller, labels, app) },
-                            onClick = { onOpenApp(AppKey(app.uid, app.pkg)) }
+                            onClick = { onOpenApp(AppKey(app.uid, app.pkg)) },
+                            titleColor = if (app.state == AppState.DISABLED) Ink.secondary else MaterialTheme.colorScheme.onSurface
                         ) { Chevron() }
                     }
                 }
@@ -274,7 +275,10 @@ private fun stateText(app: ListedApp): String? = when (app.state) {
 /** A deleted app's icon comes from its backup; the phone no longer knows it. */
 @Composable
 private fun ListedIcon(controller: MonitorController, labels: AppLabels, app: ListedApp) {
-    if (app.backup == null) { AppIcon(labels, app.pkg, LEADING_SIZE); return }
+    if (app.backup == null) {
+        AppIcon(labels, app.pkg, LEADING_SIZE, grayscale = app.state == AppState.DISABLED)
+        return
+    }
     val icon by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, app.pkg) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { controller.backupIcon(app.pkg)?.asImageBitmap() }
     }

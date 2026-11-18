@@ -69,6 +69,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -146,6 +148,7 @@ fun ListRow(
     leading: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     extra: (@Composable ColumnScope.() -> Unit)? = null,
+    titleColor: Color = MaterialTheme.colorScheme.onSurface,
     trailing: @Composable RowScope.() -> Unit = {}
 ) {
     Row(
@@ -162,7 +165,7 @@ fun ListRow(
         }
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                color = titleColor, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (!subtitle.isNullOrEmpty()) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = subtitleColor,
                     maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
@@ -270,8 +273,10 @@ fun SubScreen(title: String, onBack: (() -> Unit)?, bottomBar: @Composable () ->
     )
 }
 
+private val grayscaleIconFilter by lazy { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) }
+
 @Composable
-fun AppIcon(labels: AppLabels, pkg: String?, sizeDp: Int) {
+fun AppIcon(labels: AppLabels, pkg: String?, sizeDp: Int, grayscale: Boolean = false) {
     // Read off the main thread, so a long list scrolls and opens without waiting on each icon.
     // Keyed by the package, so a row that comes to show another app never keeps the last one's icon.
     val icon by key(pkg) {
@@ -281,7 +286,8 @@ fun AppIcon(labels: AppLabels, pkg: String?, sizeDp: Int) {
     }
     val current = icon
     if (current != null) {
-        Image(current, contentDescription = null, modifier = Modifier.size(sizeDp.dp))
+        Image(current, contentDescription = null, modifier = Modifier.size(sizeDp.dp),
+            colorFilter = if (grayscale) grayscaleIconFilter else null)
     } else if (labels.iconPending(pkg)) {
         // Still reading: an empty tile of the same size, so nothing jumps when the icon arrives.
         Surface(Modifier.size(sizeDp.dp), shape = AppShapes.Control, color = Ink.fill) {}
