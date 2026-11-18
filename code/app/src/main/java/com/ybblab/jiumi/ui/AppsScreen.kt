@@ -3,7 +3,6 @@
 
 package com.ybblab.jiumi.ui
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -50,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -72,7 +70,7 @@ import com.ybblab.jiumi.ui.theme.AppShapes
 private enum class AppsFilter(val label: Int, val state: AppState?) {
     ALL(R.string.apps_filter_all, null),
     DISABLED(R.string.apps_filter_disabled, AppState.DISABLED),
-    DELETED(R.string.apps_filter_deleted, AppState.DELETED)
+    DELETED(R.string.state_deleted, AppState.DELETED)
 }
 
 /** The four kinds of app the list is grouped into, in its order; [source] is null for system components. */
@@ -199,12 +197,21 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
                 item(key = "app-${app.pkg}") {
                     CardSlice(first = index == 0, last = index == list.lastIndex) {
                         if (index > 0) InsetDivider()
+                        val frozen = app.state == AppState.DISABLED
+                        val deleted = app.state == AppState.DELETED
                         ListRow(
                             title = name,
-                            subtitle = listOfNotNull(stateText(app), app.pkg.takeIf { it != name }).joinToString(" · ").ifEmpty { null },
-                            leading = { ListedIcon(controller, labels, app) },
+                            subtitle = listOfNotNull(
+                                stateText(app),
+                                app.backup?.let { stringResource(R.string.backup_size, formatBytes(it.bytes)) },
+                                app.pkg.takeIf { it != name }
+                            ).joinToString(" · ").ifEmpty { null },
+                            leading = {
+                                if (deleted) DeletedAppIcon(controller, labels, app.pkg, LEADING_SIZE, fromBackup = app.backup != null)
+                                else AppIcon(labels, app.pkg, LEADING_SIZE, grayscale = frozen)
+                            },
                             onClick = { onOpenApp(AppKey(app.uid, app.pkg)) },
-                            titleColor = if (app.state == AppState.DISABLED) Ink.secondary else MaterialTheme.colorScheme.onSurface
+                            titleColor = if (frozen || deleted) Ink.secondary else MaterialTheme.colorScheme.onSurface
                         ) { Chevron() }
                     }
                 }
@@ -269,20 +276,7 @@ private fun stateText(app: ListedApp): String? = when (app.state) {
     AppState.ACTIVE -> null
     AppState.DISABLED -> stringResource(R.string.state_disabled)
     AppState.SUSPENDED -> stringResource(R.string.state_suspended)
-    AppState.DELETED -> app.backup?.let { stringResource(R.string.backup_size, formatBytes(it.bytes)) } ?: stringResource(R.string.state_removed)
-}
-
-/** A deleted app's icon comes from its backup; the phone no longer knows it. */
-@Composable
-private fun ListedIcon(controller: MonitorController, labels: AppLabels, app: ListedApp) {
-    if (app.backup == null) {
-        AppIcon(labels, app.pkg, LEADING_SIZE, grayscale = app.state == AppState.DISABLED)
-        return
-    }
-    val icon by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, app.pkg) {
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { controller.backupIcon(app.pkg)?.asImageBitmap() }
-    }
-    icon?.let { Image(it, null, Modifier.size(LEADING_SIZE.dp).clip(AppShapes.Control)) } ?: AppIcon(labels, null, LEADING_SIZE)
+    AppState.DELETED -> stringResource(R.string.state_deleted)
 }
 
 /**

@@ -9,6 +9,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -71,6 +72,8 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -81,6 +84,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ybblab.jiumi.ui.theme.Ink
+import com.ybblab.jiumi.MonitorController
 import com.ybblab.jiumi.R
 import com.ybblab.jiumi.ui.icons.JiumiIcons
 import com.ybblab.jiumi.ui.theme.AppIconSize
@@ -297,6 +301,34 @@ fun AppIcon(labels: AppLabels, pkg: String?, sizeDp: Int, grayscale: Boolean = f
             Box(contentAlignment = Alignment.Center) {
                 Icon(JiumiIcons.Cpu, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size((sizeDp * 0.55f).dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun DeletedAppIcon(controller: MonitorController, labels: AppLabels, pkg: String, sizeDp: Int, fromBackup: Boolean) {
+    val backupIcon = if (fromBackup) {
+        produceState<ImageBitmap?>(null, pkg) {
+            value = withContext(Dispatchers.IO) { controller.backupIcon(pkg)?.asImageBitmap() }
+        }.value
+    } else null
+    Box(Modifier.size(sizeDp.dp)) {
+        if (backupIcon == null) {
+            AppIcon(labels, pkg, sizeDp, grayscale = true)
+        } else {
+            Image(backupIcon, contentDescription = null, modifier = Modifier.matchParentSize().clip(AppShapes.Control),
+                colorFilter = grayscaleIconFilter)
+        }
+        Surface(
+            modifier = Modifier.align(Alignment.BottomEnd).size((sizeDp * 0.46f).dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(JiumiIcons.Trash, contentDescription = null, tint = Ink.secondary,
+                    modifier = Modifier.size((sizeDp * 0.28f).dp))
             }
         }
     }

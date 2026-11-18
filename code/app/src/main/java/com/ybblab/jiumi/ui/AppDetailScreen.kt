@@ -45,7 +45,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ybblab.jiumi.MonitorController
 import com.ybblab.jiumi.MonitorController.ManageResult
 import com.ybblab.jiumi.MonitorController.ManageStatus
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.Arrangement
@@ -134,28 +133,23 @@ fun AppDetailScreen(
         }
         item {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
-                val frozen = managed?.facts?.let { it.installed && it.disabledByUser && !it.suspendedByShell } == true
-                val backupIcon = managed?.backup?.let { b ->
-                    produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, b.pkg) {
-                        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            controller.backupIcon(b.pkg)?.asImageBitmap()
-                        }
-                    }.value
-                }
-                if (backupIcon != null && managed?.facts == null) {
-                    androidx.compose.foundation.Image(backupIcon, null,
-                        Modifier.size(44.dp).clip(com.ybblab.jiumi.ui.theme.AppShapes.Card))
+                val facts = managed?.facts
+                val fromBackup = facts == null && managed?.backup != null
+                val deleted = facts?.installed == false || fromBackup
+                val frozen = facts?.let { it.installed && it.disabledByUser && !it.suspendedByShell } == true
+                if (deleted && key.pkg != null) {
+                    DeletedAppIcon(controller, labels, key.pkg, 44, fromBackup = fromBackup)
                 } else AppIcon(labels, key.pkg, 44, grayscale = frozen)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
-                        color = if (frozen) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onBackground,
+                        color = if (frozen || deleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onBackground,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(listOfNotNull(summary?.let { kindName(it.kind) }, key.pkg ?: "UID ${key.uid}").joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     // Where it came from: the store by name, installed directly, or part of the phone.
-                    managed?.facts?.let { f ->
+                    facts?.let { f ->
                         val source = when (Management.source(f)) {
                             AppSource.STORE -> stringResource(R.string.source_from,
                                 labels.label(com.ybblab.jiumi.data.AppKey(0, f.installer)))
@@ -164,10 +158,6 @@ fun AppDetailScreen(
                         }
                         Text(source, style = MaterialTheme.typography.labelMedium, color = com.ybblab.jiumi.ui.theme.Ink.tertiary,
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                        if (!f.installed && !f.preinstalled) {
-                            Text(stringResource(R.string.state_removed), style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
                     }
                 }
             }
@@ -474,7 +464,9 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
         }
         when {
             facts?.installed == false && facts.preinstalled ->
-                ManageNotice(R.string.state_removed, R.string.manage_removed_explanation, process, warning = outcome?.running == true)
+                ManageNotice(R.string.state_deleted, R.string.manage_preinstalled_deleted_explanation, process, warning = outcome?.running == true)
+            discard -> ManageNotice(R.string.state_deleted, R.string.manage_backup_deleted_explanation)
+            facts?.installed == false -> ManageNotice(R.string.state_deleted, null)
             facts?.installed == true && facts.suspendedByShell ->
                 ManageNotice(R.string.state_suspended, R.string.manage_suspended_explanation)
             facts?.installed == true && facts.disabledByUser ->
