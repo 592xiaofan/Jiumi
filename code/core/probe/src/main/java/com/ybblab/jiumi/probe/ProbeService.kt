@@ -164,20 +164,25 @@ internal class ProbeService(
         require(PACKAGE_NAME.matches(packageName)) { "not a package name" }
         require(packageName != this.packageName) { "the monitor does not change its own app" }
         val user = Binder.getCallingUid() / PER_USER_RANGE
-        val command = when (action) {
-            "disable" -> return changePackageState("disable-user", user, packageName) { it.disabledByUser }
-            "enable" -> return changePackageState("enable", user, packageName) {
-                it.enabled == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        val target = listOf("--user", "$user", packageName)
+        return when (action) {
+            "disable" -> changePackageState(listOf("pm", "disable-user") + target, user, packageName, checkRunning = true) {
+                it.disabledByUser
             }
-            "unsuspend" -> return changePackageState("unsuspend", user, packageName) { it.suspended == false }
-            "uninstall" -> listOf("pm", "uninstall", packageName)
-            "remove" -> listOf("pm", "uninstall", "-k", "--user", "$user", packageName)
-            "restore" -> listOf("cmd", "package", "install-existing", "--user", "$user", packageName)
-            "reinstall" -> return reinstall(user, packageName).let { (ok, output) -> manageResult(ok, output) }
+            "enable" -> changePackageState(listOf("pm", "enable") + target, user, packageName) {
+                it.installed && it.enabled == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            }
+            "unsuspend" -> changePackageState(listOf("pm", "unsuspend") + target, user, packageName) {
+                it.installed && it.suspended == false
+            }
+            "remove" -> changePackageState(listOf("pm", "uninstall", "-k") + target, user, packageName, checkRunning = true) {
+                !it.installed
+            }
+            "restore" -> changePackageState(listOf("cmd", "package", "install-existing") + target, user, packageName) { it.installed }
+            "uninstall" -> runPm(listOf("pm", "uninstall", packageName)).let { (ok, output) -> manageResult(ok, output) }
+            "reinstall" -> reinstall(user, packageName).let { (ok, output) -> manageResult(ok, output) }
             else -> throw IllegalArgumentException("unknown action $action")
         }
-        val (ok, output) = runPm(command)
-        return manageResult(ok, output)
     }
 
     private fun manageResult(ok: Boolean, output: String, failure: PackageChangeFailure? = null, running: Boolean? = null) =
@@ -198,13 +203,16 @@ internal class ProbeService(
     }
 
     /** Verify the active package entry for the same user before reporting the requested state. */
-    private fun changePackageState(command: String, user: Int, pkg: String, matches: (PackageDump.UserState) -> Boolean): String {
-        val (ok, output) = runPm(listOf("pm", command, "--user", "$user", pkg))
+    private fun changePackageState(
+        command: List<String>, user: Int, pkg: String, checkRunning: Boolean = false,
+        matches: (PackageDump.UserState) -> Boolean
+    ): String {
+        val (ok, output) = runPm(command)
         if (!ok) return manageResult(false, output)
         val state = runCatching { readPackageDump(pkg, user)?.userStates?.get(pkg) }.getOrNull()
             ?: return manageResult(false, output, failure = PackageChangeFailure.UNVERIFIED)
-        if (!state.installed || !matches(state)) return manageResult(false, output, failure = PackageChangeFailure.NOT_APPLIED)
-        val running = if (command == "disable-user") packageProcessRunning(pkg, user) else null
+        if (!matches(state)) return manageResult(false, output, failure = PackageChangeFailure.NOT_APPLIED)
+        val running = if (checkRunning) packageProcessRunning(pkg, user) else null
         return manageResult(true, output, running = running)
     }
 

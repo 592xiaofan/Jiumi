@@ -280,7 +280,7 @@ class MonitorController(
     }
 
     /** How a management action ended. */
-    enum class ManageStatus { DONE, DISABLED, NO_MONITOR, FAILED, PERMISSION_DENIED, NOT_APPLIED, UNVERIFIED }
+    enum class ManageStatus { DONE, DISABLED, REMOVED, NO_MONITOR, FAILED, PERMISSION_DENIED, NOT_APPLIED, UNVERIFIED }
 
     data class ManageResult(val status: ManageStatus, val running: Boolean? = null)
 
@@ -319,10 +319,12 @@ class MonitorController(
             if (ok || status == ManageStatus.UNVERIFIED) runCatching { shellPackages() }
             if (ok) store.insertUserAction(JiumiStore.UserAction(System.currentTimeMillis(), m.facts?.uid ?: m.backup?.uid ?: -1, pkg, action.id))
             refresh()
-            when {
-                ok && action == ManageAction.DISABLE -> ManageResult(ManageStatus.DISABLED, running = response?.opt("running") as? Boolean)
-                ok -> ManageResult(ManageStatus.DONE)
-                else -> ManageResult(status)
+            if (!ok) return@withLock ManageResult(status)
+            val running = response?.opt("running") as? Boolean
+            when (action) {
+                ManageAction.DISABLE -> ManageResult(ManageStatus.DISABLED, running)
+                ManageAction.REMOVE -> ManageResult(ManageStatus.REMOVED, running)
+                else -> ManageResult(ManageStatus.DONE)
             }
         }
     }

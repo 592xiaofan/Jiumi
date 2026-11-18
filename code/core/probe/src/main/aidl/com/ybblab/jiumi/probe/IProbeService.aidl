@@ -37,7 +37,7 @@ interface IProbeService {
      * under its external files, backups/<packageName>/). Returns JSON {"ok":bool,"output":text}.
      * "failure", when known, is "PERMISSION_DENIED", "NOT_APPLIED" (the observed state differs from
      * the requested state), or "UNVERIFIED" (the state could not be read after the command).
-     * "running", when available after a verified disable, reports the observed process state.
+     * "running", when available after a verified disable or removal, reports the observed process state.
      */
     String managePackage(String action, String packageName);
     /**

@@ -162,7 +162,7 @@ fun AppDetailScreen(
                         }
                         Text(source, style = MaterialTheme.typography.labelMedium, color = com.ybblab.jiumi.ui.theme.Ink.tertiary,
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                        if (!f.installed) {
+                        if (!f.installed && !f.preinstalled) {
                             Text(stringResource(R.string.state_removed), style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -437,21 +437,23 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
             ManageStatus.NO_MONITOR -> R.string.manage_monitor_failed
             ManageStatus.PERMISSION_DENIED -> R.string.manage_permission_denied
             ManageStatus.NOT_APPLIED -> R.string.manage_not_applied
+            ManageStatus.UNVERIFIED -> R.string.manage_unverified_explanation
+            ManageStatus.FAILED -> R.string.manage_failed_explanation
             else -> null
         }
         val failureTitle = when {
             status == ManageStatus.UNVERIFIED -> R.string.manage_unverified
-            explanation != null || status == ManageStatus.FAILED -> R.string.manage_failed
+            explanation != null -> R.string.manage_failed
             else -> null
         }
-        val facts = m.facts?.takeIf { it.installed }
+        val facts = m.facts
         val note = when {
             working -> stringResource(if (monitorRunning) R.string.manage_working else R.string.manage_starting_monitor)
             failureTitle != null -> null
             m.refusal != null && m.expertUnlocks -> stringResource(R.string.refusal_platform_expert)
             m.refusal != null -> refusalText(m.refusal)
-            outcome == null && m.risk != null && m.actions.any { !Management.isUndo(it) } -> stringResource(R.string.risk_note)
             outcome == null && m.removable -> stringResource(R.string.remove_hint)
+            outcome == null && m.risk != null && m.actions.any { !Management.isUndo(it) } -> stringResource(R.string.risk_note)
             else -> null
         }
         note?.let {
@@ -460,17 +462,22 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
                 modifier = Modifier.padding(start = 4.dp, top = if (m.actions.isNotEmpty() || discard) 8.dp else 0.dp))
         }
         failureTitle?.let { ManageNotice(it, explanation, warning = true) }
+        val process = when (status) {
+            ManageStatus.DISABLED, ManageStatus.REMOVED -> when (outcome?.running) {
+                false -> R.string.manage_process_stopped
+                true -> R.string.manage_process_running
+                null -> R.string.manage_process_unknown
+            }
+            else -> null
+        }
         when {
-            facts?.suspendedByShell == true -> ManageNotice(R.string.state_suspended, R.string.manage_suspended_explanation)
-            facts?.disabledByUser == true -> {
-                val process = if (status == ManageStatus.DISABLED) when (outcome?.running) {
-                    false -> R.string.manage_process_stopped
-                    true -> R.string.manage_process_running
-                    null -> R.string.manage_process_unknown
-                } else null
+            facts?.installed == false && facts.preinstalled ->
+                ManageNotice(R.string.state_removed, R.string.manage_removed_explanation, process, warning = outcome?.running == true)
+            facts?.installed == true && facts.suspendedByShell ->
+                ManageNotice(R.string.state_suspended, R.string.manage_suspended_explanation)
+            facts?.installed == true && facts.disabledByUser ->
                 ManageNotice(R.string.state_disabled, R.string.manage_disabled_explanation, process,
                     warning = outcome?.running == true)
-            }
         }
     }
     when (val a = asking) {

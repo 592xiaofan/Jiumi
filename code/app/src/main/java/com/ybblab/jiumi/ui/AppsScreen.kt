@@ -72,7 +72,6 @@ import com.ybblab.jiumi.ui.theme.AppShapes
 private enum class AppsFilter(val label: Int, val state: AppState?) {
     ALL(R.string.apps_filter_all, null),
     DISABLED(R.string.apps_filter_disabled, AppState.DISABLED),
-    SUSPENDED(R.string.state_suspended, AppState.SUSPENDED),
     DELETED(R.string.apps_filter_deleted, AppState.DELETED)
 }
 
@@ -111,7 +110,7 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
             value = named(controller.listedApps(fresh = true, includeSystem = true)).also { lastListed = it }
         }
     }
-    val chosen = AppsFilter.valueOf(filter)
+    val chosen = AppsFilter.entries.firstOrNull { it.name == filter } ?: AppsFilter.ALL
     val groups = remember(apps, chosen, query) {
         val q = query.trim()
         apps.orEmpty()
@@ -184,7 +183,6 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
                 EmptyCard(stringResource(when {
                     query.isNotBlank() -> R.string.apps_empty_search
                     chosen == AppsFilter.DISABLED -> R.string.apps_empty_disabled
-                    chosen == AppsFilter.SUSPENDED -> R.string.apps_empty_suspended
                     chosen == AppsFilter.DELETED -> R.string.apps_empty_deleted
                     else -> R.string.apps_empty_search
                 }))
