@@ -499,6 +499,10 @@
     <string name="manage_process_unknown">Could not confirm the process state when the action finished.</string>
     <string name="settings_allow_remove">Allow deleting preinstalled apps</string>
     <string name="apps_filter_disabled">Frozen</string>
+    <plurals name="apps_package_total">
+        <item quantity="one">%1$s package</item>
+        <item quantity="other">%1$s packages</item>
+    </plurals>
     <string name="apps_search">Search by name or package</string>
     <string name="apps_empty_search">No apps found</string>
     <string name="apps_empty_disabled">No frozen apps</string>

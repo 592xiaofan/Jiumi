@@ -491,6 +491,9 @@
     <string name="manage_process_unknown">无法确认操作完成时的进程状态。</string>
     <string name="settings_allow_remove">允许删除预装应用</string>
     <string name="apps_filter_disabled">已冻结</string>
+    <plurals name="apps_package_total">
+        <item quantity="other">%1$s 个包</item>
+    </plurals>
     <string name="apps_search">搜索应用名或包名</string>
     <string name="apps_empty_search">没有找到应用</string>
     <string name="apps_empty_disabled">没有冻结的应用</string>

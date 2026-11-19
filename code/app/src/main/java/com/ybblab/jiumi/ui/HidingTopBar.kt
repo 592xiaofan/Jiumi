@@ -8,13 +8,16 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -56,6 +59,7 @@ import kotlinx.coroutines.launch
 fun HidingTopBar(
     title: String,
     scrolled: Boolean,
+    trailing: (@Composable () -> Unit)? = null,
     extra: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable (top: Dp) -> Unit
 ) {
@@ -92,8 +96,14 @@ fun HidingTopBar(
                 .graphicsLayer { translationY = offset }
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            Box(Modifier.fillMaxWidth().height(BAR_TITLE_HEIGHT).padding(horizontal = 20.dp), contentAlignment = Alignment.CenterStart) {
-                Text(title, style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onBackground)
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = BAR_TITLE_HEIGHT).padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.onBackground)
+                trailing?.invoke()
             }
             extra?.invoke(this)
             HorizontalDivider(thickness = 0.5.dp,

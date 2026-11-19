@@ -5,9 +5,10 @@ package com.ybblab.jiumi.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,20 +16,18 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,8 +48,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
@@ -74,15 +76,17 @@ private enum class AppsFilter(val label: Int, val state: AppState?) {
 }
 
 /** Groups in their display order. */
-private enum class AppGroup(val label: Int, val source: AppSource?, val tint: Color) {
-    STORE(R.string.apps_stat_store, AppSource.STORE, Color(0xFF4F8CF0)),
-    SIDELOADED(R.string.apps_stat_sideloaded, AppSource.SIDELOADED, Color(0xFFE5A23B)),
-    PREINSTALLED(R.string.apps_stat_preinstalled, AppSource.PREINSTALLED, Color(0xFF3FB28C)),
-    COMPONENT(R.string.apps_stat_component, null, Color(0xFF9A9AA4)),
-    MODULE(R.string.apps_stat_module, null, Color(0xFF8E79BE)),
-    HISTORICAL(R.string.apps_group_historical, null, Color(0xFF9A9AA4));
+private enum class AppGroup(val label: Int, val source: AppSource?) {
+    STORE(R.string.apps_stat_store, AppSource.STORE),
+    SIDELOADED(R.string.apps_stat_sideloaded, AppSource.SIDELOADED),
+    PREINSTALLED(R.string.apps_stat_preinstalled, AppSource.PREINSTALLED),
+    COMPONENT(R.string.apps_stat_component, null),
+    MODULE(R.string.apps_stat_module, null),
+    HISTORICAL(R.string.apps_group_historical, null);
 
     companion object {
+        val inventoryGroups = entries.filter { it != HISTORICAL }
+
         fun of(app: ListedApp) = when {
             app.module -> MODULE
             app.state == AppState.HISTORICAL -> HISTORICAL
@@ -94,8 +98,8 @@ private enum class AppGroup(val label: Int, val source: AppSource?, val tint: Co
 
 /**
  * Every app on the phone, system components included, grouped by where it came from. Above the
- * list, in a bar that slides away while scrolling down: the filter, a strip counting each group
- * (tapped, it glides the list there; the group in view is shaded) and search.
+ * list, in a bar that slides away while scrolling down: the total, filters, search and shortcuts
+ * to each group.
  */
 @Composable
 fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (AppKey) -> Unit, onOpenModule: (String) -> Unit) {
@@ -117,6 +121,15 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
     }
     val chosen = AppsFilter.entries.firstOrNull { it.name == filter } ?: AppsFilter.ALL
     val q = query.trim()
+    // The total describes the detected inventory, including device-wide APEX modules.
+    val packageCount = remember(apps) {
+        apps?.count { (app, _) ->
+            app.module || when (app.state) {
+                AppState.ACTIVE, AppState.DISABLED, AppState.SUSPENDED -> true
+                else -> false
+            }
+        }
+    }
     val history by produceState(emptyList<Pair<ListedApp, String>>(), q, chosen) {
         value = emptyList()
         if (q.isNotEmpty() && chosen == AppsFilter.ALL) {
@@ -149,9 +162,13 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
     }
     val scrolled by remember { derivedStateOf { listState.canScrollBackward } }
 
-    HidingTopBar(stringResource(R.string.tab_apps), scrolled, extra = {
-        // Under the title, and hidden and shown with it: which apps, how many of each kind, and search.
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = PageTopGap, bottom = 10.dp)) {
+    HidingTopBar(stringResource(R.string.tab_apps), scrolled, trailing = {
+        packageCount?.let { count ->
+            Text(pluralStringResource(R.plurals.apps_package_total, count, formatCount(count.toLong())),
+                style = MaterialTheme.typography.labelLarge, color = Ink.secondary)
+        }
+    }, extra = {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = PageTopGap, bottom = 4.dp)) {
             Segmented(
                 AppsFilter.entries.map { stringResource(it.label) },
                 selected = chosen.ordinal,
@@ -159,11 +176,11 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(10.dp))
-            GroupStats(counts = AppGroup.entries.associateWith { groups[it]?.size }, current = current, onJump = { group ->
+            SearchField(query, onChange = { query = it })
+            Spacer(Modifier.height(6.dp))
+            GroupStats(counts = groups.mapValues { it.value.size }, current = current, onJump = { group ->
                 titleIndex[group]?.let { scope.launch { listState.animateScrollToItem(it) } }
             })
-            Spacer(Modifier.height(10.dp))
-            SearchField(query, onChange = { query = it })
         }
     }) { top ->
     // What the fast-scroll bubble says for each item of the list: the group, and the initial of the app.
@@ -286,33 +303,35 @@ fun SystemModuleScreen(controller: MonitorController, labels: AppLabels, pkg: St
 }
 
 /**
- * The count of each group side by side in one card, a coloured mark under each figure telling the
- * groups apart. The group in view is shaded; an empty one is dimmed and does nothing when tapped.
+ * Shortcuts to the groups in the list. The group in view is shaded and empty groups are disabled.
  */
 @Composable
-private fun GroupStats(counts: Map<AppGroup, Int?>, current: AppGroup?, onJump: (AppGroup) -> Unit) {
-    Surface(shape = AppShapes.Card, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(4.dp).height(IntrinsicSize.Min)) {
-            AppGroup.entries.filter { it != AppGroup.HISTORICAL }.forEachIndexed { i, group ->
-                val count = counts[group]
-                val enabled = (count ?: 0) > 0
-                if (i > 0) Box(Modifier.padding(vertical = 14.dp).width(0.5.dp).fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.outlineVariant))
-                val here by animateColorAsState(if (group == current && enabled) Ink.fill else Color.Transparent, label = "groupHere")
-                Column(
-                    Modifier.weight(1f).clip(AppShapes.Control).background(here).clickable(enabled = enabled) { onJump(group) }
-                        .padding(vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(count?.let { formatCount(it.toLong()) } ?: "0",
-                        style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
-                        color = if (enabled) Ink.primary else Ink.tertiary)
-                    Spacer(Modifier.height(2.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(6.dp).clip(CircleShape).background(group.tint.copy(alpha = if (enabled) 1f else 0.35f)))
-                        Spacer(Modifier.width(5.dp))
-                        Text(stringResource(group.label), style = MaterialTheme.typography.labelSmall,
-                            color = if (enabled) Ink.secondary else Ink.tertiary, maxLines = 1)
+private fun GroupStats(counts: Map<AppGroup, Int>, current: AppGroup?, onJump: (AppGroup) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val perRow = if (maxWidth < 300.dp || LocalDensity.current.fontScale > 1.25f) 3 else 5
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            AppGroup.inventoryGroups.chunked(perRow).forEach { groups ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    groups.forEach { group ->
+                        val count = counts[group] ?: 0
+                        val selected = group == current && count > 0
+                        val fill by animateColorAsState(
+                            if (selected) Color(0xFF8E79BE).copy(alpha = 0.18f) else Color.Transparent,
+                            label = "groupHere"
+                        )
+                        Column(
+                            Modifier.weight(1f).heightIn(min = 48.dp).clip(AppShapes.Control)
+                                .background(fill).clickable(enabled = count > 0) { onJump(group) }.padding(3.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(formatCount(count.toLong()), color = if (count > 0) Ink.primary else Ink.tertiary,
+                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 12.sp, lineHeight = 16.sp,
+                                    fontFeatureSettings = "tnum"))
+                            Text(stringResource(group.label), color = if (count > 0) Ink.secondary else Ink.tertiary,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                                textAlign = TextAlign.Center, maxLines = 2)
+                        }
                     }
                 }
             }
