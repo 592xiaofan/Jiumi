@@ -5,11 +5,11 @@ package com.ybblab.jiumi.data
 
 /**
  * What the persistent notification says about an open session: the same figures the Monitor tab
- * shows for it (apps and records), and the items raised for attention with their apps.
+ * shows for it, apps and records. Items raised for attention are left to their own alerts.
  */
-data class NoticeSummary(val apps: Int, val records: Int, val raised: List<Attention>) {
+data class NoticeSummary(val apps: Int, val records: Int) {
     companion object {
-        fun of(report: Report) = NoticeSummary(report.apps.size, report.timeline.size, report.attention.filter { it.apps.isNotEmpty() })
+        fun of(report: Report) = NoticeSummary(report.apps.size, report.timeline.size)
     }
 }
 

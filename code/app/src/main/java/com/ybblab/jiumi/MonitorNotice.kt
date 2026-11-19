@@ -11,6 +11,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
+import android.view.View
+import android.widget.RemoteViews
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -23,9 +26,10 @@ import com.ybblab.jiumi.ui.attentionNameRes
 import com.ybblab.jiumi.ui.formatCount
 
 /**
- * The notifications about monitoring: the persistent one while it runs (with the session's summary
- * when the user wants it), one when it stopped under an open session, and alerts for apps newly
- * raised for attention. Each says only what was recorded; the lock screen shows none of the apps.
+ * The notifications about monitoring: the persistent one while it runs (how long, the session's
+ * counts when the user wants them, and a stop button at its end), one when it stopped under an open
+ * session, and alerts for apps newly raised for attention. Each says only what was recorded; the
+ * lock screen shows none of the apps.
  */
 object MonitorNotice {
     const val RUNNING_ID = 2001
@@ -39,8 +43,6 @@ object MonitorNotice {
     const val ROUTE_ATTENTION = "attention:"
     /** Apps named in one line before the rest are counted. */
     private const val NAMED_APPS = 3
-    /** Items listed in the expanded summary. */
-    private const val LISTED_ITEMS = 4
 
     /** The persistent notification for a session that began at [since]. */
     data class Running(val since: Long, val summary: NoticeSummary?)
@@ -52,32 +54,36 @@ object MonitorNotice {
         ensureChannels(context, text)
         val stop = PendingIntent.getService(context, 1, Intent(context, MonitorNotificationService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE)
-        val builder = NotificationCompat.Builder(context, CHANNEL_MONITORING)
+        val title = text.getString(R.string.notification_monitoring)
+        val line = running.summary?.let { summaryLine(text, it) }
+        // How long it has run, counted on the clock the chronometer reads.
+        val base = SystemClock.elapsedRealtime() - (System.currentTimeMillis() - running.since).coerceAtLeast(0)
+        val content = RemoteViews(context.packageName, R.layout.notification_monitoring).apply {
+            setTextViewText(R.id.notification_title, title)
+            setChronometer(R.id.notification_elapsed, base, null, true)
+            if (line != null) {
+                setTextViewText(R.id.notification_text, line)
+                setViewVisibility(R.id.notification_text, View.VISIBLE)
+            }
+            setOnClickPendingIntent(R.id.notification_stop, stop)
+            setContentDescription(R.id.notification_stop, text.getString(R.string.action_stop_monitoring))
+        }
+        return NotificationCompat.Builder(context, CHANNEL_MONITORING)
             .setSmallIcon(R.drawable.ic_stat_monitoring)
-            .setContentTitle(text.getString(R.string.notification_monitoring))
+            .setContentTitle(title)
+            .setContentText(line)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(content)
             .setWhen(running.since)
-            .setShowWhen(true)
-            .setUsesChronometer(true)
+            .setShowWhen(false)
             .setOngoing(true)
             .setSilent(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            // Only how long and how much: no app is named, so the lock screen may show it as it is.
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(open(context, null))
-            .addAction(0, text.getString(R.string.action_stop), stop)
-        val summary = running.summary ?: return builder.build()
-        // The lock screen keeps the plain notification: how long, and nothing of what was seen.
-        val public = builder.build()
-        val line = summaryLine(text, summary)
-        val labels = AppLabels(text)
-        val items = summary.raised.take(LISTED_ITEMS).map { item ->
-            text.getString(R.string.notification_attention_line, text.getString(attentionNameRes(item.id)), appList(text, labels, item.apps))
-        }
-        return builder
-            .setContentText(line)
-            .setStyle(NotificationCompat.BigTextStyle().bigText((listOf(line) + items).joinToString("\n")))
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setPublicVersion(public)
             .build()
     }
 
@@ -142,12 +148,9 @@ object MonitorNotice {
         runCatching { NotificationManagerCompat.from(context).notify(tag, id, notification) }
     }
 
-    private fun summaryLine(text: Context, summary: NoticeSummary): String = listOfNotNull(
+    private fun summaryLine(text: Context, summary: NoticeSummary): String = listOf(
         text.resources.getQuantityString(R.plurals.apps_count, summary.apps, formatCount(summary.apps.toLong())),
         text.resources.getQuantityString(R.plurals.notification_records, summary.records, formatCount(summary.records.toLong())),
-        summary.raised.size.takeIf { it > 0 }?.let {
-            text.resources.getQuantityString(R.plurals.notification_attention, it, formatCount(it.toLong()))
-        }
     ).joinToString(" · ")
 
     private fun appList(text: Context, labels: AppLabels, apps: List<AppKey>): String {

@@ -231,19 +231,15 @@
     <string name="notification_monitoring">正在监测</string>
     <string name="notification_channel_monitoring">监测状态</string>
     <string name="notification_interrupted_text">打开揪咪恢复监测，或结束这次监测。</string>
-    <string name="notification_attention_line">%1$s：%2$s</string>
     <string name="notification_apps_more">%1$s 等 %2$s 个应用</string>
     <plurals name="notification_records">
         <item quantity="other">%1$s 条记录</item>
-    </plurals>
-    <plurals name="notification_attention">
-        <item quantity="other">%1$s 项需要关注</item>
     </plurals>
     <string name="section_notifications">通知</string>
     <string name="settings_notice_persistent">常驻通知</string>
     <string name="settings_notice_summary">显示监测摘要</string>
     <string name="settings_notice_alerts">需要关注提醒</string>
-    <string name="settings_notice_desc">监测时在通知栏显示已监测的时长和停止按钮。摘要会加上这次监测的应用数、记录数和需要关注的项目；提醒会在有应用新出现需要关注的行为时通知你，同一次监测里，同一个应用的同一项只提醒一次。两者在亮屏时大约每分钟同步一次记录，会多用一点电。锁屏上不显示应用名。</string>
+    <string name="settings_notice_desc">监测时在通知栏显示已监测的时长和停止按钮。摘要会加上这次监测的应用数和记录数；提醒会在有应用新出现需要关注的行为时通知你，同一次监测里，同一个应用的同一项只提醒一次。两者在亮屏时大约每分钟同步一次记录，会多用一点电。锁屏上不显示应用名。</string>
     <string name="settings_notice_off_desc">关闭后监测照常进行，状态只在揪咪里显示。</string>
     <string name="settings_notice_blocked">揪咪的通知已关闭，点按打开系统设置。</string>
     <string name="catd_location_precise">使用精确位置权限获取所在位置，可精确到几米，能看出你在哪栋楼、哪个门店。</string>
