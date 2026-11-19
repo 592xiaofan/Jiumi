@@ -81,7 +81,7 @@ Android provides permission access records, connection tables, system traces and
 
 After a phone restart, a Jiumi update, or an interruption to the debugging service, Jiumi automatically resumes the same session when the selected connection is available. If the card shows Monitoring interrupted, restore the selected connection and tap Resume. Interrupted time does not count toward monitored time.
 
-With wireless debugging, turning on USB debugging as well is recommended: without it, a running monitor ends when Android turns wireless debugging off, for example on leaving or changing Wi-Fi. USB debugging also enables ADB persistence, which lets you start or resume offline until the next restart; changing that switch while monitoring takes effect the next time monitoring starts or stops. See the [setup guide](https://jiumi.ybblab.com/en/download/) for details.
+When using Wireless debugging, turning on USB debugging as well helps keep a running monitor alive if Android turns Wireless debugging off when Wi-Fi disconnects. ADB persistence is off by default and reuses a port only when the device already provides a verified loopback listener. See the [setup guide](https://jiumi.ybblab.com/en/download/) for details.
 
 ## Privacy and limitations
 

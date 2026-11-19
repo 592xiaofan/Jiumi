@@ -90,11 +90,6 @@ class AirAdbClient(
         return if (service.split(',').contains("v2")) decodeShellV2(bytes) else bytes.toString(Charsets.UTF_8)
     }
 
-    fun restartTcpip(port: Int): String {
-        require(port in 49152..65535)
-        return requestService("tcpip:$port").toString(Charsets.UTF_8)
-    }
-
     fun restartUsb(): String = requestService("usb:").toString(Charsets.UTF_8)
 
     private fun requestService(destination: String): ByteArray = synchronized(shellLock) {

@@ -21,8 +21,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.net.InetSocketAddress
-import java.net.ServerSocket
-import java.security.SecureRandom
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -32,8 +30,8 @@ import java.util.concurrent.atomic.AtomicLong
  * Wireless-debugging pairing and the on-demand ADB shell connection.
  *
  * The connection exists only to start the shell-identity monitor; the monitor outlives it.
- * Unlike Droidance there is no classic TCP listener: `adb tcpip` would make adbd listen on a
- * network port, which this app must never do.
+ * The app can reuse an existing loopback listener if explicitly enabled and verified. It never
+ * starts the system's classic TCP listener.
  */
 class AirModePairingManager(
     private val context: Context,
@@ -59,30 +57,23 @@ class AirModePairingManager(
         /** Seconds to wait for Wireless debugging to answer before saying it cannot be reached. */
         const val CONNECT_GRACE_S = 5
         const val CONNECT_GRACE_AFTER_ENABLE_S = 8
-        /** Seconds to wait for the local port after opening it, long enough to allow the key once. */
-        const val LOCAL_OPEN_ATTEMPTS = 20
         const val KEY_PAIRED = "adb_paired"
         const val KEY_PAIRING_REQUIRED = "adb_pairing_required"
         const val KEY_LAST_CONNECT_PORT = "adb_last_connect_port"
         const val KEY_PERSISTENCE = "adb_persistence"
         const val KEY_LOCAL_PORT = "adb_local_port"
         const val KEY_LOCAL_PORT_BOOT = "adb_local_port_boot"
-        const val LOCAL_PORT_SOURCE = "local_tcpip"
+        const val KEY_LOOPBACK_PORT = "adb_loopback_port"
+        const val KEY_LOOPBACK_BOOT = "adb_loopback_boot"
+        const val LOCAL_PORT_SOURCE = "loopback"
     }
 
     private val prefs = context.getSharedPreferences("jiumi_adb", Context.MODE_PRIVATE)
 
-    /**
-     * ADB persistence: after one connection over Wireless debugging, adbd also listens on a local TCP
-     * port, so later connections go to 127.0.0.1 and need neither Wi-Fi nor Wireless debugging until
-     * the phone restarts. It needs USB debugging on, and the system asks once to allow the key. On by
-     * default: once the local port is open it is the channel used, and Wireless debugging the fallback.
-     */
-    private val _persistenceEnabled = MutableStateFlow(prefs.getBoolean(KEY_PERSISTENCE, true))
+    private val _persistenceEnabled = MutableStateFlow(prefs.getBoolean(KEY_PERSISTENCE, false))
     val persistenceEnabled: StateFlow<Boolean> = _persistenceEnabled.asStateFlow()
 
-    /** A local port opened in this boot, ready to connect to without Wi-Fi. */
-    val hasLocalAdbPort: Boolean get() = _persistenceEnabled.value && savedLocalPort() != null
+    val hasLocalAdbPort: Boolean get() = _persistenceEnabled.value && verifiedPort() != null
 
     /**
      * Whether adbd may be restarted now. Opening or closing the local port restarts adbd, and the
@@ -91,8 +82,8 @@ class AirModePairingManager(
      */
     @Volatile var adbdRestartAllowed: () -> Boolean = { true }
 
-    /** Persistence was turned off while the port could not be closed yet; [closePendingLocalListener] does it. */
-    val localListenerClosePending: Boolean get() = !_persistenceEnabled.value && savedLocalPort() != null
+    /** A classic listener previously opened by Jiumi may still need to be closed. */
+    val localListenerClosePending: Boolean get() = savedLocalPort() != null
     @Volatile private var automaticReconnectSuspended = true
     private val _state = MutableStateFlow(PairingState.IDLE)
     val state: StateFlow<PairingState> = _state.asStateFlow()
@@ -576,15 +567,15 @@ class AirModePairingManager(
             }
             currentCoroutineContext().ensureActive()
             check(generation == connectAttemptGeneration.get()) { "ADB connection attempt was superseded" }
-            // With persistence on, the first TLS connection opens the local listener before anyone
-            // uses the shell: adbd restarts to do it, which ends this connection, so the attempt
-            // continues on the local port instead and is reported connected only once that holds.
-            if (!local && wantsLocalListener() && adbdRestartAllowed() && openLocalListener(connection)) {
-                connection.runCatching { close() }
-                val localPort = savedLocalPort() ?: error("Local port was not recorded")
-                markPairingTrusted(connectPort = port)
-                connectLocalAfterOpening(localPort, generation)
-                return
+            if (local && loopbackPort(connection) != port) {
+                forgetVerifiedPort()
+                error("The ADB listener is no longer limited to loopback")
+            }
+            if (!local && _persistenceEnabled.value) {
+                val boot = bootCount()
+                val verified = loopbackPort(connection)
+                if (verified == null || boot < 0) forgetVerifiedPort()
+                else prefs.edit().putInt(KEY_LOOPBACK_PORT, verified).putInt(KEY_LOOPBACK_BOOT, boot).apply()
             }
             activeConnection = connection
             activeEndpoint = ActiveAirEndpoint(host, port, source)
@@ -613,7 +604,7 @@ class AirModePairingManager(
                 automaticReconnectSuspended) return@launch
             _state.value = PairingState.CONNECTING
             // The local port first: it needs no network and no Wireless debugging.
-            val localPort = savedLocalPort()?.takeIf { _persistenceEnabled.value }
+            val localPort = verifiedPort()?.takeIf { _persistenceEnabled.value }
             if (localPort != null) {
                 val attempt = runCatching { doConnect(LOCAL_ADB_HOST, localPort, LOCAL_PORT_SOURCE, generation) }
                     .onFailure { if (it is CancellationException) throw it; log.event("local port $localPort connect failed: ${it.javaClass.simpleName}") }
@@ -679,68 +670,26 @@ class AirModePairingManager(
         Settings.Global.getInt(context.contentResolver, Settings.Global.ADB_ENABLED) == 1
     }.getOrNull()
 
-    private fun wantsLocalListener() = _persistenceEnabled.value && isUsbDebuggingEnabled() == true
-
     fun setPersistenceEnabled(on: Boolean) {
         prefs.edit().putBoolean(KEY_PERSISTENCE, on).apply()
         _persistenceEnabled.value = on
-        log.event("persistence ${if (on) "enabled" else "disabled"}")
+        if (!on) forgetVerifiedPort()
+        log.event("loopback reuse ${if (on) "enabled" else "disabled"}")
     }
 
-    private fun chooseLocalPort(): Int {
-        val random = SecureRandom()
-        repeat(32) {
-            val candidate = 49152 + random.nextInt(16384)
-            if (runCatching { ServerSocket().use { it.bind(InetSocketAddress(LOCAL_ADB_HOST, candidate)) } }.isSuccess) return candidate
-        }
-        error("No available high TCP port")
+    private fun verifiedPort(): Int? = prefs.getInt(KEY_LOOPBACK_PORT, -1)
+        .takeIf { it in 1..65535 && bootCount() >= 0 && prefs.getInt(KEY_LOOPBACK_BOOT, -2) == bootCount() }
+
+    private fun forgetVerifiedPort() {
+        prefs.edit().remove(KEY_LOOPBACK_PORT).remove(KEY_LOOPBACK_BOOT).apply()
     }
 
-    /**
-     * Asks adbd, over [connection], to listen on this boot's local port as well. True when it was asked
-     * to (adbd restarts, ending [connection]); false when the port is already open.
-     */
-    private fun openLocalListener(connection: AirAdbClient): Boolean {
-        val port = savedLocalPort() ?: chooseLocalPort().also {
-            check(bootCount() >= 0) { "Cannot identify the current boot" }
-            // Recorded before the request: adbd may restart before it answers.
-            check(prefs.edit().putInt(KEY_LOCAL_PORT, it).putInt(KEY_LOCAL_PORT_BOOT, bootCount()).commit())
-        }
-        val current = runCatching { connection.shell("getprop service.adb.tcp.port").trim().toIntOrNull() }.getOrNull()
-        if (current == port) return false
-        log.event("local listener opening port=$port")
-        val response = runCatching { connection.restartTcpip(port) }
-        log.event("local listener open response=${response.getOrNull()?.take(120)} error=${response.exceptionOrNull()?.javaClass?.simpleName}")
-        return true
-    }
-
-    /** After adbd restarts for the local port: connect to it, giving the user time to allow the key. */
-    private suspend fun connectLocalAfterOpening(port: Int, generation: Long) {
-        repeat(LOCAL_OPEN_ATTEMPTS) {
-            delay(1_000)
-            currentCoroutineContext().ensureActive()
-            val connection = AirAdbClient(LOCAL_ADB_HOST, port, loadOrCreateAdbKey(), allowUserAuthorization = true)
-            try {
-                connection.connect()
-                if (!connection.shell(HEALTH_CHECK_COMMAND).contains(HEALTH_CHECK_MARKER)) error("health marker missing")
-                check(generation == connectAttemptGeneration.get()) { "ADB connection attempt was superseded" }
-                activeConnection = connection
-                activeEndpoint = ActiveAirEndpoint(LOCAL_ADB_HOST, port, LOCAL_PORT_SOURCE)
-                connectDiscovery?.stop()
-                connectDiscovery = null
-                _failure.value = null
-                log.event("ADB shell connected source=$LOCAL_PORT_SOURCE port=$port")
-                _state.value = PairingState.CONNECTED
-                return
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                connection.runCatching { close() }
-                log.event("local listener probe failed: ${error.javaClass.simpleName}: ${error.message.orEmpty().take(80)}")
-            }
-        }
-        // The listener stays recorded; the next attempt tries it first, and Wireless debugging remains.
-        throw IllegalStateException("Local ADB port did not accept the connection")
-    }
+    private fun loopbackPort(connection: AirAdbClient): Int? = runCatching {
+        LoopbackAdbPort.verified(
+            connection.shell("getprop service.adb.listen_addrs"),
+            connection.shell("ss -ltn")
+        )
+    }.getOrNull()
 
     /**
      * Turns persistence off and closes the local port, by asking adbd to return to USB mode. The port
@@ -767,6 +716,8 @@ class AirModePairingManager(
         val connection = activeConnection ?: AirAdbClient(LOCAL_ADB_HOST, port, loadOrCreateAdbKey(), allowUserAuthorization = true)
         val closed = runCatching {
             if (connection !== activeConnection) connection.connect()
+            val legacyPort = connection.shell("getprop service.adb.tcp.port").trim().toIntOrNull()
+            if (legacyPort != port || connection.shell("getprop service.adb.listen_addrs").isNotBlank()) return@runCatching true
             connection.restartUsb()
             repeat(20) {
                 if (runCatching { java.net.Socket().use { it.connect(InetSocketAddress(LOCAL_ADB_HOST, port), 250) } }.isFailure) return@runCatching true
