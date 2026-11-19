@@ -63,10 +63,13 @@ internal class ConnectionWatcher(
         ProbeMain.log("connection watch ${if (on) "on, every ${intervalMs} ms" else "off"}")
     }
 
-    fun finishRecording() = synchronized(lock) {
+    private var incomplete = false
+
+    fun finishRecording(): Boolean = synchronized(lock) {
         enabled = false
         flushAll()
         lock.notifyAll()
+        incomplete
     }
 
     override fun run() {
@@ -80,9 +83,11 @@ internal class ConnectionWatcher(
                     continue
                 }
                 synchronized(lock) {
-                    poll(System.currentTimeMillis())
-                    // Waiting does not hold the device awake; while it is suspended nothing is polled.
-                    lock.wait(intervalMs)
+                    if (enabled) {
+                        poll(System.currentTimeMillis())
+                        // Waiting does not hold the device awake; while it is suspended nothing is polled.
+                        lock.wait(intervalMs)
+                    }
                 }
             } catch (error: Exception) {
                 ProbeMain.log("connection watch failed: ${error.javaClass.simpleName}: ${error.message}")
@@ -167,11 +172,18 @@ internal class ConnectionWatcher(
 
     /** Writes [c] as it stands; [now] marks a progress write, after which the event goes on. */
     private fun flush(c: Contact, now: Long = 0L) {
-        if (now != 0L) { c.writtenAt = now; c.written = c.summary() }
-        else if (c.writtenAt != 0L && c.summary() == c.written) return
+        if (now == 0L && c.writtenAt != 0L && c.summary() == c.written) return
         val event = JSONObject(c.event.toString()).put("t", c.first).put("end", c.last).put("count", c.sockets.size)
         if (c.counted) event.put("sent", c.sent).put("received", c.received).put("sentUnattended", c.sentUnattended)
-        runCatching { spool.append(event) }.onFailure { ProbeMain.log("spool write failed: ${it.javaClass.simpleName}") }
+        runCatching { spool.append(event) }.onSuccess {
+            if (now != 0L) {
+                c.writtenAt = now
+                c.written = c.summary()
+            }
+        }.onFailure {
+            incomplete = true
+            ProbeMain.log("spool write failed: ${it.javaClass.simpleName}")
+        }
     }
 
     private companion object {

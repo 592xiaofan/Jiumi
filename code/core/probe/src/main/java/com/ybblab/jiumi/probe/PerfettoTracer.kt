@@ -41,15 +41,13 @@ internal class PerfettoTracer(
     private var watermarkNs = 0L
     private var packetWatermarkNs = 0L
     private val clients = HashMap<Int, Client?>()
-    private val buckets = LinkedHashMap<String, Bucket>()
+    private val buckets = LinkedHashMap<CallKey, ObservationBucket>()
     @Volatile private var finishing = false
+    private var incomplete = false
 
     /** [thread] is the calling thread's name, which often tells an SDK apart from its host app. */
     private data class Client(val pid: Int, val uid: Int, val process: String, val thread: String?)
-    private class Bucket(val event: JSONObject, val first: Long) {
-        var last = first
-        var count = 1
-    }
+    private data class CallKey(val uid: Int, val pid: Int?, val process: String?, val thread: String?, val iface: String, val method: String)
 
     /**
      * [selected] holds "IInterface.method" or "IInterface.*"; an empty set stops call tracing.
@@ -79,7 +77,7 @@ internal class PerfettoTracer(
             if (!enabled) {
                 running?.let { finish(it) }
                 running = null
-                buckets.forEach { (key, bucket) -> flush(key, bucket) }
+                buckets.values.forEach(::flush)
                 buckets.clear()
                 synchronized(lock) { while (!enabled && !finishing) lock.wait() }
                 continue
@@ -92,7 +90,7 @@ internal class PerfettoTracer(
             running = next
         }
         running?.let(::finish)
-        buckets.forEach { (key, bucket) -> flush(key, bucket) }
+        buckets.values.forEach(::flush)
         buckets.clear()
     }
 
@@ -107,13 +105,14 @@ internal class PerfettoTracer(
         }
     }
 
-    fun finishRecording() {
+    fun finishRecording(): Boolean {
         synchronized(lock) {
             finishing = true
             lock.notifyAll()
         }
         join(SESSION_MS + 10_000L)
         check(!isAlive) { "Perfetto trace could not be drained" }
+        return incomplete
     }
 
     private class Session(val process: Process, val file: File)
@@ -124,17 +123,25 @@ internal class PerfettoTracer(
         val process = ProcessBuilder("perfetto", "--txt", "-c", "-", "-o", file.path)
             .redirectErrorStream(true).start()
         register(process)
-        process.outputStream.use { it.write(config().toByteArray()) }
-        Session(process, file)
-    }.onFailure { ProbeMain.log("trace start failed: ${it.javaClass.simpleName}") }.getOrNull()
+        try {
+            process.outputStream.use { it.write(config().toByteArray()) }
+            Session(process, file)
+        } catch (error: Exception) {
+            process.destroy()
+            unregister(process)
+            file.delete()
+            throw error
+        }
+    }.onFailure { markIncomplete("trace start", it) }.getOrNull()
 
     private fun finish(session: Session) {
         try {
             session.process.inputStream.use { it.readBytes() }
-            session.process.waitFor()
-            if (session.file.isFile) record(session.file.readBytes())
+            check(session.process.waitFor() == 0) { "Perfetto did not finish successfully" }
+            check(session.file.isFile && session.file.length() > 0L) { "Perfetto did not produce a trace" }
+            record(session.file.readBytes())
         } catch (error: Exception) {
-            ProbeMain.log("trace read failed: ${error.javaClass.simpleName}")
+            markIncomplete("trace read", error)
         } finally {
             unregister(session.process)
             session.file.delete()
@@ -170,33 +177,26 @@ internal class PerfettoTracer(
             if (client?.pid == android.os.Process.myPid()) continue
             val uid = client?.uid ?: -1
             val t = offsetMs + call.timestampNs / 1_000_000
-            val key = "$uid|${client?.process}|${client?.thread}|${call.iface}|${call.method}"
+            val key = CallKey(uid, client?.pid, client?.process, client?.thread, call.iface, call.method)
+            val observed = ObservationState(if (uid < 0) "unknown" else states.stateAt(uid, t), states.screenAt(t))
             val bucket = buckets[key]
-            if (bucket != null && t - bucket.first < WINDOW_MS) {
-                bucket.last = t
-                bucket.count++
-                continue
-            }
-            bucket?.let { flush(key, it) }
-            buckets[key] = Bucket(JSONObject()
-                .put("kind", "call")
-                .put("uid", uid)
-                .put("pid", client?.pid ?: -1)
-                .put("process", client?.process)
-                .put("thread", client?.thread)
-                .put("iface", call.iface)
-                .put("method", call.method)
-                // Judged at the call's own time: the trace is read well after it was written.
-                .put("state", if (uid < 0) "unknown" else states.stateAt(uid, t))
-                .put("screen", states.screenAt(t)), t)
+            if (bucket?.add(t, observed, WINDOW_MS) == true) continue
+            bucket?.let(::flush)
+            val event = JSONObject().put("kind", "call").put("uid", uid).put("pid", client?.pid ?: -1)
+                .put("process", client?.process).put("thread", client?.thread).put("iface", call.iface).put("method", call.method)
+            buckets[key] = ObservationBucket(event, t, observed)
         }
         val now = System.currentTimeMillis()
-        buckets.entries.removeAll { (key, bucket) -> (now - bucket.first >= WINDOW_MS).also { if (it) flush(key, bucket) } }
+        buckets.values.removeAll { bucket -> (now - bucket.first >= WINDOW_MS).also { if (it) flush(bucket) } }
     }
 
-    private fun flush(@Suppress("UNUSED_PARAMETER") key: String, bucket: Bucket) {
-        runCatching { spool.append(bucket.event.put("t", bucket.first).put("end", bucket.last).put("count", bucket.count)) }
-            .onFailure { ProbeMain.log("spool write failed: ${it.javaClass.simpleName}") }
+    private fun flush(bucket: ObservationBucket) {
+        runCatching { spool.append(bucket.event()) }.onFailure { markIncomplete("trace write", it) }
+    }
+
+    private fun markIncomplete(operation: String, error: Throwable) {
+        incomplete = true
+        ProbeMain.log("$operation failed: ${error.javaClass.simpleName}")
     }
 
     /** The caller as the trace recorded it; null when the trace has no entry for it. */

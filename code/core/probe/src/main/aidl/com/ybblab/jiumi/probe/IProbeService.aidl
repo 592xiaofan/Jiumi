@@ -17,10 +17,10 @@ interface IProbeService {
     String readEvents(long epoch, long afterSeq, int max);
     /**
      * The system's per-access record (the one behind its privacy dashboard; a few kinds of data, kept
-     * about a week) for the operations being watched, at or after fromTime, oldest first, at most max.
-     * JSON array of {"t","end","op","uid","pkg","attr","state","via"}.
+     * about a week), at or after fromTime. Offset zero reads a snapshot; the returned next index
+     * continues that same snapshot when more is true. JSON {"events":[...],"next":n,"more":bool}.
      */
-    String readDiscreteHistory(long fromTime, int max);
+    String readDiscreteHistory(long fromTime, int offset, int max);
     /**
      * The system's long-term access counts for the operations being watched: its time slots that ended
      * after sinceTime, newest first, skipping the first skip and returning at most max. JSON array of
@@ -29,8 +29,8 @@ interface IProbeService {
     String readHistoricalOps(long sinceTime, int skip, int max);
     /** The monitor's own resource use. Returns JSON. */
     String footprint();
-    /** Stops the collectors and writes their remaining events without closing the binder. */
-    void finishRecording();
+    /** Stops the collectors, writes their remaining events, and returns true if trace records were lost. */
+    boolean finishRecording();
     void shutdown();
     /**
      * Changes a package for the calling user: action "disable", "enable", "unsuspend", "uninstall"

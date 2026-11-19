@@ -20,6 +20,8 @@
     <string name="error_service_start">监测没有启动，或启动后没有回应。请重试；仍不行时可以重启手机后再试。</string>
     <string name="monitor_saving">正在保存最后一批记录…</string>
     <string name="error_service_stop">停止监测时未能确认最后一批记录已保存。监测仍连接时可以重试。</string>
+    <string name="error_service_stop_partial">监测已停止。部分系统调用或联网追踪记录未能保存。</string>
+    <string name="session_partial_trace">追踪记录不完整</string>
     <string name="range_today">今天</string>
     <string name="range_week">7 天</string>
     <string name="record_empty_running">这段时间还没有记录。</string>

@@ -3,6 +3,8 @@
 
 package com.ybblab.jiumi.data
 
+import com.ybblab.jiumi.probe.ProbeProtocol
+
 /**
  * How much of a monitoring session the monitor actually covered. The monitor notes "start" when it
  * launches, "alive" every few minutes and "stop" when it is stopped; two consecutive notes no more
@@ -13,7 +15,10 @@ object Coverage {
     /** Heartbeats come every five minutes; one and a half periods of silence is a gap. */
     const val MAX_GAP_MS = 7 * 60_000L + 30_000L
 
-    data class Result(val coveredMs: Long, val interruptions: Int, val lostEvents: Long, val lastSeen: Long?)
+    data class Result(
+        val coveredMs: Long, val interruptions: Int, val lostEvents: Long,
+        val lastSeen: Long?, val partialTrace: Boolean = false
+    )
 
     /** [events] may begin up to [MAX_GAP_MS] before [start]. */
     fun compute(start: Long, end: Long?, events: List<JiumiStore.MonitorEvent>, now: Long): Result {
@@ -23,6 +28,7 @@ object Coverage {
         var lost = 0L
         var last: Long? = null
         var stopped = false
+        var partialTrace = false
         for (e in events.sortedBy { it.t }) {
             if (e.t > until) continue
             // The monitor usually starts just before the session opens: it was running at the start.
@@ -41,10 +47,11 @@ object Coverage {
             }
             last = e.t
             stopped = e.state == "stop"
+            if (stopped && e.reason == ProbeProtocol.STOP_PARTIAL_TRACE) partialTrace = true
         }
         // Still running: the time since the last note counts while it is recent.
         val tail = last
         if (end == null && tail != null && !stopped && now - tail <= MAX_GAP_MS) covered += now - tail
-        return Result(covered, interruptions, lost, last)
+        return Result(covered, interruptions, lost, last, partialTrace)
     }
 }

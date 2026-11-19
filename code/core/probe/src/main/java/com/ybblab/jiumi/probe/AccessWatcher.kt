@@ -21,14 +21,13 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
     private val handler = Handler(thread.looper)
     private val executor = Executor { handler.post(it) }
     private val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-    private val buckets = LinkedHashMap<String, Bucket>()
+    private val buckets = LinkedHashMap<NotedKey, ObservationBucket>()
     private var listeners: List<Any> = emptyList()
     private var finishing = false
 
-    private class Bucket(val event: JSONObject, val first: Long) {
-        var last = first
-        var count = 1
-    }
+    private data class NotedKey(
+        val op: String, val uid: Int, val pkg: String?, val attribution: String?, val flags: Int, val result: Int
+    )
 
     /** Replaces the watched operations; unknown names on this Android version are skipped. */
     fun watch(ops: List<String>) = handler.post {
@@ -120,27 +119,21 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
         return listener
     }
 
-    private fun noted(op: String, uid: Int, pkg: String?, attribution: String?, flags: Int, result: Int) = handler.post {
-        if (finishing) return@post
-        val now = System.currentTimeMillis()
-        val key = "$op|$uid|$pkg|$attribution|$flags|$result"
-        val bucket = buckets[key]
-        if (bucket != null) {
-            bucket.last = now
-            bucket.count++
-            return@post
+    private fun noted(op: String, uid: Int, pkg: String?, attribution: String?, flags: Int, result: Int) {
+        val time = System.currentTimeMillis()
+        handler.post {
+            if (finishing) return@post
+            val key = NotedKey(op, uid, pkg, attribution, flags, result)
+            val observed = ObservationState(states.stateAt(uid, time), states.screenAt(time))
+            val bucket = buckets[key]
+            if (bucket?.add(time, observed, WINDOW_MS) == true) return@post
+            bucket?.let { record(it.event()) }
+            val first = buckets.isEmpty()
+            val event = JSONObject().put("kind", "access").put("op", op).put("uid", uid).put("pkg", pkg)
+                .put("attr", attribution).put("flags", flags).put("result", result)
+            buckets[key] = ObservationBucket(event, time, observed)
+            if (first) handler.postDelayed({ flush(force = false) }, WINDOW_MS)
         }
-        buckets[key] = Bucket(JSONObject()
-            .put("kind", "access")
-            .put("op", op)
-            .put("uid", uid)
-            .put("pkg", pkg)
-            .put("attr", attribution)
-            .put("flags", flags)
-            .put("result", result)
-            .put("state", states.accessState(op, uid, pkg, now))
-            .put("screen", states.screenAt(now)), now)
-        if (buckets.size == 1) handler.postDelayed({ flush(force = false) }, WINDOW_MS)
     }
 
     private fun flush(force: Boolean) {
@@ -149,7 +142,7 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
         while (iterator.hasNext()) {
             val bucket = iterator.next()
             if (!force && now - bucket.first < WINDOW_MS) continue
-            val written = record(bucket.event.put("t", bucket.first).put("end", bucket.last).put("count", bucket.count))
+            val written = record(bucket.event())
             if (finishing) written.getOrThrow()
             iterator.remove()
         }

@@ -36,33 +36,36 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
         return stored
     }
 
-    /** New entries of the system's per-access record; equal times at a page boundary are ignored by the store. */
+    /** Each refresh pages through one snapshot. Commit the time cursor only after its last page. */
     private fun pullDiscrete(service: IProbeService) {
-        var from = store.meta(KEY_DISCRETE_FROM)
+        val from = store.meta(KEY_DISCRETE_FROM)
+        var offset = 0
         while (true) {
-            val page = JSONArray(service.readDiscreteHistory(from, PAGE_HISTORY))
-            if (page.length() == 0) break
+            val page = JSONObject(service.readDiscreteHistory(from, offset, PAGE_HISTORY))
+            val events = page.getJSONArray("events")
+            val next = page.getInt("next")
+            val more = page.getBoolean("more")
+            check(next == offset + events.length() && (!more || next > offset)) { "Invalid discrete history page" }
+            if (events.length() == 0) break
             val db = store.writableDatabase
             db.beginTransaction()
             try {
-                for (i in 0 until page.length()) {
-                    val e = page.getJSONObject(i)
+                for (i in 0 until events.length()) {
+                    val e = events.getJSONObject(i)
                     if (rules.categoryOf(e.getString("op")) == null) continue
                     store.insertAccess(db, JiumiStore.Access(
                         t = e.getLong("t"), end = e.getLong("end"), op = e.getString("op"), uid = e.getInt("uid"),
                         pkg = e.str("pkg"), attr = e.str("attr"), count = 1, state = e.str("state"), screen = null,
-                        // The record holds what went through; refusals are not in it.
                         result = 0, proxied = e.optString("via").endsWith("d"), source = "system"
                     ))
                 }
-                val last = page.getJSONObject(page.length() - 1).getLong("t")
-                store.setMeta(db, KEY_DISCRETE_FROM, last)
+                if (!more) store.setMeta(db, KEY_DISCRETE_FROM, events.getJSONObject(events.length() - 1).getLong("t"))
                 db.setTransactionSuccessful()
-                if (page.length() < PAGE_HISTORY || last == from) break
-                from = last
             } finally {
                 db.endTransaction()
             }
+            if (!more) break
+            offset = next
         }
     }
 
@@ -103,29 +106,47 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
         while (true) {
             val page = JSONObject(service.readEvents(epoch, after, PAGE))
             val pageEpoch = page.getLong("epoch")
-            if (pageEpoch != epoch || page.getLong("last") < after) after = 0L
+            val last = page.getLong("last")
+            val more = page.getBoolean("more")
             val events = page.getJSONArray("events")
-            if (events.length() == 0) break
+            val cursorValid = pageEpoch == epoch && after in 0..last
+            if (!cursorValid) {
+                // A pre-epoch database already acknowledged the old spool's missing prefix.
+                after = if (epoch == 0L && after > 0) (page.getLong("first") - 1).coerceIn(0L, last) else 0L
+            }
+            if (events.length() == 0 && after == last && cursorValid) break
+            check(!more || events.length() > 0) { "Empty event page with more rows" }
             val db = store.writableDatabase
             db.beginTransaction()
             try {
-                // Events the monitor dropped before they could be read (spool limit or low storage).
-                val first = page.optLong("first", after + 1)
-                // A first read can start in the middle of a pre-existing spool already imported before an upgrade.
-                if (epoch != 0L && first > after + 1) {
-                    store.insertMonitorEvent(db, JiumiStore.MonitorEvent(events.getJSONObject(0).optLong("t"), "lost", (first - after - 1).toString()))
+                var lost = 0L
+                var lossTime = 0L
+                for (i in 0 until events.length()) {
+                    val event = events.getJSONObject(i)
+                    val sequence = event.getLong("seq")
+                    check(sequence > after && sequence <= last) { "Invalid event sequence" }
+                    if (sequence - after > 1L) {
+                        lost += sequence - after - 1
+                        if (lossTime == 0L) lossTime = event.getLong("t")
+                    }
+                    apply(db, event)
+                    after = sequence
                 }
-                for (i in 0 until events.length()) apply(db, events.getJSONObject(i))
-                after = events.getJSONObject(events.length() - 1).getLong("seq")
+                if (!more && last > after) {
+                    lost += last - after
+                    after = last
+                    if (lossTime == 0L) lossTime = System.currentTimeMillis()
+                }
+                if (lost > 0) store.insertMonitorEvent(db, JiumiStore.MonitorEvent(lossTime, "lost", lost.toString()))
                 epoch = pageEpoch
                 store.setMeta(db, KEY_EVENT_EPOCH, epoch)
                 store.setMeta(db, KEY_EVENT_SEQ, after)
                 db.setTransactionSuccessful()
-                stored += events.length()
+                stored += events.length() + if (lost > 0) 1 else 0
             } finally {
                 db.endTransaction()
             }
-            if (!page.getBoolean("more")) break
+            if (!more) break
         }
         return stored
     }

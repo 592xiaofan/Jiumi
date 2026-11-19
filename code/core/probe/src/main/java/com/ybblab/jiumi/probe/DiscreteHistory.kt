@@ -20,7 +20,7 @@ import java.util.Locale
 internal object DiscreteHistory {
     private val access = Regex("^Access \\[([a-z]+)-([a-z]+)\\] at (\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d(?:\\.\\d{1,3})?)(?: for (\\d+) milliseconds)?")
 
-    fun parse(dump: String, ops: Set<String>, fromTime: Long, max: Int): JSONArray {
+    fun parse(dump: String, ops: Set<String>, fromTime: Long): List<JSONObject> {
         val section = dump.substringAfter("Discrete accesses:", missingDelimiterValue = "")
         val found = ArrayList<JSONObject>()
         var uid = -1
@@ -64,6 +64,28 @@ internal object DiscreteHistory {
         val unique = found.groupBy { listOf(it.getInt("uid"), it.optString("pkg"), it.getString("op"), it.optString("attr"), it.getLong("t")) }
             .values.map { same -> same.maxBy { it.getLong("end") } }
         // The dump is grouped by app, not time; callers page forward by time.
-        return JSONArray(unique.sortedBy { it.getLong("t") }.take(max))
+        return unique.sortedBy { it.getLong("t") }
     }
+
+    /** Index into an immutable dump; a page can end within a timestamp without losing any rows. */
+    fun page(rows: List<JSONObject>, offset: Int, max: Int): JSONObject {
+        require(offset in 0..rows.size && max > 0)
+        var next = offset
+        var chars = 0
+        val events = JSONArray()
+        while (next < rows.size && events.length() < max) {
+            val row = rows[next]
+            chars += row.toString().length + 1
+            if (chars > MAX_PAGE_CHARS) {
+                check(next > offset) { "A discrete access exceeds the page size" }
+                break
+            }
+            events.put(row)
+            next++
+        }
+        return JSONObject().put("events", events).put("next", next).put("more", next < rows.size)
+    }
+
+    private const val MAX_PAGE_CHARS = 200_000
+
 }

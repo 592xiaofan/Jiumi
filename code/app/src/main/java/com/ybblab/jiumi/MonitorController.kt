@@ -85,7 +85,7 @@ class MonitorController(
     data class SessionView(val session: JiumiStore.Session, val coverage: Coverage.Result, val latest: Boolean) {
         val running: Boolean get() = session.end == null
     }
-    enum class Problem { CONNECT, START, STOP, SHIZUKU }
+    enum class Problem { CONNECT, START, STOP, STOP_PARTIAL, SHIZUKU }
 
     data class UiState(
         val pairingState: PairingState = PairingState.IDLE,
@@ -817,14 +817,15 @@ class MonitorController(
         scope.launch(Dispatchers.IO) {
             val stopped = runCatching {
                 manageLock.withLock {
-                    probe.service.value?.let { service ->
-                        syncLock.withLock {
-                            service.finishRecording()
-                            sync.pullEvents(service)
-                        }
-                        service.shutdown()
-                        check(withTimeoutOrNull(5_000) { probe.service.first { it == null }; true } == true)
+                    val service = probe.service.value ?: return@withLock false
+                    val partial = syncLock.withLock {
+                        val traceIncomplete = service.finishRecording()
+                        sync.pullEvents(service)
+                        traceIncomplete
                     }
+                    service.shutdown()
+                    check(withTimeoutOrNull(5_000) { probe.service.first { it == null }; true } == true)
+                    partial
                 }
             }
             if (stopped.isFailure) {
@@ -835,7 +836,7 @@ class MonitorController(
             val now = System.currentTimeMillis()
             store.sessions().filter { it.end == null }.forEach { store.endSession(it.id, now) }
             showIndicator()
-            local.update { it.copy(busy = null) }
+            local.update { it.copy(busy = null, problem = Problem.STOP_PARTIAL.takeIf { stopped.getOrThrow() }) }
             refresh()
             // Closing a legacy listener can restart adbd, so wait until the session is finished.
             if (probe.service.value == null) runCatching { pairing.closePendingLocalListener() }

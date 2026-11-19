@@ -20,6 +20,8 @@
     <string name="error_service_start">The monitor did not start, or did not answer after starting. Try again; if it still fails, restart the phone and try once more.</string>
     <string name="monitor_saving">Saving the final records…</string>
     <string name="error_service_stop">Could not confirm the final records were saved. Try again while the monitor is connected.</string>
+    <string name="error_service_stop_partial">Monitoring stopped. Some system-call or network trace records could not be saved.</string>
+    <string name="session_partial_trace">Incomplete trace</string>
     <string name="range_today">Today</string>
     <string name="range_week">7 days</string>
     <string name="record_empty_running">Nothing recorded in this period yet.</string>

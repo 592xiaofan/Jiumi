@@ -527,7 +527,8 @@ private fun ServiceCard(
         detail = lastText?.takeIf { paired }?.let { text -> {
             Text(text, style = MaterialTheme.typography.bodySmall, color = Ink.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         } },
-        message = statusMessage(state)
+        message = statusMessage(state) ?: last?.takeIf { it.coverage.partialTrace }
+            ?.let { stringResource(R.string.error_service_stop_partial) }
     )
 }
 
@@ -703,6 +704,7 @@ private fun problemText(problem: Problem): String = stringResource(
         Problem.CONNECT -> R.string.error_connect
         Problem.START -> R.string.error_service_start
         Problem.STOP -> R.string.error_service_stop
+        Problem.STOP_PARTIAL -> R.string.error_service_stop_partial
         Problem.SHIZUKU -> R.string.error_shizuku
     }
 )

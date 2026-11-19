@@ -404,7 +404,8 @@ fun SessionsScreen(controller: MonitorController, onBack: () -> Unit, onChosen: 
                                 },
                                 s.coverage.lostEvents.takeIf { it > 0 }?.let {
                                     pluralStringResource(R.plurals.lost_records, it.toInt(), formatCount(it))
-                                }
+                                },
+                                if (s.coverage.partialTrace) stringResource(R.string.session_partial_trace) else null
                             ).joinToString(" · "),
                             leading = { IconTile(JiumiIcons.History) },
                             onClick = { controller.selectSession(s.session.id); onChosen() }

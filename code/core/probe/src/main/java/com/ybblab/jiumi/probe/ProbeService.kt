@@ -92,10 +92,25 @@ internal class ProbeService(
         return spool.read(epoch, afterSeq, max.coerceIn(1, MAX_EVENTS_PER_READ)).toString()
     }
 
-    override fun readDiscreteHistory(fromTime: Long, max: Int): String {
+    private data class DiscreteSnapshot(val from: Long, val rows: List<JSONObject>)
+    private val discreteLock = Any()
+    private var discreteSnapshot: DiscreteSnapshot? = null
+
+    override fun readDiscreteHistory(fromTime: Long, offset: Int, max: Int): String {
         enforceOwner()
-        val dump = readAppOpsDump("Discrete accesses:", "--include-discrete", "0")
-        return DiscreteHistory.parse(dump, watchedOps, fromTime, max.coerceIn(1, MAX_HISTORY_PER_READ)).toString()
+        synchronized(discreteLock) {
+            val rows = if (offset == 0) {
+                discreteSnapshot = null
+                val dump = readAppOpsDump("Discrete accesses:", "--include-discrete", "0")
+                DiscreteHistory.parse(dump, watchedOps, fromTime)
+                    .also { discreteSnapshot = DiscreteSnapshot(fromTime, it) }
+            } else {
+                checkNotNull(discreteSnapshot?.takeIf { it.from == fromTime }?.rows) { "Missing discrete AppOps snapshot" }
+            }
+            val page = DiscreteHistory.page(rows, offset, max.coerceIn(1, MAX_HISTORY_PER_READ))
+            if (!page.getBoolean("more")) discreteSnapshot = null
+            return page.toString()
+        }
     }
 
     private data class HistorySnapshot(val since: Long, val slots: org.json.JSONArray)
@@ -168,23 +183,26 @@ internal class ProbeService(
             .toString()
     }
 
-    @Volatile private var finished = false
+    private var stopPartial: Boolean? = null
     @Volatile private var stopping = false
     val isRecording get() = !stopping
     var finishEventLog: () -> Unit = {}
 
     @Synchronized
-    override fun finishRecording() {
+    override fun finishRecording(): Boolean {
         enforceOwner()
-        if (finished) return
+        stopPartial?.let { return it }
         stopping = true
         accessWatcher.finishRecording()
-        tracer.finishRecording()
-        connectionWatcher.finishRecording()
+        val traceIncomplete = tracer.finishRecording()
+        val connectionsIncomplete = connectionWatcher.finishRecording()
         finishEventLog()
-        spool.append(JSONObject().put("kind", "monitor").put("state", "stop").put("reason", "requested")
+        val partial = traceIncomplete || connectionsIncomplete
+        val reason = if (partial) ProbeProtocol.STOP_PARTIAL_TRACE else "requested"
+        spool.append(JSONObject().put("kind", "monitor").put("state", "stop").put("reason", reason)
             .put("t", System.currentTimeMillis()))
-        finished = true
+        stopPartial = partial
+        return partial
     }
 
     override fun shutdown() {
