@@ -4,6 +4,14 @@ Notable changes to Jiumi, newest first. The English in-app update notes come fro
 Chinese in-app notes are supplied when preparing the release.
 Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+- With root, or Shizuku started with root, freeze, unfreeze, delete and restore apps as root, so system apps the shell cannot change can be frozen too. Shizuku started with root is now supported.
+- Detect when an app Jiumi froze is turned on again, mark it Freeze lifted and optionally freeze it again.
+- Resume an interrupted session on its own, where the connection method allows, after a restart, an update or a lost monitor, and start promptly after updates and boots.
+- Add notification settings: a compact running notice with a stop button, an optional session summary and attention alerts.
+- Uninstall only for the current user, group app management settings, and keep monitoring running when ADB persistence is changed.
+
 ## [0.2.3]
 
 - Fix setup getting stuck after root access has been granted. Jiumi checks existing grants automatically and reports when switching to the Android shell user fails.
