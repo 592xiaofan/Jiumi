@@ -12,6 +12,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import android.system.OsConstants
 import com.ybblab.jiumi.JiumiApp
 import com.ybblab.jiumi.R
@@ -29,6 +30,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -44,13 +46,14 @@ class DomainVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
     private var reader: Thread? = null
     private var output: FileOutputStream? = null
+    private var tcpEndpoint: DnsTcp? = null
     /**
      * One thread per query in flight. A page asks dozens of names at once, and each waits on the
      * network; with a queue in front, queries would wait on each other and apps would time out and
      * ask again. Only beyond [MAX_IN_FLIGHT] at once is a query dropped, which the asking app retries.
      */
     private val pool = ThreadPoolExecutor(4, MAX_IN_FLIGHT, 30, TimeUnit.SECONDS, java.util.concurrent.SynchronousQueue(),
-        ThreadPoolExecutor.DiscardPolicy())
+        ThreadPoolExecutor.AbortPolicy())
     private var flusher: ScheduledExecutorService? = null
     private lateinit var recorder: DomainRecorder
     private lateinit var connectivity: ConnectivityManager
@@ -109,6 +112,7 @@ class DomainVpnService : VpnService() {
     private fun establish(): Boolean {
         val fd = runCatching {
             Builder()
+                .setMtu(MTU)
                 .setSession(getString(R.string.domains_vpn_session))
                 .addAddress(VPN_ADDRESS, 32)
                 .addDnsServer(DNS_ADDRESS)
@@ -121,45 +125,78 @@ class DomainVpnService : VpnService() {
         tun = fd
         output = FileOutputStream(fd.fileDescriptor)
         val input = FileInputStream(fd.fileDescriptor)
-        reader = Thread({ readLoop(input) }, "dns-vpn").apply { start() }
+        val tcp = DnsTcp(SystemClock::elapsedRealtime, ::writePacket, ::answerTcp)
+        tcpEndpoint = tcp
+        reader = Thread({ readLoop(input, tcp) }, "dns-vpn").apply { start() }
         flusher = Executors.newSingleThreadScheduledExecutor().apply {
             scheduleWithFixedDelay({ runCatching { recorder.flush() } }, FLUSH_S, FLUSH_S, TimeUnit.SECONDS)
+            scheduleWithFixedDelay(tcp::tick, 250, 250, TimeUnit.MILLISECONDS)
         }
         _running.value = true
         return true
     }
 
-    private fun readLoop(input: FileInputStream) {
-        val buffer = ByteArray(MTU)
+    private fun readLoop(input: FileInputStream, tcp: DnsTcp) {
+        val buffer = ByteArray(MAX_PACKET)
         while (!Thread.currentThread().isInterrupted) {
             val n = runCatching { input.read(buffer) }.getOrElse { return }
             if (n <= 0) continue
-            val datagram = DnsPacket.readUdp4(buffer, n) ?: continue
-            if (datagram.dstPort != 53) continue
-            pool.execute { answer(datagram) }
+            val datagram = DnsPacket.readUdp4(buffer, n)
+            if (datagram != null) {
+                if (datagram.dstPort == 53 && datagram.dst.contentEquals(DNS_IP_BYTES)) submit { answerUdp(datagram) }
+            } else {
+                DnsPacket.readTcp4(buffer, n)?.takeIf { it.dstPort == 53 && it.dst == DNS_IP }?.let(tcp::receive)
+            }
         }
     }
 
-    private fun answer(q: DnsPacket.Datagram) {
+    private fun submit(task: () -> Unit): Boolean = try {
+        pool.execute(task)
+        true
+    } catch (_: RejectedExecutionException) {
+        false
+    }
+
+    private fun writePacket(packet: ByteArray) {
+        runCatching { synchronized(this) { output?.write(packet) } }
+    }
+
+    private fun answerUdp(q: DnsPacket.Datagram) {
         val t = System.currentTimeMillis()
         var uid = -1
-        // Who asked is looked up while the answer is on its way, so it adds nothing to the wait,
-        // and before the answer is handed back, while the asking socket is still open.
-        val reply = forward(q.payload) { uid = ownerOf(q) }
+        // Look the caller up while the request is in flight and its socket is still open.
+        val reply = forward(q.payload) { uid = ownerOf(OsConstants.IPPROTO_UDP, q.src, q.srcPort, q.dst, q.dstPort) }
         if (reply != null) {
-            val packet = DnsPacket.writeUdp4(q.dst, q.dstPort, q.src, q.srcPort, reply)
-            runCatching { synchronized(this) { output?.write(packet) } }
+            val payload = if (reply.size <= DnsPacket.udpLimit(q.payload, MTU)) reply
+                else DnsPacket.errorReply(q.payload, 0, truncated = true)
+            writePacket(DnsPacket.writeUdp4(q.dst, q.dstPort, q.src, q.srcPort, payload))
         }
-        val query = DnsPacket.readMessage(q.payload)
-        val name = query?.name ?: return
-        val result = reply?.let { DnsPacket.readMessage(it) }
+        record(t, uid, q.payload, reply)
+    }
+
+    private fun answerTcp(peer: DnsPacket.TcpSegment, message: ByteArray, complete: (ByteArray?) -> Unit) {
+        if (!submit {
+            val t = System.currentTimeMillis()
+            val uid = ownerOf(OsConstants.IPPROTO_TCP, DnsPacket.address(peer.src), peer.srcPort,
+                DnsPacket.address(peer.dst), peer.dstPort)
+            val network = upstream
+            val reply = servers.take(2).firstNotNullOfOrNull { server -> runCatching { tcp(server, network, message) }.getOrNull() }
+            complete(reply)
+            record(t, uid, message, reply)
+        }) complete(null)
+    }
+
+    private fun record(t: Long, uid: Int, message: ByteArray, reply: ByteArray?) {
+        val query = DnsPacket.readMessage(message) ?: return
+        val name = query.name ?: return
+        val result = reply?.let(DnsPacket::readMessage)
         recorder.add(t, uid, name, query.type, result?.addresses.orEmpty(), result?.rcode ?: -1)
     }
 
-    /** The app that asked: the system resolver sends each query on a socket owned by the app it asks for. */
-    private fun ownerOf(q: DnsPacket.Datagram): Int = runCatching {
-        connectivity.getConnectionOwnerUid(OsConstants.IPPROTO_UDP,
-            InetSocketAddress(InetAddress.getByAddress(q.src), q.srcPort), InetSocketAddress(InetAddress.getByAddress(q.dst), q.dstPort))
+    /** The system resolver uses a socket owned by the app it asks for. */
+    private fun ownerOf(protocol: Int, src: ByteArray, srcPort: Int, dst: ByteArray, dstPort: Int): Int = runCatching {
+        connectivity.getConnectionOwnerUid(protocol, InetSocketAddress(InetAddress.getByAddress(src), srcPort),
+            InetSocketAddress(InetAddress.getByAddress(dst), dstPort))
     }.getOrDefault(-1)
 
     /**
@@ -174,7 +211,7 @@ class DomainVpnService : VpnService() {
         try {
             val network = upstream
             val targets = servers.take(2)
-            if (targets.isEmpty() || query.size < 2) return null
+            if (targets.isEmpty() || query.size < 12) return null
             val (server, reply) = runCatching { udp(targets, network, query, once) }.getOrNull() ?: return null
             val truncated = DnsPacket.readMessage(reply)?.truncated == true
             return if (truncated) runCatching { tcp(server, network, query) }.getOrNull() ?: reply else reply
@@ -202,7 +239,7 @@ class DomainVpnService : VpnService() {
                 val packet = DatagramPacket(buffer, buffer.size)
                 try { socket.receive(packet) } catch (_: java.net.SocketTimeoutException) { continue }
                 // Only the answer to this query, from a server it was sent to.
-                if (packet.length < 2 || buffer[0] != query[0] || buffer[1] != query[1]) continue
+                if (packet.port != 53 || !isAnswerTo(query, buffer, packet.length)) continue
                 val from = packet.address
                 if (targets.none { it == from }) continue
                 return from to buffer.copyOf(packet.length)
@@ -220,8 +257,14 @@ class DomainVpnService : VpnService() {
             socket.connect(InetSocketAddress(server, 53), TCP_TIMEOUT_MS)
             DataOutputStream(socket.getOutputStream()).apply { writeShort(query.size); write(query); flush() }
             val input = DataInputStream(socket.getInputStream())
-            ByteArray(input.readUnsignedShort()).also { input.readFully(it) }
+            ByteArray(input.readUnsignedShort()).also {
+                input.readFully(it)
+                check(isAnswerTo(query, it, it.size)) { "Unexpected DNS answer" }
+            }
         }
+
+    private fun isAnswerTo(query: ByteArray, response: ByteArray, length: Int): Boolean =
+        length >= 12 && response[0] == query[0] && response[1] == query[1] && response[2].toInt() and 0x80 != 0
 
     override fun onRevoke() {
         // Another VPN took over, or the user turned this one off in the system's settings.
@@ -241,6 +284,7 @@ class DomainVpnService : VpnService() {
         reader?.interrupt(); reader = null
         flusher?.shutdownNow(); flusher = null
         runCatching { tun?.close() }; tun = null; output = null
+        tcpEndpoint?.clear(); tcpEndpoint = null
         runCatching { recorder.flush() }
         _running.value = false
     }
@@ -250,7 +294,10 @@ class DomainVpnService : VpnService() {
         /** Private addresses of this VPN; only the DNS address is routed into it. */
         private const val VPN_ADDRESS = "10.215.173.1"
         private const val DNS_ADDRESS = "10.215.173.2"
-        private const val MTU = 32767
+        private const val DNS_IP = 0x0AD7AD02
+        private val DNS_IP_BYTES = DnsPacket.address(DNS_IP)
+        private const val MTU = 1_500
+        private const val MAX_PACKET = 65_535
         private const val MAX_DNS = 65535
         /** The resolver itself asks again after about 5 s; an answer later than this is of no use. */
         private const val UDP_TIMEOUT_MS = 4_000L
