@@ -508,7 +508,7 @@
     <string name="setup_next">接下来 · %1$d/%2$d</string>
     <string name="setup_privacy">数据只留在本机</string>
     <string name="access_wireless_hint">无需 Root，本机配对一次</string>
-    <string name="access_root_hint">Magisk、KernelSU 或 APatch，以 Root 身份冻结</string>
+    <string name="access_root_hint">Magisk、KernelSU 或 APatch，以 Root 身份管理应用</string>
     <string name="access_shizuku_hint">已安装 Shizuku</string>
     <string name="setup_step_notify_title">允许通知</string>
     <string name="setup_step_notify_desc">配对码要在揪咪的通知里输入。</string>

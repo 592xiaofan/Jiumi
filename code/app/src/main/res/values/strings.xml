@@ -515,7 +515,7 @@
     <string name="setup_next">Next · %1$d/%2$d</string>
     <string name="setup_privacy">Your data stays on this phone</string>
     <string name="access_wireless_hint">No root. Pair once on this phone</string>
-    <string name="access_root_hint">Magisk, KernelSU or APatch. Freezes as root</string>
+    <string name="access_root_hint">Magisk, KernelSU or APatch. Manages apps as root</string>
     <string name="access_shizuku_hint">Shizuku is installed</string>
     <string name="setup_step_notify_title">Allow notifications</string>
     <string name="setup_step_notify_desc">You enter the pairing code in Jiumi\'s notification.</string>
