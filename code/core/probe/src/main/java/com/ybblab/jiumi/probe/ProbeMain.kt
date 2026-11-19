@@ -28,6 +28,8 @@ object ProbeMain {
     private const val LOCK_WAIT_MS = 10_000L
     /** How often the monitor notes that it is alive, so the app can tell covered time from gaps. */
     private const val HEARTBEAT_MS = 5 * 60_000L
+    /** Left by a second start that found this monitor running, asking it to offer itself again. */
+    private const val REOFFER_FILE = "reoffer"
     @Volatile private var spool: EventSpool? = null
     private val offerDelaysMs = longArrayOf(0, 700, 2_000, 5_000, 10_000)
 
@@ -42,7 +44,7 @@ object ProbeMain {
             if (args.size != 3 || args[1].toIntOrNull() != ProbeProtocol.VERSION) exit(0, "unexpected arguments")
             val packageName = args[0]
             val apkPath = args[2]
-            if (!acquireLock(packageName)) exit(0, "another monitor is already running")
+            if (!acquireLock(packageName)) exit(0, "another monitor is already running; asked it to offer again")
             // A signal ends app_process without cleanup and orphans its watcher; the supervisor's
             // restart (or the next start) removes it. Only this monitor's own command line matches.
             removeOrphanedWatchers()
@@ -81,6 +83,14 @@ object ProbeMain {
                     if (identity.state(context) != PackageIdentity.State.CURRENT) {
                         recordState("stop", "apk_changed")
                         exit(0, "APK changed or removed")
+                    }
+                    val reoffer = File(dataDirectory, REOFFER_FILE)
+                    if (reoffer.exists()) {
+                        reoffer.delete()
+                        if (!service.isAttached) {
+                            log("asked to offer again")
+                            offer.offerUntilAttached()
+                        }
                     }
                     handler.postDelayed(this, PACKAGE_CHECK_INTERVAL_MS)
                 }
@@ -132,9 +142,17 @@ object ProbeMain {
         file.parentFile?.mkdirs()
         val channel = FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
         val deadline = System.currentTimeMillis() + LOCK_WAIT_MS
+        var asked = false
         while (true) {
             lock = runCatching { channel.tryLock() }.getOrNull()
             if (lock != null || System.currentTimeMillis() >= deadline) break
+            if (!asked) {
+                // The app started a monitor because it has none, so the running one has lost touch with
+                // it (its offers went unanswered). Ask that one to offer itself again at once; one that
+                // is going (after an update) leaves the lock to this one instead.
+                runCatching { File(file.parentFile, REOFFER_FILE).createNewFile() }
+                asked = true
+            }
             Thread.sleep(250)
         }
         if (lock == null) channel.close()

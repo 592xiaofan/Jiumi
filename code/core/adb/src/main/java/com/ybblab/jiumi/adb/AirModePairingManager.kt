@@ -83,6 +83,16 @@ class AirModePairingManager(
 
     /** A local port opened in this boot, ready to connect to without Wi-Fi. */
     val hasLocalAdbPort: Boolean get() = _persistenceEnabled.value && savedLocalPort() != null
+
+    /**
+     * Whether adbd may be restarted now. Opening or closing the local port restarts adbd, and the
+     * system then ends every process adbd started, the monitor among them, wherever it detached to.
+     * The app says no while the monitor runs; the change waits for the next start or stop.
+     */
+    @Volatile var adbdRestartAllowed: () -> Boolean = { true }
+
+    /** Persistence was turned off while the port could not be closed yet; [closePendingLocalListener] does it. */
+    val localListenerClosePending: Boolean get() = !_persistenceEnabled.value && savedLocalPort() != null
     @Volatile private var automaticReconnectSuspended = true
     private val _state = MutableStateFlow(PairingState.IDLE)
     val state: StateFlow<PairingState> = _state.asStateFlow()
@@ -569,7 +579,7 @@ class AirModePairingManager(
             // With persistence on, the first TLS connection opens the local listener before anyone
             // uses the shell: adbd restarts to do it, which ends this connection, so the attempt
             // continues on the local port instead and is reported connected only once that holds.
-            if (!local && wantsLocalListener() && openLocalListener(connection)) {
+            if (!local && wantsLocalListener() && adbdRestartAllowed() && openLocalListener(connection)) {
                 connection.runCatching { close() }
                 val localPort = savedLocalPort() ?: error("Local port was not recorded")
                 markPairingTrusted(connectPort = port)
@@ -736,8 +746,20 @@ class AirModePairingManager(
      * Turns persistence off and closes the local port, by asking adbd to return to USB mode. The port
      * stays recorded when that cannot be confirmed, so it can be closed later.
      */
-    suspend fun disablePersistence(): Boolean = connectionMutex.withLock {
+    suspend fun disablePersistence(): Boolean {
         setPersistenceEnabled(false)
+        if (!adbdRestartAllowed()) {
+            log.event("local listener close deferred: adbd restart not allowed now")
+            return false
+        }
+        return closeLocalListener()
+    }
+
+    /** Closes a port left open by [disablePersistence] while adbd could not be restarted. */
+    suspend fun closePendingLocalListener(): Boolean =
+        if (localListenerClosePending && adbdRestartAllowed()) closeLocalListener() else false
+
+    private suspend fun closeLocalListener(): Boolean = connectionMutex.withLock {
         val port = savedLocalPort() ?: run {
             prefs.edit().remove(KEY_LOCAL_PORT).remove(KEY_LOCAL_PORT_BOOT).apply()
             return@withLock true

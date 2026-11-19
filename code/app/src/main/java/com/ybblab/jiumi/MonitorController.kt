@@ -452,28 +452,23 @@ class MonitorController(
     /** ADB persistence: the monitor can be started without Wi-Fi, through a local port, until a restart. */
     val adbPersistence: StateFlow<Boolean> get() = pairing.persistenceEnabled
 
+    /** A local port is open for this boot: the monitor can be started without Wi-Fi. */
+    val hasLocalAdbPort: Boolean get() = pairing.hasLocalAdbPort
+
+    /** ADB persistence was turned off while the monitor ran; its port closes once monitoring stops. */
+    val localPortClosePending: Boolean get() = pairing.localListenerClosePending
+
     /** The local port needs USB debugging on as well; null when the phone will not say. */
     fun usbDebuggingEnabled(): Boolean? = pairing.isUsbDebuggingEnabled()
 
     /**
-     * Turns ADB persistence on or off. Turning it on while the monitor runs opens the local port right
-     * away with a short connection (otherwise the next start opens it); off closes the port.
+     * Turns ADB persistence on or off. Opening or closing the local port restarts adbd, which ends the
+     * monitor with it, so neither happens while it runs: the port opens with the next start's
+     * connection, and one turned off is closed once monitoring stops (see [stopMonitor]).
      */
     fun setAdbPersistence(on: Boolean) {
-        if (!on) {
-            scope.launch(Dispatchers.IO) { pairing.disablePersistence() }
-            return
-        }
-        pairing.setPersistenceEnabled(true)
-        if (probe.service.value == null || !isPaired || local.value.busy != null) return
-        scope.launch(Dispatchers.IO) {
-            if (!pairing.reconnect(restoreWirelessDebugging = false)) return@launch
-            withTimeoutOrNull(CONNECT_TIMEOUT_MS + 25_000) {
-                pairing.state.first { it == PairingState.CONNECTED || pairing.failure.value != null }
-            }
-            // The monitor does not depend on ADB; the port stays open without this connection.
-            pairing.disconnect()
-        }
+        if (on) pairing.setPersistenceEnabled(true)
+        else scope.launch(Dispatchers.IO) { pairing.disablePersistence() }
     }
 
     fun setExpertMode(on: Boolean) {
@@ -522,29 +517,31 @@ class MonitorController(
                     access.method.value == com.ybblab.jiumi.access.AccessMethod.WIRELESS) startMonitor()
             }
         }
+        // Restarting adbd ends every process it started, the monitor among them; ADB persistence waits.
+        pairing.adbdRestartAllowed = { probe.service.value == null }
         scope.launch {
+            var hadMonitor = false
             probe.service.collect { service ->
                 if (service == null) {
                     local.update { l -> l.copy(footprint = null) }
                     showIndicator()
+                    // Lost without being stopped from here: try to pick the session up again.
+                    if (hadMonitor && local.value.busy != Busy.STOPPING) resumeInterrupted("monitor lost")
                 } else {
-                    // The APK this monitor runs from; an update stops it (see [resumeAfterUpdate]).
-                    settings.edit().putLong(KEY_MONITOR_APK, installedAt()).apply()
+                    // A start that gave up waiting is answered all the same; it did not fail.
+                    local.update { l -> if (l.problem == Problem.START) l.copy(problem = null) else l }
                     configure(service)
                     refreshFootprint()
                     refresh()
                 }
+                hadMonitor = service != null
             }
         }
         refresh()
-        // Some makers (Xiaomi among them) do not deliver the update broadcast to an app without
-        // autostart; opening the app then picks the session up instead.
-        if (settings.getLong(KEY_MONITOR_APK, 0L).let { it != 0L && it != installedAt() }) resumeAfterUpdate()
+        // A session left open by a restart, an update or a monitor that was ended is picked up again
+        // whenever the app starts; makers that withhold the update or boot broadcast are covered too.
+        resumeInterrupted("app start")
     }
-
-    /** When this APK was installed or last updated. */
-    private fun installedAt(): Long =
-        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime }.getOrDefault(0L)
 
     /** Paired now, read straight from pairing rather than from [state], which may not have caught up. */
     val isPaired: Boolean get() = pairing.pairingTrustState.value == PairingTrustState.PAIRED
@@ -557,12 +554,14 @@ class MonitorController(
     fun cancelPairing() = pairing.stopDiscovery()
 
     /**
-     * After this app was updated: the monitor ran from the old APK and stopped with it. When a session
-     * is still open, start it again from the new one, so an update does not silently end monitoring.
-     * Only an ADB channel that is still up is used; Wireless debugging is not turned on unasked.
+     * When a session is still open but no monitor is connected (after an app update, a restart of the
+     * phone, or a monitor that was ended), starts it again the way it was started, so an interruption
+     * does not silently end monitoring. A monitor that only lost touch with the app offers itself
+     * again within seconds, so this waits a moment first. Only a channel that needs nobody is used:
+     * Wireless debugging is not turned on unasked, and a root or Shizuku prompt is not opened.
      */
-    fun resumeAfterUpdate(): kotlinx.coroutines.Job = scope.launch(Dispatchers.IO) {
-        // The old monitor may still be offering itself for a moment; give it time to go.
+    fun resumeInterrupted(trigger: String): kotlinx.coroutines.Job = scope.launch(Dispatchers.IO) {
+        // A monitor restarted by its supervisor, or still offering itself, gets there first.
         kotlinx.coroutines.delay(RESUME_DELAY_MS)
         val skip = when {
             probe.service.value != null -> "monitor running"
@@ -571,10 +570,8 @@ class MonitorController(
             !canStartUnattended() -> "${access.method.value} not ready"
             else -> null
         }
-        android.util.Log.i(TAG, "resume after update: ${skip ?: "starting"}")
+        android.util.Log.i(TAG, "resume ($trigger): ${skip ?: "starting"}")
         if (skip != null) return@launch
-        // Asked once per update, whether or not the start works; after that it is the user's to resume.
-        settings.edit().putLong(KEY_MONITOR_APK, installedAt()).apply()
         startMonitor(restoreWirelessDebugging = false)
         // Held until the start is settled, so the process is not let go halfway.
         withTimeoutOrNull(CONNECT_TIMEOUT_MS + START_TIMEOUT_MS) { local.first { it.busy == null } }
@@ -597,7 +594,9 @@ class MonitorController(
                 }
                 if (problem == null) openSessionIfNone()
             } finally {
-                local.update { it.copy(busy = null, problem = problem) }
+                // A monitor that answered after the wait ran out still counts as started.
+                val settled = problem.takeUnless { probe.service.value != null }
+                local.update { it.copy(busy = null, problem = settled) }
             }
         }
     }
@@ -728,6 +727,8 @@ class MonitorController(
             showIndicator()
             local.update { it.copy(busy = null) }
             refresh()
+            // A port ADB persistence was turned off for while the monitor ran can be closed now.
+            if (probe.service.value == null) runCatching { pairing.closePendingLocalListener() }
         }
     }
 
@@ -952,7 +953,6 @@ class MonitorController(
         const val TAG = "JiumiSync"
         const val KEY_SPOOL_MB = "spool_limit_mb"
         const val KEY_ALLOW_REMOVE = "allow_remove_preinstalled"
-        const val KEY_MONITOR_APK = "monitor_apk_installed_at"
         const val KEY_EXPERT = "expert_mode"
         const val DEFAULT_SPOOL_MB = 256
         const val CONNECT_TIMEOUT_MS = 30_000L

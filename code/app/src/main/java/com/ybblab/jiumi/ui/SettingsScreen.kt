@@ -144,7 +144,10 @@ fun SettingsScreen(
                         Chevron()
                     }
                 }
-                GroupFooter(stringResource(R.string.settings_pairing_desc))
+                // Without USB debugging, adbd stops when the system turns Wireless debugging off (as it does
+                // on leaving Wi-Fi), and the monitor it started ends with it.
+                if (usbOn == false) GroupFooter(stringResource(R.string.settings_usb_debugging_off), warning = true)
+                else GroupFooter(stringResource(R.string.settings_pairing_desc))
                 Spacer(Modifier.height(16.dp))
                 // ADB persistence: start the monitor without Wi-Fi, through a local port, until a restart.
                 Card {
@@ -159,8 +162,13 @@ fun SettingsScreen(
                         JiumiSwitch(persistence, onCheckedChange = controller::setAdbPersistence)
                     }
                 }
-                GroupFooter(stringResource(if (needsUsb) R.string.settings_adb_persistence_usb_required else R.string.settings_adb_persistence_desc),
-                    warning = needsUsb)
+                GroupFooter(stringResource(when {
+                    needsUsb -> R.string.settings_adb_persistence_usb_required
+                    // Opening or closing the port restarts adbd, which would end the running monitor.
+                    state.running && persistence && !controller.hasLocalAdbPort -> R.string.settings_adb_persistence_next_start
+                    state.running && !persistence && controller.localPortClosePending -> R.string.settings_adb_persistence_close_after_stop
+                    else -> R.string.settings_adb_persistence_desc
+                }), warning = needsUsb)
             }
             item { GroupTitle(stringResource(R.string.section_monitoring), Modifier.padding(top = 24.dp)) }
             item {

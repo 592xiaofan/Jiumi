@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
     <!-- The persistent notification while a monitoring session runs. -->
+    <!-- An open monitoring session is picked up again after the phone restarts. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- Names and icons of every app that appears in the record. -->
@@ -60,12 +62,15 @@
             android:exported="true"
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
-        <!-- After an update, an open monitoring session is started again from the new APK. -->
+        <!-- After an update or a restart of the phone, an open monitoring session is started again. -->
         <receiver
-            android:name=".UpdateReceiver"
+            android:name=".ResumeReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
         <!-- Domain recording: a VPN that carries DNS queries only, set up when the user turns it on. -->

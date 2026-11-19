@@ -17,7 +17,7 @@
     <string name="action_unpair">取消配对</string>
     <string name="cap_unknown">其他</string>
     <string name="error_connect">无法建立调试连接，请确认已连接 Wi-Fi 并打开无线调试。</string>
-    <string name="error_service_start">监测服务没有启动。</string>
+    <string name="error_service_start">监测没有启动，或启动后没有回应。请重试；仍不行时可以重启手机后再试。</string>
     <string name="range_today">今天</string>
     <string name="range_week">7 天</string>
     <string name="record_empty_running">这段时间还没有记录。</string>
@@ -563,9 +563,12 @@
     <string name="source_detail_sideloaded">自行安装（非应用商店）</string>
     <string name="source_detail_preinstalled">系统预装</string>
     <string name="settings_pairing_desc">揪咪借助无线调试获得启动监测所需的权限，配对一次即可。</string>
+    <string name="settings_usb_debugging_off">USB 调试未开启。系统关闭无线调试时（例如断开或切换 Wi-Fi），正在运行的监测会随之结束。开启 USB 调试可以避免。</string>
     <string name="settings_adb_persistence">ADB 持久化</string>
     <string name="settings_adb_persistence_desc">开启后，断网、关掉无线调试也能启动监测。手机重启后会失效，需要再连一次无线调试。</string>
     <string name="settings_adb_persistence_usb_required">需要开启 USB 调试，点此前往开发者选项。</string>
+    <string name="settings_adb_persistence_next_start">将在下次启动监测时生效：现在打开本机端口会重启调试服务，正在运行的监测会被结束。</string>
+    <string name="settings_adb_persistence_close_after_stop">本机端口会在停止监测后关闭：现在关闭会重启调试服务，正在运行的监测会被结束。</string>
     <string name="about_not_public">尚未公开</string>
     <string name="update_auto">自动检查更新</string>
     <string name="update_downloading_short">正在下载</string>

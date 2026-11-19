@@ -17,7 +17,7 @@
     <string name="action_unpair">Unpair</string>
     <string name="cap_unknown">Other</string>
     <string name="error_connect">Could not open the debugging connection. Make sure Wi-Fi and Wireless debugging are on.</string>
-    <string name="error_service_start">The monitor did not start.</string>
+    <string name="error_service_start">The monitor did not start, or did not answer after starting. Try again; if it still fails, restart the phone and try once more.</string>
     <string name="range_today">Today</string>
     <string name="range_week">7 days</string>
     <string name="record_empty_running">Nothing recorded in this period yet.</string>
@@ -570,9 +570,12 @@
     <string name="source_detail_sideloaded">Installed directly (not from a store)</string>
     <string name="source_detail_preinstalled">Preinstalled</string>
     <string name="settings_pairing_desc">Jiumi gets the access it needs to start monitoring through Wireless debugging. Pair once.</string>
+    <string name="settings_usb_debugging_off">USB debugging is off. When Android turns Wireless debugging off (on leaving or changing Wi-Fi, for example), a running monitor ends with it. Turning on USB debugging avoids this.</string>
     <string name="settings_adb_persistence">ADB persistence</string>
     <string name="settings_adb_persistence_desc">When on, monitoring starts even offline or with Wireless debugging off. A restart undoes it; connect over Wireless debugging once more then.</string>
     <string name="settings_adb_persistence_usb_required">Needs USB debugging on; tap to open Developer options.</string>
+    <string name="settings_adb_persistence_next_start">Takes effect the next time monitoring starts: opening the local port now restarts the debugging service, which would end the running monitor.</string>
+    <string name="settings_adb_persistence_close_after_stop">The local port closes once monitoring stops: closing it now restarts the debugging service, which would end the running monitor.</string>
     <string name="about_not_public">Not public yet</string>
     <string name="update_auto">Check automatically</string>
     <string name="update_downloading_short">Downloading</string>
