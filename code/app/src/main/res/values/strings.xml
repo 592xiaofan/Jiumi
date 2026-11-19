@@ -45,8 +45,9 @@
     <string name="settings_title">Settings</string>
     <string name="settings_group_monitor">Monitor settings</string>
     <string name="settings_monitor_summary">Service status and domain recording</string>
-    <string name="settings_group_app">App</string>
-    <string name="settings_group_other">Other</string>
+    <string name="settings_group_app">App settings</string>
+    <string name="settings_group_display">Display settings</string>
+    <string name="settings_group_about">About Jiumi</string>
     <string name="settings_management">Management</string>
     <string name="settings_notifications_summary">Ongoing notification, summary and alerts</string>
     <string name="settings_domain_recording">Domain recording</string>
@@ -55,7 +56,7 @@
     <string name="settings_adb_options">Advanced ADB options</string>
     <string name="settings_records">Logs</string>
     <string name="settings_records_summary">Monitoring history, export and buffer limit</string>
-    <string name="settings_management_summary">Freezing, preinstalled apps and expert mode</string>
+    <string name="settings_management_summary">Freezing and preinstalled apps</string>
     <string name="settings_about_summary">Version, updates and open-source licenses</string>
     <string name="section_appearance">Appearance</string>
     <string name="settings_theme">Theme</string>

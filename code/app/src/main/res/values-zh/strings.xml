@@ -45,8 +45,9 @@
     <string name="settings_title">设置</string>
     <string name="settings_group_monitor">监测设置</string>
     <string name="settings_monitor_summary">服务状态与域名记录</string>
-    <string name="settings_group_app">应用</string>
-    <string name="settings_group_other">其他</string>
+    <string name="settings_group_app">应用设置</string>
+    <string name="settings_group_display">显示设置</string>
+    <string name="settings_group_about">关于揪咪</string>
     <string name="settings_management">管理</string>
     <string name="settings_notifications_summary">常驻通知、摘要与提醒</string>
     <string name="settings_domain_recording">域名记录</string>
@@ -55,7 +56,7 @@
     <string name="settings_adb_options">ADB 高级选项</string>
     <string name="settings_records">日志</string>
     <string name="settings_records_summary">监测记录、导出与缓冲上限</string>
-    <string name="settings_management_summary">冻结、预装应用与专家模式</string>
+    <string name="settings_management_summary">冻结与预装应用</string>
     <string name="settings_about_summary">版本、更新与开源许可</string>
     <string name="section_appearance">外观</string>
     <string name="settings_theme">主题</string>

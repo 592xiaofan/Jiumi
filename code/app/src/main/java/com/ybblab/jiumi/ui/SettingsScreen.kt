@@ -59,7 +59,8 @@ internal enum class SettingsSection(
     MONITORING(R.string.section_monitoring, R.string.settings_monitor_summary, JiumiIcons.Activity),
     NOTIFICATIONS(R.string.section_notifications, R.string.settings_notifications_summary, JiumiIcons.Notifications),
     RECORDS(R.string.settings_records, R.string.settings_records_summary, JiumiIcons.Storage),
-    MANAGEMENT(R.string.settings_management, R.string.settings_management_summary, JiumiIcons.Shield)
+    MANAGEMENT(R.string.settings_management, R.string.settings_management_summary, JiumiIcons.Shield),
+    ADVANCED(R.string.section_advanced, R.string.settings_expert_mode, JiumiIcons.Cpu)
 }
 
 @Composable
@@ -96,6 +97,12 @@ internal fun SettingsScreen(
                 Card {
                     SettingsSectionRow(SettingsSection.MANAGEMENT, onOpenSection)
                     InsetDivider()
+                    SettingsSectionRow(SettingsSection.ADVANCED, onOpenSection)
+                }
+            }
+            item {
+                GroupTitle(stringResource(R.string.settings_group_display), Modifier.padding(top = 24.dp))
+                Card {
                     ListRow(stringResource(R.string.section_appearance), subtitle = themeLabel(theme),
                         leading = { IconTile(JiumiIcons.Palette) }, onClick = onOpenTheme) {
                         Chevron()
@@ -108,7 +115,7 @@ internal fun SettingsScreen(
                 }
             }
             item {
-                GroupTitle(stringResource(R.string.settings_group_other), Modifier.padding(top = 24.dp))
+                GroupTitle(stringResource(R.string.settings_group_about), Modifier.padding(top = 24.dp))
                 Card {
                     ListRow(stringResource(R.string.settings_about), subtitle = stringResource(R.string.settings_about_summary),
                         leading = { IconTile(JiumiIcons.Info) }, onClick = onOpenAbout) {
@@ -344,12 +351,10 @@ internal fun SettingsSectionScreen(
                             )
                         }
                     }
-                    item { Spacer(Modifier.height(24.dp)) }
-                    item { GroupTitle(stringResource(R.string.section_advanced)) }
-                    item {
-                        Card { ExpertModeRow(state.expertMode, controller::setExpertMode) }
-                        GroupFooter(stringResource(R.string.settings_expert_mode_desc))
-                    }
+                }
+                SettingsSection.ADVANCED -> item {
+                    Card { ExpertModeRow(state.expertMode, controller::setExpertMode) }
+                    GroupFooter(stringResource(R.string.settings_expert_mode_desc))
                 }
             }
         }

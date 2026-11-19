@@ -55,14 +55,11 @@ class Acknowledgements(val entries: List<Entry>) {
     }
 }
 
-/** The app's name and version, updates, where its code and license are, and the licenses of what it uses. */
+/** The app’s identity, updates, links and licenses. */
 @Composable
 fun AboutScreen(labels: AppLabels, onBack: () -> Unit, onOpenLicenses: () -> Unit) {
     val context = LocalContext.current
     val updates = remember { com.ybblab.jiumi.update.Updates(context.applicationContext) }
-    val version = remember {
-        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty()
-    }
     SubScreen(stringResource(R.string.settings_about), onBack) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
@@ -75,31 +72,22 @@ fun AboutScreen(labels: AppLabels, onBack: () -> Unit, onOpenLicenses: () -> Uni
                     Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge, color = Ink.primary)
                     Text(stringResource(R.string.app_tagline), style = MaterialTheme.typography.bodyMedium, color = Ink.secondary,
                         modifier = Modifier.padding(top = 4.dp))
-                    Text(stringResource(R.string.about_version, version), style = MaterialTheme.typography.bodySmall, color = Ink.secondary,
-                        modifier = Modifier.padding(top = 2.dp))
                 }
             }
             item {
-                // The repository is set when the project is published; until then the links have nowhere to go.
-                val repo = com.ybblab.jiumi.BuildConfig.REPOSITORY
+                val repo = com.ybblab.jiumi.BuildConfig.REPOSITORY.ifBlank { "ybblab/Jiumi" }
+                val sourceUrl = "https://github.com/$repo"
                 Card {
                     UpdateRows(updates)
                     InsetDivider()
-                    ListRow(stringResource(R.string.about_website), leading = { IconTile(JiumiIcons.Link) },
-                        onClick = { open(context, WEBSITE) }) {
-                        TrailingValue(WEBSITE.removePrefix("https://"))
-                        Chevron()
-                    }
+                    AboutLinkRow(stringResource(R.string.about_website), JiumiIcons.Link, WEBSITE)
                     InsetDivider()
-                    ListRow(stringResource(R.string.about_source), leading = { IconTile(JiumiIcons.Code) },
-                        onClick = if (repo.isNotBlank()) ({ open(context, "https://github.com/$repo") }) else null) {
-                        if (repo.isBlank()) TrailingValue(stringResource(R.string.about_not_public)) else Chevron()
-                    }
+                    AboutLinkRow(stringResource(R.string.about_source), JiumiIcons.Code, sourceUrl)
                     InsetDivider()
                     ListRow(stringResource(R.string.about_license), leading = { IconTile(JiumiIcons.FileText) },
-                        onClick = if (repo.isNotBlank()) ({ open(context, "https://github.com/$repo/blob/main/LICENSE") }) else null) {
+                        onClick = { open(context, "$sourceUrl/blob/main/LICENSE") }) {
                         TrailingValue("Apache-2.0")
-                        if (repo.isNotBlank()) Chevron()
+                        Chevron()
                     }
                     InsetDivider()
                     ListRow(stringResource(R.string.about_licenses), leading = { IconTile(JiumiIcons.Layers) }, onClick = onOpenLicenses) {
@@ -108,6 +96,22 @@ fun AboutScreen(labels: AppLabels, onBack: () -> Unit, onOpenLicenses: () -> Uni
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AboutLinkRow(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, url: String) {
+    val context = LocalContext.current
+    ListRow(
+        title,
+        leading = { IconTile(icon) },
+        onClick = { open(context, url) },
+        extra = {
+            Text(url, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+        }
+    ) {
+        Chevron()
     }
 }
 
