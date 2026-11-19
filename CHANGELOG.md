@@ -4,12 +4,12 @@ Notable changes to Jiumi, newest first. The English in-app update notes come fro
 Chinese in-app notes are supplied when preparing the release.
 Versions follow [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [0.3.0]
 
-- With root, or Shizuku started with root (now supported), freezing, unfreezing, deleting and restoring apps run as root, so system apps the shell cannot change can be frozen.
-- Apps Jiumi froze that are turned back on are marked Freeze lifted, and can be refrozen automatically. Uninstalling now affects only the current user.
-- A compact notification shows actual monitoring time, excluding interruptions, and has a stop button. It can be turned off; session counts and attention alerts are optional.
-- An interrupted session resumes on its own when the connection allows. Starts after updates and reboots no longer stall, and changing ADB persistence no longer ends monitoring.
+- Use root or Shizuku started with root to freeze and unfreeze apps, or remove and restore preinstalled apps for the current user.
+- See when a freeze is lifted and optionally reapply it. Uninstalling apps you installed now affects only the current user.
+- The compact notification shows actual monitoring time, excluding interruptions, and has a stop button. It can be turned off. Session counts and attention alerts are optional.
+- Automatically resume unfinished sessions when the selected connection is available. Fix stalls after updates and reboots, and defer ADB persistence changes during monitoring.
 
 ## [0.2.3]
 
