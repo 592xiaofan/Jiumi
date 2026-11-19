@@ -109,6 +109,10 @@ class MonitorController(
         val shizuku: com.ybblab.jiumi.access.ShizukuState = com.ybblab.jiumi.access.ShizukuState(),
         val root: RootShell.State = RootShell.State.UNCHECKED
     ) {
+        /** Freezing, removing and restoring apps run as root: the Root way, or Shizuku started with root, once ready. */
+        val manageAsRoot: Boolean get() = ready && (method == com.ybblab.jiumi.access.AccessMethod.ROOT ||
+            (method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU && shizuku.root))
+
         /** The user started monitoring and has not stopped it, whether or not the monitor runs now. */
         val sessionOpen: Boolean get() = session?.latest == true && session.running
     }
@@ -345,8 +349,9 @@ class MonitorController(
     }
 
     /**
-     * Freezes or unfreezes [pkg] as root when the chosen way holds root, which the shell may not do
-     * for every app; otherwise, and for every other action, the monitor makes the change as the shell.
+     * Freezes, unfreezes, removes for this user or restores [pkg] as root when the chosen way holds
+     * root, which the shell may not do for every app; otherwise, and for uninstalling and reinstalling
+     * apps the user added (which the shell may always do), the monitor makes the change as the shell.
      * The answer has the monitor's shape: {"ok","output","failure"?,"running"?}.
      */
     private fun changePackage(service: com.ybblab.jiumi.probe.IProbeService, pkg: String, action: ManageAction): org.json.JSONObject? =
@@ -355,8 +360,9 @@ class MonitorController(
 
     /**
      * pm disable as root sets the system's own DISABLED state, which the shell cannot set and some
-     * phones refuse the shell's DISABLED_USER for; the monitor then reads the result back. Null when
-     * root cannot be had, so the shell way is tried instead.
+     * phones refuse the shell's DISABLED_USER for; some phones refuse the shell removing their
+     * preinstalled apps too. The same commands as the shell's run as root, for this user only, and the
+     * monitor then reads the result back. Null when root cannot be had, so the shell way is tried instead.
      */
     private fun changeAsRoot(service: com.ybblab.jiumi.probe.IProbeService, pkg: String, action: ManageAction): org.json.JSONObject? {
         if (!Management.isPackageName(pkg)) return null
@@ -364,19 +370,24 @@ class MonitorController(
         val command = when (action) {
             ManageAction.DISABLE -> "pm disable --user $user $pkg"
             ManageAction.ENABLE -> "pm enable --user $user $pkg"
+            ManageAction.REMOVE -> "pm uninstall -k --user $user $pkg"
+            ManageAction.RESTORE -> "cmd package install-existing --user $user $pkg"
             else -> return null
         }
+        val checkRunning = action == ManageAction.DISABLE || action == ManageAction.REMOVE
         val output = access.asRoot(command, ROOT_COMMAND_MS) ?: return null
         val result = org.json.JSONObject().put("output", output.take(MAX_COMMAND_OUTPUT)).put("root", true)
         PackageChangeFailure.fromCommandOutput(output)?.let { return result.put("ok", false).put("failure", it.name) }
-        val state = runCatching { org.json.JSONObject(service.packageState(pkg, action == ManageAction.DISABLE)) }.getOrNull()
+        val state = runCatching { org.json.JSONObject(service.packageState(pkg, checkRunning)) }.getOrNull()
             ?.takeIf { it.has("enabled") }
             ?: return result.put("ok", false).put("failure", PackageChangeFailure.UNVERIFIED.name)
         val installed = state.optBoolean("installed")
         val enabled = state.optInt("enabled", -1)
-        val applied = installed && when (action) {
-            ManageAction.DISABLE -> Management.isDisabled(enabled)
-            else -> enabled == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        val applied = when (action) {
+            ManageAction.DISABLE -> installed && Management.isDisabled(enabled)
+            ManageAction.ENABLE -> installed && enabled == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            ManageAction.REMOVE -> !installed
+            else -> installed
         }
         if (!applied) return result.put("ok", false).put("failure", PackageChangeFailure.NOT_APPLIED.name)
         return result.put("ok", true).apply { (state.opt("running") as? Boolean)?.let { put("running", it) } }

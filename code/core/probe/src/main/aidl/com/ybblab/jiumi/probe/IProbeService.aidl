@@ -32,7 +32,7 @@ interface IProbeService {
     void shutdown();
     /**
      * Changes a package for the calling user: action "disable", "enable", "unsuspend", "uninstall"
-     * (removes it and its data), "remove" (a preinstalled app, for this user only), "restore"
+     * (removes it and its data for this user; other users keep theirs), "remove" (a preinstalled app, for this user only), "restore"
      * (brings a removed preinstalled app back) or "reinstall" (installs the APKs the app backed up
      * under its external files, backups/<packageName>/). Returns JSON {"ok":bool,"output":text}.
      * "failure", when known, is "PERMISSION_DENIED", "NOT_APPLIED" (the observed state differs from

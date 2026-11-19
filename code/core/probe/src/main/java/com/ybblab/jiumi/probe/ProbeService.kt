@@ -179,7 +179,8 @@ internal class ProbeService(
                 !it.installed
             }
             "restore" -> changePackageState(listOf("cmd", "package", "install-existing") + target, user, packageName) { it.installed }
-            "uninstall" -> runPm(listOf("pm", "uninstall", packageName)).let { (ok, output) -> manageResult(ok, output) }
+            // For this user only: the same app in a work profile or a second-space user stays.
+            "uninstall" -> runPm(listOf("pm", "uninstall") + target).let { (ok, output) -> manageResult(ok, output) }
             "reinstall" -> reinstall(user, packageName).let { (ok, output) -> manageResult(ok, output) }
             else -> throw IllegalArgumentException("unknown action $action")
         }

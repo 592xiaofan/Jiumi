@@ -204,13 +204,28 @@ fun SettingsScreen(
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }
-            item { GroupTitle(stringResource(R.string.section_advanced)) }
+            // Everything about changing apps in one place: as whom it runs, then the two choices.
+            item { GroupTitle(stringResource(R.string.section_manage)) }
             item {
                 // Turning it on is a deliberate step: it asks, with what it means, before it takes effect.
                 var askAllowRemove by remember { mutableStateOf(false) }
                 Card {
+                    ListRow(stringResource(R.string.settings_manage_identity), leading = { IconTile(JiumiIcons.Shield) }) {
+                        TrailingValue(stringResource(if (state.manageAsRoot) R.string.manage_identity_root else R.string.manage_identity_shell))
+                    }
+                    InsetDivider()
+                    ListRow(
+                        stringResource(R.string.settings_auto_refreeze),
+                        subtitle = stringResource(R.string.settings_auto_refreeze_desc),
+                        leading = { IconTile(JiumiIcons.Snowflake) },
+                        onClick = { controller.setAutoRefreeze(!state.autoRefreeze) }
+                    ) {
+                        JiumiSwitch(state.autoRefreeze) { controller.setAutoRefreeze(it) }
+                    }
+                    InsetDivider()
                     ListRow(
                         stringResource(R.string.settings_allow_remove),
+                        subtitle = stringResource(R.string.settings_allow_remove_desc),
                         leading = { IconTile(JiumiIcons.Trash) },
                         // The whole row turns it, as on iOS; the switch alone is a small target.
                         onClick = {
@@ -222,21 +237,7 @@ fun SettingsScreen(
                         }
                     }
                 }
-                GroupFooter(stringResource(R.string.settings_allow_remove_desc))
-                Spacer(Modifier.height(16.dp))
-                Card { ExpertModeRow(state.expertMode, controller::setExpertMode) }
-                GroupFooter(stringResource(R.string.settings_expert_mode_desc))
-                Spacer(Modifier.height(16.dp))
-                Card {
-                    ListRow(
-                        stringResource(R.string.settings_auto_refreeze),
-                        leading = { IconTile(JiumiIcons.Snowflake) },
-                        onClick = { controller.setAutoRefreeze(!state.autoRefreeze) }
-                    ) {
-                        JiumiSwitch(state.autoRefreeze) { controller.setAutoRefreeze(it) }
-                    }
-                }
-                GroupFooter(stringResource(R.string.settings_auto_refreeze_desc))
+                GroupFooter(stringResource(if (state.manageAsRoot) R.string.settings_manage_root_desc else R.string.settings_manage_shell_desc))
                 if (askAllowRemove) {
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = { askAllowRemove = false },
@@ -263,6 +264,12 @@ fun SettingsScreen(
                         }
                     )
                 }
+            }
+            item { Spacer(Modifier.height(24.dp)) }
+            item { GroupTitle(stringResource(R.string.section_advanced)) }
+            item {
+                Card { ExpertModeRow(state.expertMode, controller::setExpertMode) }
+                GroupFooter(stringResource(R.string.settings_expert_mode_desc))
             }
             item { Spacer(Modifier.height(24.dp)) }
             item { GroupTitle(stringResource(R.string.section_appearance)) }
