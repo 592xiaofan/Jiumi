@@ -32,6 +32,8 @@ import com.ybblab.jiumi.ui.HomeScreen
 import com.ybblab.jiumi.ui.LanguageScreen
 import com.ybblab.jiumi.ui.SessionsScreen
 import com.ybblab.jiumi.ui.SettingsScreen
+import com.ybblab.jiumi.ui.SettingsSection
+import com.ybblab.jiumi.ui.SettingsSectionScreen
 import com.ybblab.jiumi.ui.SpoolScreen
 import com.ybblab.jiumi.ui.ThemeScreen
 import com.ybblab.jiumi.ui.AppsScreen
@@ -104,12 +106,6 @@ class MainActivity : AppCompatActivity() {
                 val openApp = { key: AppKey -> push("app:${key.uid}|${key.pkg.orEmpty()}") }
                 val openLog = { entry: LogEntry -> push("log:${OpenedLogs.put(entry)}") }
                 val top = stack.lastOrNull()
-                @androidx.compose.runtime.Composable
-                fun settings(onBack: (() -> Unit)?) = SettingsScreen(controller, preferences, onBack = onBack,
-                    onOpenTheme = { push("theme") }, onOpenLanguage = { push("language") },
-                    onOpenSpool = { push("spool") }, onOpenSessions = { push("sessions") }, onOpenExport = { push("export") },
-                    onOpenAbout = { push("about") }, onOpenPairing = { push("pairing") },
-                    onOpenMonitor = { stack = listOf(); tab = Tab.MONITOR })
                 val setupDone by preferences.setupDone.collectAsStateWithLifecycle()
                 val route by requestedRoute.collectAsStateWithLifecycle()
                 LaunchedEffect(route, setupDone) {
@@ -151,7 +147,10 @@ class MainActivity : AppCompatActivity() {
                             )
                             Tab.APPS -> AppsScreen(controller, labels, onOpenApp = openApp,
                                 onOpenModule = { push("apex:$it") })
-                            Tab.SETTINGS -> settings(onBack = null)
+                            Tab.SETTINGS -> SettingsScreen(
+                                onOpenSection = { push("settings:${it.name}") },
+                                onOpenAbout = { push("about") }
+                            )
                         } }
                     }
                     top.startsWith("app:") -> {
@@ -177,6 +176,17 @@ class MainActivity : AppCompatActivity() {
                         onOpenLog = openLog, onOpenApp = openApp)
                     top.startsWith("attention:") -> AttentionScreen(controller, labels, top.removePrefix("attention:"), onBack = pop,
                         onOpenApp = { push("app:${it.uid}|${it.pkg.orEmpty()}") })
+                    top.startsWith("settings:") -> SettingsSectionScreen(
+                        SettingsSection.valueOf(top.removePrefix("settings:")), controller, preferences, onBack = pop,
+                        onOpenTheme = { push("theme") }, onOpenLanguage = { push("language") },
+                        onOpenSpool = { push("spool") }, onOpenSessions = { push("sessions") }, onOpenExport = { push("export") },
+                        onOpenPairing = { push("pairing") },
+                        onOpenMonitor = {
+                            (1..stack.size).forEach { pages.removeState(pageKey(it)) }
+                            stack = listOf()
+                            tab = Tab.MONITOR
+                        }
+                    )
                     top == "pairing" -> PairingScreen(controller, onBack = pop, onPair = ::pair,
                         onOpenWirelessDebugging = ::openWirelessDebugging)
                     top == "spool" -> SpoolScreen(controller, onBack = pop)

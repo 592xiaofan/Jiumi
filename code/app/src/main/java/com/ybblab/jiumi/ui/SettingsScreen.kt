@@ -50,261 +50,289 @@ import com.ybblab.jiumi.ui.icons.JiumiIcons
 import com.ybblab.jiumi.ui.theme.StatusWarning
 import com.ybblab.jiumi.ui.theme.StatusSuccess
 
+internal enum class SettingsSection(
+    val title: Int,
+    val summary: Int,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    CONNECTION(R.string.settings_connection, R.string.settings_connection_summary, JiumiIcons.Wifi),
+    MONITORING(R.string.settings_monitoring, R.string.settings_monitoring_summary, JiumiIcons.Activity),
+    RECORDS(R.string.settings_records, R.string.settings_records_summary, JiumiIcons.Storage),
+    MANAGEMENT(R.string.section_manage, R.string.settings_management_summary, JiumiIcons.Shield),
+    APPEARANCE(R.string.settings_appearance, R.string.settings_appearance_summary, JiumiIcons.Palette)
+}
+
 @Composable
-fun SettingsScreen(
+internal fun SettingsScreen(onOpenSection: (SettingsSection) -> Unit, onOpenAbout: () -> Unit) {
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scrolled by remember { androidx.compose.runtime.derivedStateOf { list.canScrollBackward } }
+    val update by com.ybblab.jiumi.update.UpdateNotice.available.collectAsStateWithLifecycle()
+    HidingTopBar(stringResource(R.string.settings_title), scrolled) { top ->
+        LazyColumn(
+            state = list,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top + PageTopGap,
+                bottom = 32.dp + LocalTabBarInset.current)
+        ) {
+            item {
+                Card {
+                    SettingsSection.entries.forEach { section ->
+                        ListRow(stringResource(section.title), subtitle = stringResource(section.summary),
+                            leading = { IconTile(section.icon) }, onClick = { onOpenSection(section) }) {
+                            Chevron()
+                        }
+                        InsetDivider()
+                    }
+                    ListRow(stringResource(R.string.settings_about_updates),
+                        subtitle = stringResource(R.string.settings_about_summary),
+                        leading = { IconTile(JiumiIcons.Info) }, onClick = onOpenAbout) {
+                        if (update != null) { NewDot(); TrailingValue(stringResource(R.string.update_new_badge)) }
+                        Chevron()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SettingsSectionScreen(
+    section: SettingsSection,
     controller: MonitorController,
     preferences: AppPreferences,
-    onBack: (() -> Unit)?,
+    onBack: () -> Unit,
     onOpenTheme: () -> Unit,
     onOpenLanguage: () -> Unit,
     onOpenSpool: () -> Unit,
     onOpenSessions: () -> Unit,
     onOpenExport: () -> Unit,
-    onOpenAbout: () -> Unit,
     onOpenPairing: () -> Unit,
-    onOpenMonitor: () -> Unit = {}
+    onOpenMonitor: () -> Unit
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
-    val pairingFlow = state.pairingState in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE, PairingState.PAIRING)
-    val paired = state.trust == PairingTrustState.PAIRED
-    val themeMode by preferences.themeMode.collectAsStateWithLifecycle()
-    val persistence by controller.adbPersistence.collectAsStateWithLifecycle()
-
-    val list = androidx.compose.foundation.lazy.rememberLazyListState()
-    val scrolled by remember { androidx.compose.runtime.derivedStateOf { list.canScrollBackward } }
-    // As a tab, under the top bar that slides away; opened from elsewhere, as a page with a back arrow.
-    val page: @Composable (@Composable (PaddingValues, androidx.compose.ui.unit.Dp) -> Unit) -> Unit = { body ->
-        if (onBack == null) HidingTopBar(stringResource(R.string.settings_title), scrolled) { top -> body(PaddingValues(), top + PageTopGap) }
-        else SubScreen(stringResource(R.string.settings_title), onBack) { padding -> body(padding, 16.dp) }
-    }
-    page { padding, top ->
+    SubScreen(stringResource(section.title), onBack) { padding ->
         LazyColumn(
-            state = list,
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top, bottom = 32.dp + LocalTabBarInset.current)
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 32.dp)
         ) {
-            // Every row is a title alone, in one size; what a setting means is said beneath its card.
-            // The environment comes first: the monitor can only be started once it is paired.
-            item { GroupTitle(stringResource(R.string.section_environment)) }
-            item {
-                // The three ways to start the monitor; what each needs follows beneath.
-                Segmented(
-                    com.ybblab.jiumi.access.AccessMethod.entries.map { accessName(it) },
-                    selected = state.method.ordinal,
-                    onSelect = { controller.selectAccess(com.ybblab.jiumi.access.AccessMethod.entries[it]) },
-                    modifier = Modifier.fillMaxWidth(1f)
-                )
-                GroupFooter(stringResource(R.string.access_pick_one))
-                Spacer(Modifier.height(12.dp))
-            }
-            if (state.method == com.ybblab.jiumi.access.AccessMethod.ROOT) item {
-                Card {
-                    ListRow(stringResource(R.string.access_root), leading = { IconTile(JiumiIcons.Shield) },
-                        onClick = controller::authorizeRoot) {
-                        TrailingValue(stringResource(rootStatus(state.root)),
-                            color = if (rootError(state.root) == null) MaterialTheme.colorScheme.onSurfaceVariant else StatusWarning)
-                        Chevron()
+            when (section) {
+                SettingsSection.CONNECTION -> {
+                    val pairingFlow = state.pairingState in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE, PairingState.PAIRING)
+                    val paired = state.trust == PairingTrustState.PAIRED
+                    item {
+                        // The three ways to start the monitor; what each needs follows beneath.
+                        Segmented(
+                            com.ybblab.jiumi.access.AccessMethod.entries.map { accessName(it) },
+                            selected = state.method.ordinal,
+                            onSelect = { controller.selectAccess(com.ybblab.jiumi.access.AccessMethod.entries[it]) },
+                            modifier = Modifier.fillMaxWidth(1f)
+                        )
+                        GroupFooter(stringResource(R.string.access_pick_one))
+                        Spacer(Modifier.height(12.dp))
                     }
-                }
-                // Why the last try failed comes first; what this way is, after.
-                rootError(state.root)?.let { GroupFooter(stringResource(it), warning = true) }
-                GroupFooter(accessDescription(state.method))
-            }
-            if (state.method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU) item {
-                // Shizuku may have been started or stopped while away; read it again when shown.
-                androidx.compose.runtime.LaunchedEffect(Unit) { controller.access.shizuku.refresh() }
-                Card {
-                    ListRow(stringResource(R.string.access_shizuku), leading = { IconTile(JiumiIcons.Shield) },
-                        onClick = { runShizukuNextAction(controller, state.shizuku) }) {
-                        TrailingValue(shizukuStatus(state.shizuku),
-                            color = if (state.ready) MaterialTheme.colorScheme.onSurfaceVariant else StatusWarning)
-                        Chevron()
-                    }
-                }
-                if (state.problem == MonitorController.Problem.SHIZUKU) GroupFooter(stringResource(R.string.error_shizuku), warning = true)
-                GroupFooter(accessDescription(state.method))
-            }
-            if (state.method == com.ybblab.jiumi.access.AccessMethod.WIRELESS) item {
-                val usbOn = remember(persistence, state.pairingState) { controller.usbDebuggingEnabled() }
-                val needsUsb = persistence && usbOn == false
-                val context = androidx.compose.ui.platform.LocalContext.current
-                Card {
-                    ListRow(
-                        stringResource(R.string.row_pairing),
-                        leading = { IconTile(JiumiIcons.Wifi) },
-                        onClick = onOpenPairing
-                    ) {
-                        TrailingValue(stringResource(when {
-                            pairingFlow -> R.string.pairing_in_progress
-                            state.pairingState == PairingState.CONNECTING -> R.string.pairing_connecting
-                            paired -> R.string.pairing_paired
-                            state.trust == PairingTrustState.PAIRING_REQUIRED -> R.string.pairing_required
-                            else -> R.string.pairing_unpaired
-                        }), color = if (paired || pairingFlow) MaterialTheme.colorScheme.onSurfaceVariant else StatusWarning)
-                        Chevron()
-                    }
-                }
-                // Without USB debugging, adbd stops when the system turns Wireless debugging off (as it does
-                // on leaving Wi-Fi), and the monitor it started ends with it.
-                if (usbOn == false) GroupFooter(stringResource(R.string.settings_usb_debugging_off), warning = true)
-                else GroupFooter(stringResource(R.string.settings_pairing_desc))
-                Spacer(Modifier.height(16.dp))
-                // ADB persistence: start the monitor without Wi-Fi, through a local port, until a restart.
-                Card {
-                    ListRow(
-                        stringResource(R.string.settings_adb_persistence),
-                        leading = { IconTile(JiumiIcons.Link) },
-                        onClick = {
-                            if (needsUsb) openDeveloperOptions(context, KEY_USB_DEBUGGING)
-                            else controller.setAdbPersistence(!persistence)
-                        }
-                    ) {
-                        JiumiSwitch(persistence, onCheckedChange = controller::setAdbPersistence)
-                    }
-                }
-                GroupFooter(stringResource(when {
-                    needsUsb -> R.string.settings_adb_persistence_usb_required
-                    state.running && controller.localPortClosePending -> R.string.settings_adb_persistence_close_after_stop
-                    persistence && !controller.hasLocalAdbPort -> R.string.settings_adb_persistence_next_start
-                    else -> R.string.settings_adb_persistence_desc
-                }), warning = needsUsb)
-                if (controller.localPortClosePending && !state.running) Card {
-                    ListRow(stringResource(R.string.settings_close_legacy_adb), onClick = { controller.setAdbPersistence(false) })
-                }
-            }
-            item { GroupTitle(stringResource(R.string.section_monitoring), Modifier.padding(top = 24.dp)) }
-            item {
-                Card {
-                    // Where the monitor stands, as the Monitor tab shows it at the same moment; tapped,
-                    // that tab, where it is started and stopped.
-                    val failed = state.problem != null && !state.running && state.busy == null
-                    ListRow(stringResource(R.string.row_service), leading = { IconTile(JiumiIcons.Shield) }, onClick = onOpenMonitor) {
-                        TrailingValue(when {
-                            state.busy == MonitorController.Busy.STOPPING -> stringResource(R.string.service_stopping)
-                            state.busy == MonitorController.Busy.STARTING && state.pairingState == PairingState.CONNECTING ->
-                                stringResource(R.string.pairing_connecting)
-                            state.busy == MonitorController.Busy.STARTING -> stringResource(R.string.service_starting)
-                            state.running -> listOfNotNull(stringResource(R.string.service_running),
-                                state.footprint?.let { "${(it.pssKb / 1024).toInt()} MB" }).joinToString(" · ")
-                            failed -> stringResource(R.string.service_failed)
-                            else -> stringResource(R.string.hero_idle)
-                        }, color = if (failed) StatusWarning else MaterialTheme.colorScheme.onSurfaceVariant)
-                        Chevron()
-                    }
-                    InsetDivider()
-                    ListRow(stringResource(R.string.settings_spool), leading = { IconTile(JiumiIcons.Storage) }, onClick = onOpenSpool) {
-                        TrailingValue(spoolLabel(state.spoolLimitMb))
-                        Chevron()
-                    }
-                }
-                if (state.problem != null && !state.running && state.busy == null) statusMessage(state)?.let { GroupFooter(it, warning = true) }
-                Spacer(Modifier.height(16.dp))
-                DomainRecordingRow()
-            }
-            item { GroupTitle(stringResource(R.string.section_notifications), Modifier.padding(top = 24.dp)) }
-            item { NoticeRows(state.notices, controller) }
-            item { GroupTitle(stringResource(R.string.section_data), Modifier.padding(top = 24.dp)) }
-            item {
-                Card {
-                    ListRow(stringResource(R.string.settings_sessions), leading = { IconTile(JiumiIcons.History) }, onClick = onOpenSessions) {
-                        Chevron()
-                    }
-                    InsetDivider()
-                    ListRow(stringResource(R.string.settings_export), leading = { IconTile(JiumiIcons.Download) }, onClick = onOpenExport) {
-                        Chevron()
-                    }
-                }
-            }
-            item { Spacer(Modifier.height(24.dp)) }
-            // Everything about changing apps in one place: as whom it runs, then the two choices.
-            item { GroupTitle(stringResource(R.string.section_manage)) }
-            item {
-                // Turning it on is a deliberate step: it asks, with what it means, before it takes effect.
-                var askAllowRemove by remember { mutableStateOf(false) }
-                Card {
-                    ListRow(stringResource(R.string.settings_manage_identity), leading = { IconTile(JiumiIcons.Shield) }) {
-                        TrailingValue(stringResource(if (state.manageAsRoot) R.string.manage_identity_root else R.string.manage_identity_shell))
-                    }
-                    InsetDivider()
-                    ListRow(
-                        stringResource(R.string.settings_auto_refreeze),
-                        subtitle = stringResource(R.string.settings_auto_refreeze_desc),
-                        leading = { IconTile(JiumiIcons.Snowflake) },
-                        onClick = { controller.setAutoRefreeze(!state.autoRefreeze) }
-                    ) {
-                        JiumiSwitch(state.autoRefreeze) { controller.setAutoRefreeze(it) }
-                    }
-                    InsetDivider()
-                    ListRow(
-                        stringResource(R.string.settings_allow_remove),
-                        subtitle = stringResource(R.string.settings_allow_remove_desc),
-                        leading = { IconTile(JiumiIcons.Trash) },
-                        // The whole row turns it, as on iOS; the switch alone is a small target.
-                        onClick = {
-                            if (!state.allowRemovePreinstalled) askAllowRemove = true else controller.setAllowRemovePreinstalled(false)
-                        }
-                    ) {
-                        JiumiSwitch(state.allowRemovePreinstalled) { on ->
-                            if (on) askAllowRemove = true else controller.setAllowRemovePreinstalled(false)
-                        }
-                    }
-                }
-                GroupFooter(stringResource(if (state.manageAsRoot) R.string.settings_manage_root_desc else R.string.settings_manage_shell_desc))
-                if (askAllowRemove) {
-                    androidx.compose.material3.AlertDialog(
-                        onDismissRequest = { askAllowRemove = false },
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        icon = { Icon(JiumiIcons.Warning, null, tint = com.ybblab.jiumi.ui.theme.StatusWarning) },
-                        title = { Text(stringResource(R.string.allow_remove_title), style = MaterialTheme.typography.titleMedium) },
-                        text = {
-                            Text(emphasizeAppName(stringResource(R.string.allow_remove_body)), style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        },
-                        confirmButton = {
-                            androidx.compose.material3.TextButton(onClick = {
-                                askAllowRemove = false
-                                controller.setAllowRemovePreinstalled(true)
-                            }) {
-                                Text(stringResource(R.string.allow_remove_confirm), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.error)
-                            }
-                        },
-                        dismissButton = {
-                            androidx.compose.material3.TextButton(onClick = { askAllowRemove = false }) {
-                                Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface)
+                    if (state.method == com.ybblab.jiumi.access.AccessMethod.ROOT) item {
+                        Card {
+                            ListRow(stringResource(R.string.access_root), leading = { IconTile(JiumiIcons.Shield) },
+                                onClick = controller::authorizeRoot) {
+                                TrailingValue(stringResource(rootStatus(state.root)),
+                                    color = if (rootError(state.root) == null) MaterialTheme.colorScheme.onSurfaceVariant else StatusWarning)
+                                Chevron()
                             }
                         }
-                    )
-                }
-            }
-            item { Spacer(Modifier.height(24.dp)) }
-            item { GroupTitle(stringResource(R.string.section_advanced)) }
-            item {
-                Card { ExpertModeRow(state.expertMode, controller::setExpertMode) }
-                GroupFooter(stringResource(R.string.settings_expert_mode_desc))
-            }
-            item { Spacer(Modifier.height(24.dp)) }
-            item { GroupTitle(stringResource(R.string.section_appearance)) }
-            item {
-                Card {
-                    ListRow(stringResource(R.string.settings_theme), leading = { IconTile(JiumiIcons.Palette) }, onClick = onOpenTheme) {
-                        TrailingValue(themeLabel(themeMode))
-                        Chevron()
+                        // Why the last try failed comes first; what this way is, after.
+                        rootError(state.root)?.let { GroupFooter(stringResource(it), warning = true) }
+                        GroupFooter(accessDescription(state.method))
                     }
-                    InsetDivider()
-                    ListRow(stringResource(R.string.settings_language), leading = { IconTile(JiumiIcons.Languages) }, onClick = onOpenLanguage) {
-                        TrailingValue(languageLabel(preferences.language))
-                        Chevron()
+                    if (state.method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU) item {
+                        // Shizuku may have been started or stopped while away; read it again when shown.
+                        androidx.compose.runtime.LaunchedEffect(Unit) { controller.access.shizuku.refresh() }
+                        Card {
+                            ListRow(stringResource(R.string.access_shizuku), leading = { IconTile(JiumiIcons.Shield) },
+                                onClick = { runShizukuNextAction(controller, state.shizuku) }) {
+                                TrailingValue(shizukuStatus(state.shizuku),
+                                    color = if (state.ready) MaterialTheme.colorScheme.onSurfaceVariant else StatusWarning)
+                                Chevron()
+                            }
+                        }
+                        if (state.problem == MonitorController.Problem.SHIZUKU) GroupFooter(stringResource(R.string.error_shizuku), warning = true)
+                        GroupFooter(accessDescription(state.method))
+                    }
+                    if (state.method == com.ybblab.jiumi.access.AccessMethod.WIRELESS) item {
+                        val persistence by controller.adbPersistence.collectAsStateWithLifecycle()
+                        val usbOn = remember(persistence, state.pairingState) { controller.usbDebuggingEnabled() }
+                        val needsUsb = persistence && usbOn == false
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        Card {
+                            ListRow(
+                                stringResource(R.string.row_pairing),
+                                leading = { IconTile(JiumiIcons.Wifi) },
+                                onClick = onOpenPairing
+                            ) {
+                                TrailingValue(stringResource(when {
+                                    pairingFlow -> R.string.pairing_in_progress
+                                    state.pairingState == PairingState.CONNECTING -> R.string.pairing_connecting
+                                    paired -> R.string.pairing_paired
+                                    state.trust == PairingTrustState.PAIRING_REQUIRED -> R.string.pairing_required
+                                    else -> R.string.pairing_unpaired
+                                }), color = if (paired || pairingFlow) MaterialTheme.colorScheme.onSurfaceVariant else StatusWarning)
+                                Chevron()
+                            }
+                        }
+                        // Without USB debugging, adbd stops when the system turns Wireless debugging off (as it does
+                        // on leaving Wi-Fi), and the monitor it started ends with it.
+                        if (usbOn == false) GroupFooter(stringResource(R.string.settings_usb_debugging_off), warning = true)
+                        else GroupFooter(stringResource(R.string.settings_pairing_desc))
+                        Spacer(Modifier.height(16.dp))
+                        GroupTitle(stringResource(R.string.settings_adb_options))
+                        Card {
+                            ListRow(
+                                stringResource(R.string.settings_adb_persistence),
+                                leading = { IconTile(JiumiIcons.Link) },
+                                onClick = {
+                                    if (needsUsb) openDeveloperOptions(context, KEY_USB_DEBUGGING)
+                                    else controller.setAdbPersistence(!persistence)
+                                }
+                            ) {
+                                JiumiSwitch(persistence, onCheckedChange = controller::setAdbPersistence)
+                            }
+                        }
+                        GroupFooter(stringResource(when {
+                            needsUsb -> R.string.settings_adb_persistence_usb_required
+                            state.running && controller.localPortClosePending -> R.string.settings_adb_persistence_close_after_stop
+                            persistence && !controller.hasLocalAdbPort -> R.string.settings_adb_persistence_next_start
+                            else -> R.string.settings_adb_persistence_desc
+                        }), warning = needsUsb)
+                        if (controller.localPortClosePending && !state.running) Card {
+                            ListRow(stringResource(R.string.settings_close_legacy_adb), onClick = { controller.setAdbPersistence(false) })
+                        }
                     }
                 }
-            }
-            item { Spacer(Modifier.height(24.dp)) }
-            item {
-                Card {
-                    val update by com.ybblab.jiumi.update.UpdateNotice.available.collectAsStateWithLifecycle()
-                    ListRow(stringResource(R.string.settings_about), leading = { IconTile(JiumiIcons.Info) }, onClick = onOpenAbout) {
-                        if (update != null) { NewDot(); TrailingValue(stringResource(R.string.update_new_badge)) }
-                        Chevron()
+                SettingsSection.MONITORING -> {
+                    item {
+                        Card {
+                            // Where the monitor stands, as the Monitor tab shows it at the same moment; tapped,
+                            // that tab, where it is started and stopped.
+                            val failed = state.problem != null && !state.running && state.busy == null
+                            ListRow(stringResource(R.string.row_service), leading = { IconTile(JiumiIcons.Shield) }, onClick = onOpenMonitor) {
+                                TrailingValue(when {
+                                    state.busy == MonitorController.Busy.STOPPING -> stringResource(R.string.service_stopping)
+                                    state.busy == MonitorController.Busy.STARTING && state.pairingState == PairingState.CONNECTING ->
+                                        stringResource(R.string.pairing_connecting)
+                                    state.busy == MonitorController.Busy.STARTING -> stringResource(R.string.service_starting)
+                                    state.running -> listOfNotNull(stringResource(R.string.service_running),
+                                        state.footprint?.let { "${(it.pssKb / 1024).toInt()} MB" }).joinToString(" · ")
+                                    failed -> stringResource(R.string.service_failed)
+                                    else -> stringResource(R.string.hero_idle)
+                                }, color = if (failed) StatusWarning else MaterialTheme.colorScheme.onSurfaceVariant)
+                                Chevron()
+                            }
+                        }
+                        if (state.problem != null && !state.running && state.busy == null) statusMessage(state)?.let { GroupFooter(it, warning = true) }
+                        Spacer(Modifier.height(16.dp))
+                        DomainRecordingRow()
+                    }
+                    item { GroupTitle(stringResource(R.string.section_notifications), Modifier.padding(top = 24.dp)) }
+                    item { NoticeRows(state.notices, controller) }
+                }
+                SettingsSection.RECORDS -> {
+                    item {
+                        Card {
+                            ListRow(stringResource(R.string.settings_sessions), leading = { IconTile(JiumiIcons.History) }, onClick = onOpenSessions) {
+                                Chevron()
+                            }
+                            InsetDivider()
+                            ListRow(stringResource(R.string.settings_export), leading = { IconTile(JiumiIcons.Download) }, onClick = onOpenExport) {
+                                Chevron()
+                            }
+                            InsetDivider()
+                            ListRow(stringResource(R.string.settings_spool), leading = { IconTile(JiumiIcons.Storage) }, onClick = onOpenSpool) {
+                                TrailingValue(spoolLabel(state.spoolLimitMb))
+                                Chevron()
+                            }
+                        }
+                    }
+                }
+                SettingsSection.MANAGEMENT -> {
+                    item {
+                        // Turning it on is a deliberate step: it asks, with what it means, before it takes effect.
+                        var askAllowRemove by remember { mutableStateOf(false) }
+                        Card {
+                            ListRow(stringResource(R.string.settings_manage_identity), leading = { IconTile(JiumiIcons.Shield) }) {
+                                TrailingValue(stringResource(if (state.manageAsRoot) R.string.manage_identity_root else R.string.manage_identity_shell))
+                            }
+                            InsetDivider()
+                            ListRow(
+                                stringResource(R.string.settings_auto_refreeze),
+                                subtitle = stringResource(R.string.settings_auto_refreeze_desc),
+                                leading = { IconTile(JiumiIcons.Snowflake) },
+                                onClick = { controller.setAutoRefreeze(!state.autoRefreeze) }
+                            ) {
+                                JiumiSwitch(state.autoRefreeze) { controller.setAutoRefreeze(it) }
+                            }
+                            InsetDivider()
+                            ListRow(
+                                stringResource(R.string.settings_allow_remove),
+                                subtitle = stringResource(R.string.settings_allow_remove_desc),
+                                leading = { IconTile(JiumiIcons.Trash) },
+                                // The whole row turns it, as on iOS; the switch alone is a small target.
+                                onClick = {
+                                    if (!state.allowRemovePreinstalled) askAllowRemove = true else controller.setAllowRemovePreinstalled(false)
+                                }
+                            ) {
+                                JiumiSwitch(state.allowRemovePreinstalled) { on ->
+                                    if (on) askAllowRemove = true else controller.setAllowRemovePreinstalled(false)
+                                }
+                            }
+                        }
+                        GroupFooter(stringResource(if (state.manageAsRoot) R.string.settings_manage_root_desc else R.string.settings_manage_shell_desc))
+                        if (askAllowRemove) {
+                            androidx.compose.material3.AlertDialog(
+                                onDismissRequest = { askAllowRemove = false },
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                icon = { Icon(JiumiIcons.Warning, null, tint = com.ybblab.jiumi.ui.theme.StatusWarning) },
+                                title = { Text(stringResource(R.string.allow_remove_title), style = MaterialTheme.typography.titleMedium) },
+                                text = {
+                                    Text(emphasizeAppName(stringResource(R.string.allow_remove_body)), style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                },
+                                confirmButton = {
+                                    androidx.compose.material3.TextButton(onClick = {
+                                        askAllowRemove = false
+                                        controller.setAllowRemovePreinstalled(true)
+                                    }) {
+                                        Text(stringResource(R.string.allow_remove_confirm), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.error)
+                                    }
+                                },
+                                dismissButton = {
+                                    androidx.compose.material3.TextButton(onClick = { askAllowRemove = false }) {
+                                        Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    item { Spacer(Modifier.height(24.dp)) }
+                    item { GroupTitle(stringResource(R.string.section_advanced)) }
+                    item {
+                        Card { ExpertModeRow(state.expertMode, controller::setExpertMode) }
+                        GroupFooter(stringResource(R.string.settings_expert_mode_desc))
+                    }
+                }
+                SettingsSection.APPEARANCE -> {
+                    item {
+                        val themeMode by preferences.themeMode.collectAsStateWithLifecycle()
+                        Card {
+                            ListRow(stringResource(R.string.settings_theme), leading = { IconTile(JiumiIcons.Palette) }, onClick = onOpenTheme) {
+                                TrailingValue(themeLabel(themeMode))
+                                Chevron()
+                            }
+                            InsetDivider()
+                            ListRow(stringResource(R.string.settings_language), leading = { IconTile(JiumiIcons.Languages) }, onClick = onOpenLanguage) {
+                                TrailingValue(languageLabel(preferences.language))
+                                Chevron()
+                            }
+                        }
                     }
                 }
             }

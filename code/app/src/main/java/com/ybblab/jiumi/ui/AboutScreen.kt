@@ -63,7 +63,7 @@ fun AboutScreen(labels: AppLabels, onBack: () -> Unit, onOpenLicenses: () -> Uni
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty()
     }
-    SubScreen(stringResource(R.string.settings_about), onBack) { padding ->
+    SubScreen(stringResource(R.string.settings_about_updates), onBack) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 32.dp)
