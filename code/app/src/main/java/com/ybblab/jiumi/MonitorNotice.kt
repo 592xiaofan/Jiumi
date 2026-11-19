@@ -1,0 +1,181 @@
+// SPDX-FileCopyrightText: 2026 ybblab
+// SPDX-License-Identifier: Apache-2.0
+
+package com.ybblab.jiumi
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.Notification
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.NotificationChannelCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.ybblab.jiumi.data.AppKey
+import com.ybblab.jiumi.data.Attention
+import com.ybblab.jiumi.data.NoticeSummary
+import com.ybblab.jiumi.ui.AppLabels
+import com.ybblab.jiumi.ui.attentionNameRes
+import com.ybblab.jiumi.ui.formatCount
+
+/**
+ * The notifications about monitoring: the persistent one while it runs (with the session's summary
+ * when the user wants it), one when it stopped under an open session, and alerts for apps newly
+ * raised for attention. Each says only what was recorded; the lock screen shows none of the apps.
+ */
+object MonitorNotice {
+    const val RUNNING_ID = 2001
+    private const val INTERRUPTED_ID = 2002
+    private const val ALERT_ID = 2003
+    private const val CHANNEL_MONITORING = "monitoring"
+    private const val CHANNEL_ATTENTION = "attention"
+    private const val ACTION_STOP = "com.ybblab.jiumi.STOP_MONITORING"
+    /** A page to open, as MainActivity names its pages; only attention pages are opened from here. */
+    const val EXTRA_ROUTE = "com.ybblab.jiumi.ROUTE"
+    const val ROUTE_ATTENTION = "attention:"
+    /** Apps named in one line before the rest are counted. */
+    private const val NAMED_APPS = 3
+    /** Items listed in the expanded summary. */
+    private const val LISTED_ITEMS = 4
+
+    /** The persistent notification for a session that began at [since]. */
+    data class Running(val since: Long, val summary: NoticeSummary?)
+
+    fun isStop(intent: Intent?): Boolean = intent?.action == ACTION_STOP
+
+    fun running(context: Context, running: Running): Notification {
+        val text = ContextCompat.getContextForLanguage(context)
+        ensureChannels(context, text)
+        val stop = PendingIntent.getService(context, 1, Intent(context, MonitorNotificationService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE)
+        val builder = NotificationCompat.Builder(context, CHANNEL_MONITORING)
+            .setSmallIcon(R.drawable.ic_stat_monitoring)
+            .setContentTitle(text.getString(R.string.notification_monitoring))
+            .setWhen(running.since)
+            .setShowWhen(true)
+            .setUsesChronometer(true)
+            .setOngoing(true)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setContentIntent(open(context, null))
+            .addAction(0, text.getString(R.string.action_stop), stop)
+        val summary = running.summary ?: return builder.build()
+        // The lock screen keeps the plain notification: how long, and nothing of what was seen.
+        val public = builder.build()
+        val line = summaryLine(text, summary)
+        val labels = AppLabels(text)
+        val items = summary.raised.take(LISTED_ITEMS).map { item ->
+            text.getString(R.string.notification_attention_line, text.getString(attentionNameRes(item.id)), appList(text, labels, item.apps))
+        }
+        return builder
+            .setContentText(line)
+            .setStyle(NotificationCompat.BigTextStyle().bigText((listOf(line) + items).joinToString("\n")))
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(public)
+            .build()
+    }
+
+    /** Posts the persistent notification again with new content; its service keeps it in the foreground. */
+    fun update(context: Context, running: Running) = post(context, null, RUNNING_ID, running(context, running))
+
+    /** The monitor stopped while the session it was shown running for is still open. */
+    fun postInterrupted(context: Context) {
+        val text = ContextCompat.getContextForLanguage(context)
+        ensureChannels(context, text)
+        post(context, null, INTERRUPTED_ID, NotificationCompat.Builder(context, CHANNEL_MONITORING)
+            .setSmallIcon(R.drawable.ic_stat_monitoring)
+            .setContentTitle(text.getString(R.string.monitoring_interrupted))
+            .setContentText(text.getString(R.string.notification_interrupted_text))
+            .setSilent(true)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setContentIntent(open(context, null))
+            .build())
+    }
+
+    fun cancelInterrupted(context: Context) = NotificationManagerCompat.from(context).cancel(INTERRUPTED_ID)
+
+    /**
+     * An alert for [item], whose apps in [fresh] were newly raised; it names every app raised under the
+     * item, the new ones first, and replaces the earlier alert for the same item.
+     */
+    fun postAlert(context: Context, item: Attention, fresh: List<AppKey>) {
+        val text = ContextCompat.getContextForLanguage(context)
+        ensureChannels(context, text)
+        val name = text.getString(attentionNameRes(item.id))
+        val apps = (fresh + item.apps.filter { it !in fresh })
+        val public = NotificationCompat.Builder(context, CHANNEL_ATTENTION)
+            .setSmallIcon(R.drawable.ic_stat_monitoring)
+            .setContentTitle(text.getString(R.string.attention_title))
+            .build()
+        post(context, item.id, ALERT_ID, NotificationCompat.Builder(context, CHANNEL_ATTENTION)
+            .setSmallIcon(R.drawable.ic_stat_monitoring)
+            .setContentTitle(name)
+            .setContentText(appList(text, AppLabels(text), apps))
+            .setAutoCancel(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(public)
+            .setContentIntent(open(context, ROUTE_ATTENTION + item.id))
+            .build())
+    }
+
+    fun cancelAlerts(context: Context) {
+        val manager = NotificationManagerCompat.from(context)
+        manager.activeNotifications.filter { it.id == ALERT_ID }.forEach { manager.cancel(it.tag, it.id) }
+    }
+
+    /** Whether notifications from this app can be shown at all. */
+    fun allowed(context: Context): Boolean =
+        (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) &&
+            NotificationManagerCompat.from(context).areNotificationsEnabled()
+
+    @SuppressLint("MissingPermission")
+    private fun post(context: Context, tag: String?, id: Int, notification: Notification) {
+        if (!allowed(context)) return
+        runCatching { NotificationManagerCompat.from(context).notify(tag, id, notification) }
+    }
+
+    private fun summaryLine(text: Context, summary: NoticeSummary): String = listOfNotNull(
+        text.resources.getQuantityString(R.plurals.apps_count, summary.apps, formatCount(summary.apps.toLong())),
+        text.resources.getQuantityString(R.plurals.notification_records, summary.records, formatCount(summary.records.toLong())),
+        summary.raised.size.takeIf { it > 0 }?.let {
+            text.resources.getQuantityString(R.plurals.notification_attention, it, formatCount(it.toLong()))
+        }
+    ).joinToString(" · ")
+
+    private fun appList(text: Context, labels: AppLabels, apps: List<AppKey>): String {
+        val separator = text.getString(R.string.list_separator)
+        if (apps.size <= NAMED_APPS) return apps.joinToString(separator) { labels.label(it) }
+        val named = apps.take(NAMED_APPS - 1).joinToString(separator) { labels.label(it) }
+        return text.getString(R.string.notification_apps_more, named, formatCount(apps.size.toLong()))
+    }
+
+    private fun open(context: Context, route: String?): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        route?.let { intent.putExtra(EXTRA_ROUTE, it) }
+        return PendingIntent.getActivity(context, route?.hashCode() ?: 0, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    }
+
+    private fun ensureChannels(context: Context, text: Context) {
+        val manager = NotificationManagerCompat.from(context)
+        manager.createNotificationChannel(
+            NotificationChannelCompat.Builder(CHANNEL_MONITORING, NotificationManagerCompat.IMPORTANCE_LOW)
+                .setName(text.getString(R.string.notification_channel_monitoring))
+                .setShowBadge(false)
+                .build()
+        )
+        manager.createNotificationChannel(
+            NotificationChannelCompat.Builder(CHANNEL_ATTENTION, NotificationManagerCompat.IMPORTANCE_DEFAULT)
+                .setName(text.getString(R.string.attention_title))
+                .build()
+        )
+    }
+}

@@ -36,6 +36,8 @@ import com.ybblab.jiumi.data.LogExport
 import com.ybblab.jiumi.data.NetworkUsage
 import com.ybblab.jiumi.data.AppKinds
 import com.ybblab.jiumi.data.AttentionRules
+import com.ybblab.jiumi.data.AttentionAlerts
+import com.ybblab.jiumi.data.NoticeSummary
 import com.ybblab.jiumi.data.Freezes
 import com.ybblab.jiumi.probe.PackageChangeFailure
 import com.ybblab.jiumi.probe.ProbeClient
@@ -103,6 +105,8 @@ class MonitorController(
         val expertMode: Boolean = false,
         /** An app frozen from here that is found turned on again is frozen again. */
         val autoRefreeze: Boolean = false,
+        /** The notification settings: a persistent notification while monitoring, its summary, attention alerts. */
+        val notices: Notices = Notices(),
         /** How the monitor is started, and whether that way is ready (paired, root granted, Shizuku allowed). */
         val method: com.ybblab.jiumi.access.AccessMethod = com.ybblab.jiumi.access.AccessMethod.WIRELESS,
         val ready: Boolean = false,
@@ -115,6 +119,15 @@ class MonitorController(
 
         /** The user started monitoring and has not stopped it, whether or not the monitor runs now. */
         val sessionOpen: Boolean get() = session?.latest == true && session.running
+    }
+
+    /**
+     * The notification settings. [summary] and [alerts] keep the record in step in the background while
+     * the screen is on, so they need the persistent notification, which keeps the app running.
+     */
+    data class Notices(val persistent: Boolean = true, val summary: Boolean = false, val alerts: Boolean = false) {
+        /** Whether the record is pulled in the background for the notifications. */
+        val live: Boolean get() = persistent && (summary || alerts)
     }
 
     private data class Local(
@@ -130,7 +143,8 @@ class MonitorController(
         val window: Pair<Long, Long> = 0L to 0L,
         val allowRemovePreinstalled: Boolean = false,
         val expertMode: Boolean = false,
-        val autoRefreeze: Boolean = false
+        val autoRefreeze: Boolean = false,
+        val notices: Notices = Notices()
     )
 
     private val settings = context.getSharedPreferences("jiumi_settings", Context.MODE_PRIVATE)
@@ -154,11 +168,12 @@ class MonitorController(
         locationProviders = readLocationProviders(json)
         runCatching { java.io.File(context.filesDir, LOCATION_PROVIDERS_FILE).writeText(json) }
     }
+    private val attentionRules = AttentionRules.load(context)
     private val builder = ReportBuilder(
         store, rules, Process.myUid(), owners::ownerOf,
         traffic = { from, to -> usage.byUid(from, to) },
         kindOf = appKinds::kindOf,
-        attentionRules = AttentionRules.load(context),
+        attentionRules = attentionRules,
         holdsPermission = { op, pkg -> holdsPermission(op, pkg) },
         holdsAnyPermission = { pkg, permissions -> holdsAnyPermission(pkg, permissions) },
         packagesOfUid = owners::packagesOf,
@@ -173,7 +188,9 @@ class MonitorController(
         spoolLimitMb = settings.getInt(KEY_SPOOL_MB, DEFAULT_SPOOL_MB),
         allowRemovePreinstalled = settings.getBoolean(KEY_ALLOW_REMOVE, false),
         expertMode = settings.getBoolean(KEY_EXPERT, false),
-        autoRefreeze = settings.getBoolean(KEY_AUTO_REFREEZE, false)
+        autoRefreeze = settings.getBoolean(KEY_AUTO_REFREEZE, false),
+        notices = Notices(settings.getBoolean(KEY_NOTICE_PERSISTENT, true), settings.getBoolean(KEY_NOTICE_SUMMARY, false),
+            settings.getBoolean(KEY_NOTICE_ALERTS, false))
     ))
 
     private val packageFacts = PackageFactsSource(context)
@@ -506,7 +523,7 @@ class MonitorController(
         val problem = l.problem?.takeUnless { ready && it == Problem.SHIZUKU }
         UiState(pairingState, e.trust, failure, service != null, l.busy, problem, l.footprint, l.range,
             l.ledger, l.callTracing, l.session, l.spoolLimitMb, l.window, l.allowRemovePreinstalled, l.expertMode,
-            l.autoRefreeze, e.method, ready, e.shizuku, e.root)
+            l.autoRefreeze, l.notices, e.method, ready, e.shizuku, e.root)
     }.stateIn(scope, SharingStarted.Eagerly, UiState())
 
     init {
@@ -691,10 +708,14 @@ class MonitorController(
     }
 
     /** Records that the user left Jiumi (including via a floating window) while no prompt of ours was running. */
-    fun onAppPaused() = checkGate.onPaused()
+    fun onAppPaused() {
+        appVisible = false
+        checkGate.onPaused()
+    }
 
     /** Updates Root or Shizuku readiness when returning from a root manager or Shizuku without restarting. */
     fun onAppResumed() {
+        appVisible = true
         when (access.method.value) {
             com.ybblab.jiumi.access.AccessMethod.WIRELESS -> checkGate.onResumeWireless()
             com.ybblab.jiumi.access.AccessMethod.ROOT -> {
@@ -733,17 +754,29 @@ class MonitorController(
     }
 
     /**
-     * The persistent notification follows the monitor: shown while it runs within an open session,
-     * removed otherwise. Shown once per session start, so refreshes do not restart it.
+     * The persistent notification follows the monitor: shown while it runs within an open session and
+     * the user wants it, removed otherwise. Shown once per session start, so refreshes do not restart
+     * it. When the monitor stops under the open session it was shown for, a notice says so instead.
      */
     private fun showIndicator() {
         val open = store.sessions().firstOrNull { it.end == null }
-        val since = open?.start?.takeIf { probe.service.value != null }
-        if (since == shownSince) return
-        // A start refused while the app is in the background is tried again on the next refresh.
-        if (since == null) MonitorNotificationService.hide(context)
-        else if (!MonitorNotificationService.show(context, since)) return
-        shownSince = since
+        val running = probe.service.value != null
+        val on = local.value.notices.persistent
+        val since = open?.start?.takeIf { running && on }
+        if (since != shownSince) {
+            if (since == null) {
+                MonitorNotificationService.hide(context)
+                if (on && open != null && !running && shownSince == open.start) MonitorNotice.postInterrupted(context)
+            } else {
+                MonitorNotice.cancelInterrupted(context)
+                // A start refused while the app is in the background is tried again on the next refresh.
+                if (!MonitorNotificationService.show(context, MonitorNotice.Running(since, noticeSummary(since)))) return
+            }
+            shownSince = since
+        }
+        if (open == null || !on) MonitorNotice.cancelInterrupted(context)
+        if (open == null) MonitorNotice.cancelAlerts(context)
+        followNotices()
     }
 
     @Volatile private var shownSince: Long? = null
@@ -752,6 +785,113 @@ class MonitorController(
     fun reshowIndicator() {
         shownSince = null
         scope.launch(Dispatchers.IO) { showIndicator() }
+    }
+
+    fun setNoticePersistent(on: Boolean) = setNotices(local.value.notices.copy(persistent = on))
+
+    fun setNoticeSummary(on: Boolean) = setNotices(local.value.notices.copy(summary = on))
+
+    fun setNoticeAlerts(on: Boolean) = setNotices(local.value.notices.copy(alerts = on))
+
+    private fun setNotices(notices: Notices) {
+        val before = local.value.notices
+        settings.edit().putBoolean(KEY_NOTICE_PERSISTENT, notices.persistent).putBoolean(KEY_NOTICE_SUMMARY, notices.summary)
+            .putBoolean(KEY_NOTICE_ALERTS, notices.alerts).apply()
+        local.update { it.copy(notices = notices) }
+        scope.launch(Dispatchers.IO) {
+            // Alerts turned on are for what comes next: everything raised so far counts as seen.
+            if (notices.alerts && !before.alerts) store.sessions().firstOrNull { it.end == null }?.let { open ->
+                markAlerted(open.start, AttentionAlerts.keys(sessionReport(open.start).attention))
+            }
+            if (!notices.alerts) MonitorNotice.cancelAlerts(context)
+            showIndicator()
+            // The summary appears or goes at once, not at the next pull.
+            shownSince?.let { since ->
+                if (notices.summary != before.summary) MonitorNotificationService.update(context, MonitorNotice.Running(since, noticeSummary(since)))
+            }
+        }
+    }
+
+    /** The summary for the notification of the session that began at [since], when the user wants one. */
+    private fun noticeSummary(since: Long): NoticeSummary? =
+        if (local.value.notices.summary) NoticeSummary.of(sessionReport(since)) else null
+
+    /**
+     * The report of the open session that began at [since]: the one on screen when it covers that
+     * session and is fresh, else built for the purpose.
+     */
+    private fun sessionReport(since: Long): Report {
+        val l = local.value
+        val now = System.currentTimeMillis()
+        val ledger = l.ledger
+        if (ledger != null && l.range == Range.SESSION && l.session?.session?.start == since && l.session?.latest == true &&
+            now - rebuiltAt < NOTICE_INTERVAL_MS) return ledger
+        return builder.report(since, now)
+    }
+
+    @Volatile private var appVisible = false
+    private var noticeJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * While the persistent notification is shown and its summary or alerts are wanted, the record is
+     * pulled about once a minute when the screen is on (the app's own pages pull it while open), and
+     * the notifications follow it. Nothing is pulled while the screen is off.
+     */
+    @Synchronized
+    private fun followNotices() {
+        val wanted = shownSince != null && local.value.notices.live
+        if (!wanted) {
+            noticeJob?.cancel()
+            noticeJob = null
+        } else if (noticeJob?.isActive != true) {
+            noticeJob = scope.launch(Dispatchers.IO) {
+                while (true) {
+                    kotlinx.coroutines.delay(noticeIntervalMs)
+                    runCatching { updateNotices() }.onFailure { android.util.Log.w(TAG, "notice update failed", it) }
+                }
+            }
+        }
+    }
+
+    private val power = context.getSystemService(android.os.PowerManager::class.java)
+    @Volatile private var noticeIntervalMs = NOTICE_INTERVAL_MS
+
+    private suspend fun updateNotices() {
+        val since = shownSince ?: return
+        if (power?.isInteractive == false) return
+        val service = probe.service.value ?: return
+        val started = System.currentTimeMillis()
+        val report = syncLock.withLock {
+            if (!appVisible) {
+                val stored = runCatching { sync.sync(service) }.onFailure { android.util.Log.w(TAG, "sync failed", it) }.getOrDefault(0)
+                pendingLive += stored
+            }
+            sessionReport(since)
+        }
+        // A long session costs more to summarize; give the phone a breather in proportion.
+        noticeIntervalMs = maxOf(NOTICE_INTERVAL_MS, (System.currentTimeMillis() - started) * 20)
+        val notices = local.value.notices
+        if (notices.summary) MonitorNotificationService.update(context, MonitorNotice.Running(since, NoticeSummary.of(report)))
+        if (notices.alerts) alert(since, report)
+    }
+
+    /** Alerts the apps newly raised in the session that began at [since], once each per item. */
+    private fun alert(since: Long, report: Report) {
+        val notify = attentionRules.items.filter { it.notify }.map { it.id }.toSet()
+        val fresh = AttentionAlerts.fresh(report.attention, notify, alerted(since))
+        if (fresh.isEmpty()) return
+        fresh.forEach { item ->
+            report.attention.firstOrNull { it.id == item.id }?.let { MonitorNotice.postAlert(context, it, item.apps) }
+        }
+        markAlerted(since, alerted(since) + AttentionAlerts.keys(fresh))
+    }
+
+    /** What was alerted in the session that began at [since]; kept for the latest session only. */
+    private fun alerted(since: Long): Set<String> =
+        if (settings.getLong(KEY_ALERTED_SESSION, 0L) == since) settings.getStringSet(KEY_ALERTED, null).orEmpty() else emptySet()
+
+    private fun markAlerted(since: Long, keys: Set<String>) {
+        settings.edit().putLong(KEY_ALERTED_SESSION, since).putStringSet(KEY_ALERTED, keys).apply()
     }
 
     /** Starting begins a session; resuming after an interruption continues the open one. */
@@ -975,6 +1115,13 @@ class MonitorController(
         const val MAX_COMMAND_OUTPUT = 4_000
         const val PER_USER_RANGE = 100_000
         const val KEY_AUTO_REFREEZE = "auto_refreeze"
+        const val KEY_NOTICE_PERSISTENT = "notice_persistent"
+        const val KEY_NOTICE_SUMMARY = "notice_summary"
+        const val KEY_NOTICE_ALERTS = "notice_alerts"
+        const val KEY_ALERTED_SESSION = "alerted_session"
+        const val KEY_ALERTED = "alerted"
+        /** How often the notifications follow the record in the background, at the least. */
+        const val NOTICE_INTERVAL_MS = 60_000L
         /** The app-list permission some phone makers add; granted where the phone defines it. */
         const val GET_INSTALLED_APPS = "com.android.permission.GET_INSTALLED_APPS"
     }

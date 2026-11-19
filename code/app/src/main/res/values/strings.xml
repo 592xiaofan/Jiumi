@@ -235,6 +235,24 @@
     <string name="section_did">Behaviors</string>
     <string name="notification_monitoring">Monitoring</string>
     <string name="notification_channel_monitoring">Monitoring</string>
+    <string name="notification_interrupted_text">Open Jiumi to resume monitoring or end the session.</string>
+    <string name="notification_attention_line">%1$s: %2$s</string>
+    <string name="notification_apps_more">%2$s apps, including %1$s</string>
+    <plurals name="notification_records">
+        <item quantity="one">%1$s record</item>
+        <item quantity="other">%1$s records</item>
+    </plurals>
+    <plurals name="notification_attention">
+        <item quantity="one">%1$s item needs attention</item>
+        <item quantity="other">%1$s items need attention</item>
+    </plurals>
+    <string name="section_notifications">Notifications</string>
+    <string name="settings_notice_persistent">Persistent notification</string>
+    <string name="settings_notice_summary">Show summary</string>
+    <string name="settings_notice_alerts">Attention alerts</string>
+    <string name="settings_notice_desc">While monitoring, the notification shows how long it has run and a button to stop. The summary adds the apps, records and items that need attention in this session; alerts tell you when an app is newly raised for attention, once per app and item in each session. Both keep the record up to date about once a minute while the screen is on, which uses a little more battery. The lock screen shows no app names.</string>
+    <string name="settings_notice_off_desc">Monitoring goes on without the notification; its status shows only in Jiumi.</string>
+    <string name="settings_notice_blocked">Notifications from Jiumi are turned off. Tap to open the system settings.</string>
     <string name="catd_location_precise">Gets your location through the precise location permission, down to a few metres: which building or shop you are in.</string>
     <string name="catd_location_coarse">Gets your location through the approximate location permission, to a block or a few kilometres: which area you are in.</string>
     <string name="catd_location_continuous">Registers with the location service for continuous updates; the system keeps sending new positions as you move, enough to trace your route.</string>

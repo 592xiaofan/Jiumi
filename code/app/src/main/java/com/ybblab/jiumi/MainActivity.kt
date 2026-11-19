@@ -4,6 +4,7 @@
 package com.ybblab.jiumi
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -58,8 +59,23 @@ class MainActivity : AppCompatActivity() {
         beginPairing()
     }
 
+    /** A page a notification asked to open, until it is shown. */
+    private val requestedRoute = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /** Only attention pages are opened from outside, from the alerts this app posts. */
+    private fun requestRoute(intent: Intent?) {
+        intent?.getStringExtra(MonitorNotice.EXTRA_ROUTE)?.takeIf { it.startsWith(MonitorNotice.ROUTE_ATTENTION) }
+            ?.let { requestedRoute.value = it }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        requestRoute(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) requestRoute(intent)
         enableEdgeToEdge()
         // An install paired before setup existed has nothing left to set up.
         if (controller.isPaired) preferences.finishSetup()
@@ -94,6 +110,15 @@ class MainActivity : AppCompatActivity() {
                     onOpenAbout = { push("about") }, onOpenPairing = { push("pairing") },
                     onOpenMonitor = { stack = listOf(); tab = Tab.MONITOR })
                 val setupDone by preferences.setupDone.collectAsStateWithLifecycle()
+                val route by requestedRoute.collectAsStateWithLifecycle()
+                LaunchedEffect(route, setupDone) {
+                    val r = route ?: return@LaunchedEffect
+                    if (!setupDone) return@LaunchedEffect
+                    (1..stack.size).forEach { pages.removeState(pageKey(it)) }
+                    tab = Tab.MONITOR
+                    stack = listOf(r)
+                    requestedRoute.value = null
+                }
                 // On opening, a check for a newer release when one is due; a release found is offered once
                 // in a sheet, and stays marked on the Settings tab until installed.
                 val updates = androidx.compose.runtime.remember { com.ybblab.jiumi.update.Updates(applicationContext) }

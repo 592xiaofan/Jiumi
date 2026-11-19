@@ -23,7 +23,8 @@ class AttentionRules(
     val sentInBackgroundBytes: Long = DEFAULT_SENT_IN_BACKGROUND_BYTES,
     val locationProviderCategories: Set<String> = emptySet()
 ) {
-    data class Item(val id: String, val kinds: Set<String>)
+    /** [notify]: a new app raised under it is posted as an alert, when the user turned alerts on. */
+    data class Item(val id: String, val kinds: Set<String>, val notify: Boolean = false)
 
     /** How many of [category] within 60 minutes count as frequent. */
     fun thresholdFor(category: String): Int = byCategory[category] ?: frequentPerHour
@@ -45,7 +46,8 @@ class AttentionRules(
                 (0 until items.length()).map { i ->
                     val item = items.getJSONObject(i)
                     val kinds = item.getJSONArray("kinds")
-                    Item(item.getString("id"), (0 until kinds.length()).map { kinds.getString(it) }.toSet())
+                    Item(item.getString("id"), (0 until kinds.length()).map { kinds.getString(it) }.toSet(),
+                        item.optBoolean("notify", false))
                 },
                 root.getInt("frequentPerHour"),
                 strings(root, "routineKinds"),

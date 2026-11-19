@@ -199,6 +199,8 @@ fun SettingsScreen(
                 Spacer(Modifier.height(16.dp))
                 DomainRecordingRow()
             }
+            item { GroupTitle(stringResource(R.string.section_notifications), Modifier.padding(top = 24.dp)) }
+            item { NoticeRows(state.notices, controller) }
             item { GroupTitle(stringResource(R.string.section_data), Modifier.padding(top = 24.dp)) }
             item {
                 Card {
@@ -466,6 +468,54 @@ private fun ExpertModeRow(on: Boolean, onChange: (Boolean) -> Unit) {
                 }
             }
         )
+    }
+}
+
+/**
+ * The notifications while monitoring: the persistent one, and under it its summary and attention
+ * alerts, which need it to keep running. With Jiumi's notifications turned off, the first row opens
+ * the system settings for them instead.
+ */
+@Composable
+private fun NoticeRows(notices: MonitorController.Notices, controller: MonitorController) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var allowed by remember { mutableStateOf(com.ybblab.jiumi.MonitorNotice.allowed(context)) }
+    // Read again on return from the system settings; allowed again, the notification is posted now.
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        val now = com.ybblab.jiumi.MonitorNotice.allowed(context)
+        if (now && !allowed) controller.reshowIndicator()
+        allowed = now
+        onPauseOrDispose {}
+    }
+    val openSettings = {
+        runCatching {
+            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
+        }
+        Unit
+    }
+    Card {
+        ListRow(stringResource(R.string.settings_notice_persistent), leading = { IconTile(JiumiIcons.Notifications) },
+            onClick = { if (!allowed) openSettings() else controller.setNoticePersistent(!notices.persistent) }) {
+            JiumiSwitch(notices.persistent) { controller.setNoticePersistent(it) }
+        }
+        if (notices.persistent) {
+            InsetDivider()
+            ListRow(stringResource(R.string.settings_notice_summary), leading = { IconTile(JiumiIcons.Activity) },
+                onClick = { controller.setNoticeSummary(!notices.summary) }) {
+                JiumiSwitch(notices.summary) { controller.setNoticeSummary(it) }
+            }
+            InsetDivider()
+            ListRow(stringResource(R.string.settings_notice_alerts), leading = { IconTile(JiumiIcons.Warning) },
+                onClick = { controller.setNoticeAlerts(!notices.alerts) }) {
+                JiumiSwitch(notices.alerts) { controller.setNoticeAlerts(it) }
+            }
+        }
+    }
+    when {
+        !allowed -> GroupFooter(stringResource(R.string.settings_notice_blocked), warning = true)
+        notices.persistent -> GroupFooter(stringResource(R.string.settings_notice_desc))
+        else -> GroupFooter(stringResource(R.string.settings_notice_off_desc))
     }
 }
 

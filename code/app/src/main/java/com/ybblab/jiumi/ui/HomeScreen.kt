@@ -657,15 +657,16 @@ fun kindName(kind: AppKind): String = stringResource(
 )
 
 @Composable
-fun attentionName(id: String): String = stringResource(
-    when (id) {
-        AttentionRules.BACKGROUND -> R.string.attention_background
-        AttentionRules.SENT_IN_BACKGROUND -> R.string.attention_sent_in_background
-        AttentionRules.FREQUENT -> R.string.attention_frequent
-        AttentionRules.FREQUENT_DENIED -> R.string.attention_frequent_denied
-        else -> R.string.cap_unknown
-    }
-)
+fun attentionName(id: String): String = stringResource(attentionNameRes(id))
+
+/** The name of an item raised for attention; notifications use it outside Compose. */
+fun attentionNameRes(id: String): Int = when (id) {
+    AttentionRules.BACKGROUND -> R.string.attention_background
+    AttentionRules.SENT_IN_BACKGROUND -> R.string.attention_sent_in_background
+    AttentionRules.FREQUENT -> R.string.attention_frequent
+    AttentionRules.FREQUENT_DENIED -> R.string.attention_frequent_denied
+    else -> R.string.cap_unknown
+}
 
 /**
  * Why monitoring is not running, when something went wrong: the connection's own reason when it
