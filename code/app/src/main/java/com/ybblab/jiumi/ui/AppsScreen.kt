@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
@@ -76,13 +79,13 @@ private enum class AppsFilter(val label: Int, val state: AppState?) {
 }
 
 /** Groups in their display order. */
-private enum class AppGroup(val label: Int, val source: AppSource?) {
-    STORE(R.string.apps_stat_store, AppSource.STORE),
-    SIDELOADED(R.string.apps_stat_sideloaded, AppSource.SIDELOADED),
-    PREINSTALLED(R.string.apps_stat_preinstalled, AppSource.PREINSTALLED),
-    COMPONENT(R.string.apps_stat_component, null),
-    MODULE(R.string.apps_stat_module, null),
-    HISTORICAL(R.string.apps_group_historical, null);
+private enum class AppGroup(val label: Int, val source: AppSource?, val tint: Color) {
+    STORE(R.string.apps_stat_store, AppSource.STORE, Color(0xFF4F8CF0)),
+    SIDELOADED(R.string.apps_stat_sideloaded, AppSource.SIDELOADED, Color(0xFFE5A23B)),
+    PREINSTALLED(R.string.apps_stat_preinstalled, AppSource.PREINSTALLED, Color(0xFF3FB28C)),
+    COMPONENT(R.string.apps_stat_component, null, Color(0xFF9A9AA4)),
+    MODULE(R.string.apps_stat_module, null, Color(0xFF8E79BE)),
+    HISTORICAL(R.string.apps_group_historical, null, Color(0xFF9A9AA4));
 
     companion object {
         val inventoryGroups = entries.filter { it != HISTORICAL }
@@ -307,30 +310,38 @@ fun SystemModuleScreen(controller: MonitorController, labels: AppLabels, pkg: St
  */
 @Composable
 private fun GroupStats(counts: Map<AppGroup, Int>, current: AppGroup?, onJump: (AppGroup) -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
+    BoxWithConstraints(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, AppShapes.Card).padding(4.dp)) {
         val perRow = if (maxWidth < 300.dp || LocalDensity.current.fontScale > 1.25f) 3 else 5
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             AppGroup.inventoryGroups.chunked(perRow).forEach { groups ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    groups.forEach { group ->
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                    groups.forEachIndexed { index, group ->
+                        if (index > 0) Box(
+                            Modifier.padding(vertical = 14.dp).width(0.5.dp).fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.outlineVariant)
+                        )
                         val count = counts[group] ?: 0
-                        val selected = group == current && count > 0
+                        val enabled = count > 0
                         val fill by animateColorAsState(
-                            if (selected) Color(0xFF8E79BE).copy(alpha = 0.18f) else Color.Transparent,
+                            if (group == current && enabled) Ink.fill else Color.Transparent,
                             label = "groupHere"
                         )
                         Column(
                             Modifier.weight(1f).heightIn(min = 48.dp).clip(AppShapes.Control)
-                                .background(fill).clickable(enabled = count > 0) { onJump(group) }.padding(3.dp),
+                                .background(fill).clickable(enabled = enabled) { onJump(group) }.padding(3.dp),
                             verticalArrangement = Arrangement.Center,
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(formatCount(count.toLong()), color = if (count > 0) Ink.primary else Ink.tertiary,
+                            Text(formatCount(count.toLong()), color = if (enabled) Ink.primary else Ink.tertiary,
                                 style = MaterialTheme.typography.titleMedium.copy(fontSize = 12.sp, lineHeight = 16.sp,
                                     fontFeatureSettings = "tnum"))
-                            Text(stringResource(group.label), color = if (count > 0) Ink.secondary else Ink.tertiary,
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp),
-                                textAlign = TextAlign.Center, maxLines = 2)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Box(Modifier.size(5.dp).clip(CircleShape)
+                                    .background(group.tint.copy(alpha = if (enabled) 1f else 0.35f)))
+                                Text(stringResource(group.label), color = if (enabled) Ink.secondary else Ink.tertiary,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                                    textAlign = TextAlign.Center, maxLines = 2)
+                            }
                         }
                     }
                 }
