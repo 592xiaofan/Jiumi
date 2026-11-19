@@ -255,17 +255,17 @@ internal class ProbeService(
         // "package:<name> installer=<pkg> uid:<uid>" per line; -i adds the installer, -u packages removed
         // for the user but kept on the phone.
         val installers = HashMap<String, String>()
-        fun list(vararg flags: String): Map<String, Int> =
-            Shell.run(listOf("pm", "list", "packages", "-U", "--user", "$user") + flags, timeoutMs = 30_000).output
-                .lineSequence().mapNotNull { line ->
+        fun list(vararg flags: String): Map<String, Int>? =
+            packageList("-U", "--user", "$user", *flags)
+                ?.lineSequence()?.mapNotNull { line ->
                     val name = line.substringAfter("package:", "").substringBefore(' ').trim()
                     val uid = line.substringAfter("uid:", "").trim().substringBefore(',').substringBefore(' ').toIntOrNull() ?: -1
                     if ("installer=" in line) {
                         val installer = line.substringAfter("installer=").substringBefore(' ').trim()
                         if (installer.isNotEmpty() && installer != "null") synchronized(installers) { installers[name] = installer }
                     }
-                    name.takeIf { PACKAGE_NAME.matches(it) }?.let { it to uid }
-                }.toMap()
+                    name.takeIf(PackageInventory::acceptsName)?.let { it to uid }
+                }?.toMap()
         // Each list is its own shell command; run side by side they take as long as the slowest one.
         // The packages with an icon in the launcher, which some phones hide from the app itself.
         val launcherFuture = java.util.concurrent.CompletableFuture.supplyAsync {
@@ -278,29 +278,25 @@ internal class ProbeService(
         // When each package was first installed: the phone maker's preloads in the data partition carry
         // the time of the first boot, as the system itself does; anything the user added comes later.
         val dumpFuture = java.util.concurrent.CompletableFuture.supplyAsync {
-            runCatching { readPackageDump("packages", user) }.getOrNull()
+            runCatching { readPackageDump("packages", user) }
+                .onFailure { ProbeMain.log("package inventory dump failed: ${it.javaClass.simpleName}") }.getOrNull()
+        }
+        val modulesFuture = java.util.concurrent.CompletableFuture.supplyAsync {
+            packageList("--apex-only", "-f", "--show-versioncode")?.let(PackageInventory::modules)
         }
         val lists = listOf(arrayOf("-u", "-i"), emptyArray(), arrayOf("-s", "-u"))
             .map { flags -> java.util.concurrent.CompletableFuture.supplyAsync { list(*flags) } }
             .map { it.join() }
         val launcher = launcherFuture.join()
         val dump = dumpFuture.join()
-        val firstInstall = dump?.firstInstall
-        val firstBoot = firstInstall?.get("android")
-        val all = lists[0]
-        val installed = lists[1].keys
-        val system = lists[2].keys
-        val packages = JSONArray()
-        all.forEach { (pkg, uid) ->
-            val state = dump?.userStates?.get(pkg)
-            packages.put(JSONObject().put("pkg", pkg).put("uid", uid).put("system", pkg in system)
-                .put("suspended", state?.suspendedByShell == true).put("installed", pkg in installed)
-                .apply { state?.let { put("enabled", it.enabled) }
-                    installers[pkg]?.let { put("installer", it) }; launcher?.let { put("launcher", pkg in it) }
-                    if (firstBoot != null) firstInstall[pkg]?.let { put("factory", it - firstBoot in 0..FACTORY_WINDOW_MS) } })
-        }
-        return JSONObject().put("packages", packages).toString()
+        val packages = PackageInventory.packages(user, dump, lists[0].orEmpty(), lists[1], lists[2], installers, launcher)
+        return JSONObject().put("packages", packages).put("modules", modulesFuture.join()).toString()
     }
+
+    private fun packageList(vararg flags: String): String? = runCatching {
+        Shell.run(listOf("pm", "list", "packages") + flags, timeoutMs = 30_000)
+            .takeIf { it.exitCode == 0 }?.output
+    }.getOrNull()
 
     private fun readPackageDump(target: String, user: Int): PackageDump? {
         val result = Shell.run(listOf("dumpsys", "package", target), timeoutMs = 30_000)
@@ -341,8 +337,6 @@ internal class ProbeService(
         const val FIRST_MAKER_OP = 1_000
         const val PER_USER_RANGE = 100_000
         const val MAX_OUTPUT = 2_000
-        /** A package first installed this soon after the system itself came with the phone. */
-        const val FACTORY_WINDOW_MS = 5 * 60_000L
         val PACKAGE_NAME = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+")
     }
 }

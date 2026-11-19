@@ -54,6 +54,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import com.ybblab.jiumi.ui.theme.Ink
 import com.ybblab.jiumi.MonitorController
@@ -61,7 +62,6 @@ import com.ybblab.jiumi.MonitorController.AppState
 import com.ybblab.jiumi.MonitorController.ListedApp
 import com.ybblab.jiumi.R
 import com.ybblab.jiumi.data.AppKey
-import com.ybblab.jiumi.data.AppKind
 import com.ybblab.jiumi.data.AppSource
 import com.ybblab.jiumi.data.ManageAction
 import com.ybblab.jiumi.ui.icons.JiumiIcons
@@ -73,15 +73,22 @@ private enum class AppsFilter(val label: Int, val state: AppState?) {
     DELETED(R.string.state_deleted, AppState.DELETED)
 }
 
-/** The four kinds of app the list is grouped into, in its order; [source] is null for system components. */
+/** Groups in their display order. */
 private enum class AppGroup(val label: Int, val source: AppSource?, val tint: Color) {
     STORE(R.string.apps_stat_store, AppSource.STORE, Color(0xFF4F8CF0)),
     SIDELOADED(R.string.apps_stat_sideloaded, AppSource.SIDELOADED, Color(0xFFE5A23B)),
     PREINSTALLED(R.string.apps_stat_preinstalled, AppSource.PREINSTALLED, Color(0xFF3FB28C)),
-    COMPONENT(R.string.apps_stat_component, null, Color(0xFF9A9AA4));
+    COMPONENT(R.string.apps_stat_component, null, Color(0xFF9A9AA4)),
+    MODULE(R.string.apps_stat_module, null, Color(0xFF8E79BE)),
+    HISTORICAL(R.string.apps_group_historical, null, Color(0xFF9A9AA4));
 
     companion object {
-        fun of(app: ListedApp) = if (app.component) COMPONENT else entries.first { it.source == app.source }
+        fun of(app: ListedApp) = when {
+            app.module -> MODULE
+            app.state == AppState.HISTORICAL -> HISTORICAL
+            app.component -> COMPONENT
+            else -> entries.first { it.source == app.source }
+        }
     }
 }
 
@@ -91,7 +98,7 @@ private enum class AppGroup(val label: Int, val source: AppSource?, val tint: Co
  * (tapped, it glides the list there; the group in view is shaded) and search.
  */
 @Composable
-fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (AppKey) -> Unit) {
+fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (AppKey) -> Unit, onOpenModule: (String) -> Unit) {
     val state by controller.state.collectAsStateWithLifecycle()
     var filter by rememberSaveable { mutableStateOf(AppsFilter.ALL.name) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -100,18 +107,27 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
     // phones hide, follows only when it is due, since it costs a round of shell commands.
     val apps by produceState(lastListed, state.ledger, state.running) {
         suspend fun named(list: List<ListedApp>) = withContext(Dispatchers.IO) {
-            list.map { it to (it.backup?.label ?: labels.label(AppKey(it.uid, it.pkg))) }
+            list.map { it to (it.backup?.label ?: if (it.uid >= 0) labels.label(AppKey(it.uid, it.pkg)) else it.pkg) }
                 .sortedWith(compareBy({ AppGroup.of(it.first).ordinal }, { it.second.lowercase() }))
         }
-        value = named(controller.listedApps(includeSystem = true)).also { lastListed = it }
+        value = named(controller.listedApps()).also { lastListed = it }
         if (controller.shellListStale()) {
-            value = named(controller.listedApps(fresh = true, includeSystem = true)).also { lastListed = it }
+            value = named(controller.listedApps(fresh = true)).also { lastListed = it }
         }
     }
     val chosen = AppsFilter.entries.firstOrNull { it.name == filter } ?: AppsFilter.ALL
-    val groups = remember(apps, chosen, query) {
-        val q = query.trim()
-        apps.orEmpty()
+    val q = query.trim()
+    val history by produceState(emptyList<Pair<ListedApp, String>>(), q, chosen) {
+        value = emptyList()
+        if (q.isNotEmpty() && chosen == AppsFilter.ALL) {
+            delay(200)
+            value = controller.historicalApps(q).map { it to it.pkg }
+        }
+    }
+    val groups = remember(apps, history, chosen, q) {
+        val live = apps.orEmpty()
+        val known = live.mapNotNull { (app, _) -> app.pkg.takeUnless { app.module } }.toHashSet()
+        (live + history.filter { (app, _) -> app.pkg !in known })
             .filter { (app, name) ->
                 (chosen.state == null || app.state == chosen.state) &&
                     (q.isEmpty() || name.contains(q, ignoreCase = true) || app.pkg.contains(q, ignoreCase = true))
@@ -194,7 +210,7 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
                 }
             }
             list.forEachIndexed { index, (app, name) ->
-                item(key = "app-${app.pkg}") {
+                item(key = "${if (app.module) "apex" else "app"}-${app.pkg}") {
                     CardSlice(first = index == 0, last = index == list.lastIndex) {
                         if (index > 0) InsetDivider()
                         val badge = when (app.state) {
@@ -212,9 +228,10 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
                             leading = {
                                 if (badge != null) {
                                     AppIconWithBadge(controller, labels, app.pkg, LEADING_SIZE, badge, fromBackup = app.backup != null)
-                                } else AppIcon(labels, app.pkg, LEADING_SIZE)
+                                } else if (app.module) IconTile(JiumiIcons.Cpu)
+                                else AppIcon(labels, app.pkg, LEADING_SIZE)
                             },
-                            onClick = { onOpenApp(AppKey(app.uid, app.pkg)) },
+                            onClick = { if (app.module) onOpenModule(app.pkg) else onOpenApp(AppKey(app.uid, app.pkg)) },
                             titleColor = if (badge != null) Ink.secondary else MaterialTheme.colorScheme.onSurface
                         ) { Chevron() }
                     }
@@ -229,6 +246,45 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
     }
 }
 
+@Composable
+fun SystemModuleScreen(controller: MonitorController, labels: AppLabels, pkg: String, onBack: () -> Unit, onOpenApp: (AppKey) -> Unit) {
+    val info by produceState<Pair<com.ybblab.jiumi.data.SystemModule, List<AppKey>>?>(null, pkg) {
+        value = controller.systemModule(pkg)
+    }
+    SubScreen(stringResource(R.string.apps_apex_title), onBack) { padding ->
+        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp)) {
+            item {
+                Card {
+                    ListRow(stringResource(R.string.key_package), subtitle = pkg, leading = { IconTile(JiumiIcons.Cpu) })
+                    info?.first?.version?.let {
+                        InsetDivider()
+                        ListRow(stringResource(R.string.apps_apex_version), subtitle = it.toString())
+                    }
+                    info?.first?.path?.let {
+                        InsetDivider()
+                        ListRow(stringResource(R.string.apps_apex_path), subtitle = it)
+                    }
+                }
+            }
+            val apps = info?.second.orEmpty()
+            if (apps.isNotEmpty()) {
+                item { GroupTitle(stringResource(R.string.apps_apex_packages), Modifier.padding(top = 20.dp)) }
+                apps.forEachIndexed { index, key ->
+                    item(key = key.pkg) {
+                        CardSlice(index == 0, index == apps.lastIndex) {
+                            if (index > 0) InsetDivider()
+                            val name = if (key.uid >= 0) labels.label(key) else key.pkg.orEmpty()
+                            ListRow(name, subtitle = key.pkg?.takeUnless { it == name },
+                                leading = { AppIcon(labels, key.pkg, LEADING_SIZE) },
+                                onClick = { onOpenApp(key) }) { Chevron() }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /**
  * The count of each group side by side in one card, a coloured mark under each figure telling the
  * groups apart. The group in view is shaded; an empty one is dimmed and does nothing when tapped.
@@ -237,7 +293,7 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
 private fun GroupStats(counts: Map<AppGroup, Int?>, current: AppGroup?, onJump: (AppGroup) -> Unit) {
     Surface(shape = AppShapes.Card, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(4.dp).height(IntrinsicSize.Min)) {
-            AppGroup.entries.forEachIndexed { i, group ->
+            AppGroup.entries.filter { it != AppGroup.HISTORICAL }.forEachIndexed { i, group ->
                 val count = counts[group]
                 val enabled = (count ?: 0) > 0
                 if (i > 0) Box(Modifier.padding(vertical = 14.dp).width(0.5.dp).fillMaxHeight()
@@ -281,6 +337,7 @@ private fun stateText(app: ListedApp): String? = when (app.state) {
     AppState.DISABLED -> stringResource(R.string.state_disabled)
     AppState.SUSPENDED -> stringResource(R.string.state_suspended)
     AppState.DELETED -> stringResource(R.string.state_deleted)
+    AppState.HISTORICAL, null -> null
 }
 
 /**

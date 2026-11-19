@@ -600,6 +600,12 @@
     <string name="apps_stat_sideloaded">自行安装</string>
     <string name="apps_stat_preinstalled">系统预装</string>
     <string name="apps_stat_component">系统组件</string>
+    <string name="apps_stat_module">系统模块</string>
+    <string name="apps_group_historical">历史记录</string>
+    <string name="apps_apex_title">系统模块（APEX）</string>
+    <string name="apps_apex_version">版本号</string>
+    <string name="apps_apex_path">安装路径</string>
+    <string name="apps_apex_packages">模块内的应用</string>
     <string name="group_control">使用无障碍、VPN 与悬浮窗</string>
     <string name="cat_call_capture">录制通话（麦克风或摄像头）</string>
     <string name="catd_call_capture">在通话进行中使用麦克风或摄像头，能录下通话内容。</string>

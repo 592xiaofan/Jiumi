@@ -331,6 +331,27 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
         if (it.moveToFirst()) it.getLong(0) else 0L
     }
 
+    /** Package identities explicitly named by Android or a management record, newest first. */
+    fun recordedPackages(query: String, user: Int): List<AppKey> = readableDatabase.rawQuery(
+        """SELECT pkg, uid, MAX(seen) AS last_seen FROM (
+            SELECT pkg, uid, t AS seen FROM access WHERE pkg IS NOT NULL
+            UNION ALL SELECT pkg, uid, span_to AS seen FROM op_history
+            UNION ALL SELECT pkg, uid, t AS seen FROM user_action
+            UNION ALL SELECT substr(ltrim(component, '{'), 1, instr(ltrim(component, '{'), '/') - 1), uid, t AS seen
+                FROM process_start WHERE instr(component, '/') > 0
+        ) WHERE instr(lower(pkg), lower(?)) > 0 AND uid >= ? AND uid < ?
+        GROUP BY pkg, uid ORDER BY last_seen DESC, uid""",
+        arrayOf(query, (user * 100_000).toString(), ((user + 1) * 100_000).toString())
+    ).use { cursor ->
+        buildList {
+            val seen = HashSet<String>()
+            while (cursor.moveToNext()) {
+                val pkg = cursor.getString(0)
+                if (Management.isCatalogPackage(pkg) && seen.add(pkg)) add(AppKey(cursor.getInt(1), pkg))
+            }
+        }
+    }
+
     fun setMeta(db: SQLiteDatabase, key: String, value: Long) {
         db.insertWithOnConflict("meta", null, ContentValues().apply { put("key", key); put("value", value) },
             SQLiteDatabase.CONFLICT_REPLACE)

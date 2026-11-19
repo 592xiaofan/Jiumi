@@ -43,8 +43,8 @@ data class PackageFacts(
      * the shell turns it off) or COMPONENT_ENABLED_STATE_DISABLED (as root or the system does).
      */
     val disabled: Boolean,
-    /** Has code of its own; resource overlays and the like have none and are not apps to manage. */
-    val hasCode: Boolean = true,
+    /** Has code of its own. Null if the package list did not report the flags. */
+    val hasCode: Boolean? = true,
     /** Shows an icon in the launcher. */
     val launchable: Boolean = true,
     /** Default roles held: "home", "keyboard", "sms", "dialer". */
@@ -119,6 +119,7 @@ object Management {
      * Preinstalled apps are removed for this user only, and only when [allowRemove].
      */
     fun actions(f: PackageFacts, allowRemove: Boolean): List<ManageAction> = when {
+        f.hasCode != true || f.uid < 0 || !isPackageName(f.pkg) -> emptyList()
         !f.installed -> if (f.preinstalled) listOf(ManageAction.RESTORE) else emptyList()
         else -> listOfNotNull(when {
             f.suspendedByShell -> ManageAction.UNSUSPEND
@@ -176,9 +177,12 @@ object Management {
     }
 
     private val PACKAGE_NAME = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+")
+    private val CATALOG_PACKAGE_NAME = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*")
 
     /** A package name, and so safe as a directory name. */
     fun isPackageName(name: String) = PACKAGE_NAME.matches(name)
+
+    fun isCatalogPackage(name: String) = CATALOG_PACKAGE_NAME.matches(name)
 }
 
 /** A package as the monitor (the shell) lists it. */
@@ -189,20 +193,44 @@ data class ShellPackage(val pkg: String, val uid: Int, val system: Boolean, val 
                         /** First installed with the system: a preload of the phone's maker. */
                         val factory: Boolean = false,
                         /** Suspended from here in place of being disabled; other apps' suspensions are not counted. */
-                        val suspended: Boolean = false) {
+                        val suspended: Boolean = false,
+                        val hasCode: Boolean? = null,
+                        val persistent: Boolean = false,
+                        val sharedUser: String? = null,
+                        val codePath: String? = null) {
     companion object {
-        /** The monitor's listPackages answer; empty when it is not one. */
-        fun parse(json: String): List<ShellPackage> = runCatching {
-            val array = JSONObject(json).getJSONArray("packages")
-            (0 until array.length()).map { i ->
+        fun parse(array: org.json.JSONArray): List<ShellPackage> =
+            (0 until array.length()).mapNotNull { i ->
                 val o = array.getJSONObject(i)
-                ShellPackage(o.getString("pkg"), o.optInt("uid", -1), o.optBoolean("system"), o.optInt("enabled", -1).takeIf { it >= 0 },
-                    o.optBoolean("installed", true), o.optString("installer").takeIf { it.isNotEmpty() && it != "null" },
-                    if (o.has("launcher")) o.optBoolean("launcher") else null, o.optBoolean("factory"), o.optBoolean("suspended"))
-            }.filter { Management.isPackageName(it.pkg) }
-        }.getOrDefault(emptyList())
+                val pkg = o.getString("pkg")
+                if (!Management.isCatalogPackage(pkg)) return@mapNotNull null
+                ShellPackage(pkg, o.optInt("uid", -1), o.optBoolean("system"), o.optInt("enabled", -1).takeIf { it >= 0 },
+                    o.getBoolean("installed"), o.stringOrNull("installer"),
+                    if (o.has("launcher")) o.optBoolean("launcher") else null, o.optBoolean("factory"), o.optBoolean("suspended"),
+                    if (o.has("hasCode")) o.optBoolean("hasCode") else null, o.optBoolean("persistent"),
+                    o.stringOrNull("sharedUser"), o.stringOrNull("codePath"))
+            }
     }
 }
+
+data class SystemModule(val pkg: String, val path: String, val version: Long?)
+
+data class ShellCatalog(val packages: List<ShellPackage> = emptyList(), val modules: List<SystemModule>? = null) {
+    companion object {
+        fun parse(json: JSONObject): ShellCatalog {
+            val modules = json.optJSONArray("modules")?.let { array ->
+                List(array.length()) { i ->
+                    val item = array.getJSONObject(i)
+                    SystemModule(item.getString("pkg"), item.getString("path"), item.optLong("version", -1).takeIf { it >= 0 })
+                }.filter { Management.isCatalogPackage(it.pkg) }
+            }
+            return ShellCatalog(ShellPackage.parse(json.getJSONArray("packages")), modules)
+        }
+    }
+}
+
+private fun JSONObject.stringOrNull(key: String): String? =
+    if (isNull(key)) null else optString(key).takeIf(String::isNotBlank)
 
 /** Reads package facts from the phone. */
 class PackageFactsSource(private val context: Context) {
@@ -245,10 +273,11 @@ class PackageFactsSource(private val context: Context) {
 
     /** What the shell knows; without word on the launcher, a hidden system package counts as not in it. */
     private fun facts(s: ShellPackage, roles: Map<String, Set<String>>) = PackageFacts(
-        pkg = s.pkg, uid = s.uid, preinstalled = s.system, persistent = false, sharedUser = null,
+        pkg = s.pkg, uid = s.uid, preinstalled = s.system, persistent = s.persistent, sharedUser = s.sharedUser,
         installed = s.installed, disabled = Management.isDisabled(s.enabledSetting),
-        hasCode = true, launchable = s.launcher ?: !s.system,
-        roles = roles[s.pkg].orEmpty(), installer = s.installer, factoryPreload = s.factory && !s.system, suspendedByShell = s.suspended
+        hasCode = s.hasCode, launchable = s.launcher ?: !s.system,
+        roles = roles[s.pkg].orEmpty(), installer = s.installer, factoryPreload = s.factory && !s.system,
+        suspendedByShell = s.suspended
     )
 
     private fun facts(pkg: String, roles: Map<String, Set<String>>): PackageFacts? {

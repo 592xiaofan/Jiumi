@@ -35,6 +35,7 @@ import com.ybblab.jiumi.ui.SettingsScreen
 import com.ybblab.jiumi.ui.SpoolScreen
 import com.ybblab.jiumi.ui.ThemeScreen
 import com.ybblab.jiumi.ui.AppsScreen
+import com.ybblab.jiumi.ui.SystemModuleScreen
 import com.ybblab.jiumi.ui.AboutScreen
 import com.ybblab.jiumi.ui.LicensesScreen
 import com.ybblab.jiumi.ui.PairingScreen
@@ -148,7 +149,8 @@ class MainActivity : AppCompatActivity() {
                                 onOpenLog = openLog,
                                 onOpenPairing = { push("pairing") }
                             )
-                            Tab.APPS -> AppsScreen(controller, labels, onOpenApp = openApp)
+                            Tab.APPS -> AppsScreen(controller, labels, onOpenApp = openApp,
+                                onOpenModule = { push("apex:$it") })
                             Tab.SETTINGS -> settings(onBack = null)
                         } }
                     }
@@ -157,6 +159,8 @@ class MainActivity : AppCompatActivity() {
                         AppDetailScreen(controller, labels, AppKey(uid.toInt(), pkg.ifEmpty { null }), onBack = pop, onOpenLog = openLog,
                             onOpenAccess = { network -> push("access:${if (network) "network" else "permissions"}|${uid}|${pkg}") })
                     }
+                    top.startsWith("apex:") ->
+                        SystemModuleScreen(controller, labels, top.removePrefix("apex:"), onBack = pop, onOpenApp = openApp)
                     top.startsWith("access:") -> {
                         val (mode, uid, pkg) = top.removePrefix("access:").split('|', limit = 3)
                         com.ybblab.jiumi.ui.AppAccessScreen(

@@ -103,7 +103,8 @@ fun AppDetailScreen(
     val wakeups by produceState<com.ybblab.jiumi.data.Wakeups?>(null, key.pkg, state.running) {
         value = key.pkg?.takeIf { state.running }?.let { controller.wakeups(it) }
     }
-    val name = managed?.backup?.takeIf { managed?.facts == null }?.label ?: labels.label(key)
+    val name = managed?.backup?.takeIf { managed?.facts == null }?.label
+        ?: key.pkg?.takeIf { key.uid < 0 } ?: labels.label(key)
     val routine = detail?.routine ?: false
     var category by rememberSaveable(key) { mutableStateOf<String?>(null) }
     var shown by rememberSaveable(key) { mutableStateOf(LOG_PAGE) }
@@ -174,7 +175,9 @@ fun AppDetailScreen(
                     onChanged = { manageRevision++ }, onDiscarded = onBack)
             }
         }
-        if (key.pkg != null && (managed == null || managed?.facts?.installed == true)) {
+        if (key.pkg != null && key.uid >= 0 && Management.isPackageName(key.pkg) &&
+            managed?.refusal?.reason != Refusal.Reason.SELF &&
+            managed?.facts?.let { it.installed && it.hasCode == true } == true) {
             item(key = "access") {
                 Spacer(Modifier.height(16.dp))
                 Card {

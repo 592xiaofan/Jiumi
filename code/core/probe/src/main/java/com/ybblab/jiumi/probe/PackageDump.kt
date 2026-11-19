@@ -9,9 +9,21 @@ import java.util.Locale
 
 internal class PackageDump(
     val firstInstall: Map<String, Long>,
-    val userStates: Map<String, UserState>
+    val userStates: Map<String, UserState>,
+    val packages: Map<String, Entry>
 ) {
-    data class UserState(val installed: Boolean, val enabled: Int, val suspended: Boolean?, val suspendedByShell: Boolean = false) {
+    data class Entry(
+        var appId: Int? = null,
+        var flags: Set<String>? = null,
+        var sharedUser: String? = null,
+        var codePath: String? = null
+    ) {
+        val system get() = flags?.let { "SYSTEM" in it || "UPDATED_SYSTEM_APP" in it }
+        val hasCode get() = flags?.contains("HAS_CODE")
+        val persistent get() = flags?.contains("PERSISTENT")
+    }
+
+    data class UserState(val installed: Boolean, val enabled: Int?, val suspended: Boolean?, val suspendedByShell: Boolean = false) {
         val disabledByUser get() = installed && enabled == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
     }
 
@@ -47,6 +59,7 @@ internal class PackageDump(
             val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
             val times = HashMap<String, Long>()
             val states = HashMap<String, UserState>()
+            val entries = LinkedHashMap<String, Entry>()
             var packages = false
             var pkg: String? = null
             var targetUser = false
@@ -61,16 +74,25 @@ internal class PackageDump(
                 if (!packages) continue
                 if (t.startsWith("Package [")) {
                     pkg = t.substringAfter('[').substringBefore(']')
+                    entries.getOrPut(pkg) { Entry() }
                     targetUser = false
                     continue
                 }
                 val name = pkg ?: continue
+                val entry = entries.getValue(name)
                 val userMatch = if (t.startsWith("User ")) userLine.matchEntire(t) else null
                 when {
+                    t.startsWith("appId=") || t.startsWith("userId=") ->
+                        entry.appId = t.substringAfter('=').toIntOrNull()
+                    t.startsWith("pkgFlags=[") && t.endsWith(']') ->
+                        entry.flags = t.substringAfter('[').substringBeforeLast(']').split(' ').filter(String::isNotBlank).toSet()
+                    t.startsWith("sharedUser=SharedUserSetting{") ->
+                        entry.sharedUser = t.substringAfter(' ', "").substringBefore('/').takeIf(String::isNotBlank)
+                    t.startsWith("codePath=") -> entry.codePath = t.substringAfter('=').takeIf(String::isNotBlank)
                     userMatch != null -> {
                         targetUser = userMatch.groupValues[1].toIntOrNull() == user
                         if (!targetUser) continue
-                        val setting = enabled.find(t)?.groupValues?.get(1)?.toIntOrNull() ?: continue
+                        val setting = enabled.find(t)?.groupValues?.get(1)?.toIntOrNull()
                         val suspension = suspended.find(t)?.groupValues?.get(1)?.toBooleanStrictOrNull()
                         states[name] = UserState(userMatch.groupValues[2] == "true", setting, suspension)
                     }
@@ -85,7 +107,7 @@ internal class PackageDump(
                     }
                 }
             }
-            return PackageDump(times, states)
+            return PackageDump(times, states, entries)
         }
     }
 }

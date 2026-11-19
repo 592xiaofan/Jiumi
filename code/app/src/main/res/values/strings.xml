@@ -608,6 +608,12 @@
     <string name="apps_stat_sideloaded">Sideloaded</string>
     <string name="apps_stat_preinstalled">Preinstalled</string>
     <string name="apps_stat_component">System</string>
+    <string name="apps_stat_module">Modules</string>
+    <string name="apps_group_historical">Previously recorded</string>
+    <string name="apps_apex_title">System module (APEX)</string>
+    <string name="apps_apex_version">Version code</string>
+    <string name="apps_apex_path">Package path</string>
+    <string name="apps_apex_packages">Apps in this module</string>
     <string name="group_control">Use accessibility, VPN and overlays</string>
     <string name="cat_call_capture">Record during calls</string>
     <string name="catd_call_capture">Uses the microphone or camera while a call is in progress, which can record the call.</string>

@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Process
 import android.os.SystemClock
+import android.util.AtomicFile
 import com.ybblab.jiumi.adb.AirModePairingManager
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingState
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingTrustState
@@ -24,6 +25,7 @@ import com.ybblab.jiumi.data.PackageFactsSource
 import com.ybblab.jiumi.data.Refusal
 import com.ybblab.jiumi.data.Risk
 import com.ybblab.jiumi.data.ShellPackage
+import com.ybblab.jiumi.data.ShellCatalog
 import com.ybblab.jiumi.data.AccessRules
 import com.ybblab.jiumi.data.AppKey
 import com.ybblab.jiumi.data.JiumiStore
@@ -56,6 +58,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONObject
 
 /**
  * Starts the monitor through a short-lived ADB session and talks to it afterwards.
@@ -212,19 +215,18 @@ class MonitorController(
                        val lapsedAt: Long? = null)
 
     /** Where an app stands in the Apps tab. */
-    enum class AppState { ACTIVE, DISABLED, SUSPENDED, DELETED }
+    enum class AppState { ACTIVE, DISABLED, SUSPENDED, DELETED, HISTORICAL }
 
     /** An app as the Apps tab lists it; [backup] for an app deleted from here, which is listed by it. */
-    data class ListedApp(val pkg: String, val uid: Int, val preinstalled: Boolean, val state: AppState,
+    data class ListedApp(val pkg: String, val uid: Int, val state: AppState?,
                          val backup: AppBackups.Backup? = null,
                          /** Where it came from; an app deleted from here was one the user added. */
                          val source: AppSource = AppSource.SIDELOADED,
-                         /** The store or other package that installed it, when the system knows. */
-                         val installer: String? = null,
                          /** Part of the phone rather than an app one opens: no launcher icon, or the platform itself. */
                          val component: Boolean = false,
                          /** Frozen from here, then found turned on again (see [Managed.lapsedAt]). */
-                         val lapsed: Boolean = false)
+                         val lapsed: Boolean = false,
+                         val module: Boolean = false)
 
     suspend fun managed(pkg: String): Managed? = withContext(Dispatchers.IO) { managedNow(pkg) }
 
@@ -235,62 +237,90 @@ class MonitorController(
         val expert = local.value.expertMode
         val refusal = Management.refusal(facts, manageRules, context.packageName, expert)
         val actions = Management.actions(facts, local.value.allowRemovePreinstalled)
+            .takeUnless { refusal?.reason == Refusal.Reason.SELF }.orEmpty()
             .filter { refusal == null || Management.isUndo(it) }
         val risk = if (refusal == null) Management.risk(facts, manageRules) else null
-        val removable = refusal == null && facts.preinstalled && facts.installed && !local.value.allowRemovePreinstalled
-        val unlocks = !expert && refusal?.reason == Refusal.Reason.PLATFORM && Management.expertMay(facts, manageRules)
+        val removable = refusal == null && facts.hasCode == true && facts.uid >= 0 && Management.isPackageName(facts.pkg) &&
+            facts.preinstalled && facts.installed && !local.value.allowRemovePreinstalled
+        val unlocks = facts.hasCode == true && !expert && refusal?.reason == Refusal.Reason.PLATFORM && Management.expertMay(facts, manageRules)
         val lapsedAt = if (facts.installed && !facts.disabled && !facts.suspendedByShell)
             Freezes.lapsedSince(store.userActions(0, Long.MAX_VALUE, pkg))[pkg] else null
         return Managed(pkg, facts, refusal, actions, backup, risk, removable, unlocks, lapsedAt)
     }
 
-    /**
-     * Every app that may be managed: installed apps with code of their own, not part of the platform,
-     * preinstalled ones only when they show in the launcher or were disabled or removed; and apps
-     * deleted from here that have a backup.
-     */
-    suspend fun listedApps(fresh: Boolean = false, includeSystem: Boolean = false): List<ListedApp> = withContext(Dispatchers.IO) {
+    /** The current user's packages and backups, along with the device's system modules. */
+    suspend fun listedApps(fresh: Boolean = false): List<ListedApp> = withContext(Dispatchers.IO) {
         val saved = backups.list().associateBy { it.pkg }
-        val shell = if (fresh) shellPackages() else keptShellPackages()
+        val catalog = if (fresh) shellCatalog() else keptShellCatalog()
         if (fresh) scope.launch(Dispatchers.IO) { checkFreezes() }
         val lapsed = Freezes.lapsedSince(store.userActions(0, Long.MAX_VALUE)).keys
-        val present = packageFacts.all(shell).filter { f ->
-            val reason = Management.refusal(f, manageRules, context.packageName)?.reason
-            // Resource overlays and the like have no code and are not apps; this app is not listed.
-            f.hasCode && reason != Refusal.Reason.SELF && (includeSystem ||
-                ((!f.preinstalled || f.launchable || f.disabled || f.suspendedByShell || !f.installed) && reason != Refusal.Reason.PLATFORM))
-        }.mapNotNull { f ->
+        val present = packageFacts.all(catalog.packages).mapNotNull { f ->
             val state = when {
                 !f.installed -> if (f.preinstalled) AppState.DELETED else return@mapNotNull null
                 f.suspendedByShell -> AppState.SUSPENDED
                 f.disabled -> AppState.DISABLED
                 else -> AppState.ACTIVE
             }
-            val platform = Management.refusal(f, manageRules, context.packageName)?.reason == Refusal.Reason.PLATFORM
-            ListedApp(f.pkg, f.uid, f.preinstalled, state, source = Management.source(f), installer = f.installer,
-                component = platform || (f.preinstalled && !f.launchable), lapsed = state == AppState.ACTIVE && f.pkg in lapsed)
+            val component = f.hasCode != true || Management.isCore(f, manageRules) || (f.preinstalled && !f.launchable)
+            ListedApp(f.pkg, f.uid, state, source = Management.source(f), component = component,
+                lapsed = state == AppState.ACTIVE && f.pkg in lapsed)
         }
         val known = present.map { it.pkg }.toSet()
-        present + saved.values.filter { it.pkg !in known }.map { ListedApp(it.pkg, it.uid, false, AppState.DELETED, it) }
+        present + saved.values.filter { it.pkg !in known }.map { ListedApp(it.pkg, it.uid, AppState.DELETED, it) } +
+            catalog.modules.orEmpty().map { ListedApp(it.pkg, -1, null, module = true) }
+    }
+
+    suspend fun historicalApps(query: String): List<ListedApp> = withContext(Dispatchers.IO) {
+        store.recordedPackages(query, Process.myUid() / PER_USER_RANGE).map {
+            ListedApp(requireNotNull(it.pkg), it.uid, AppState.HISTORICAL)
+        }
+    }
+
+    suspend fun systemModule(pkg: String) = withContext(Dispatchers.IO) {
+        val catalog = keptShellCatalog()
+        catalog.modules?.firstOrNull { it.pkg == pkg }?.let { module ->
+            val apps = catalog.packages.filter {
+                val path = it.codePath.orEmpty()
+                it.installed && path.startsWith("/apex/") && path.removePrefix("/apex/").substringBefore('/').substringBefore('@') == pkg
+            }.map { AppKey(it.uid, it.pkg) }.sortedBy { it.pkg }
+            module to apps
+        }
     }
 
     /**
      * The package list as the monitor sees it: read fresh while it runs and kept, so the Apps tab
      * stays complete on phones that hide apps from one another after the monitor stops.
      */
-    private fun shellPackages(): List<ShellPackage> {
-        val file = java.io.File(context.filesDir, SHELL_PACKAGES_FILE)
+    private val shellCatalogFile = AtomicFile(java.io.File(context.filesDir, SHELL_PACKAGES_FILE))
+    private val shellCatalogRefresh = Any()
+
+    private fun shellPackages(): List<ShellPackage> = shellCatalog().packages
+
+    private fun shellCatalog(): ShellCatalog = synchronized(shellCatalogRefresh) {
+        val cached = shellCatalogJson()
         probe.service.value?.let { service ->
-            runCatching { service.listPackages() }.getOrNull()?.let { json ->
-                val parsed = ShellPackage.parse(json)
-                if (parsed.isNotEmpty()) {
-                    file.writeText(json)
+            runCatching {
+                val json = JSONObject(service.listPackages())
+                if (!json.has("modules")) json.put("modules", cached?.optJSONArray("modules"))
+                val parsed = ShellCatalog.parse(json)
+                if (parsed.packages.isNotEmpty() || parsed.modules.orEmpty().isNotEmpty()) {
+                    if (parsed.packages.isEmpty()) json.put("packages", cached?.optJSONArray("packages") ?: org.json.JSONArray())
+                    synchronized(shellCatalogFile) {
+                        val out = shellCatalogFile.startWrite()
+                        try {
+                            out.write(json.toString().encodeToByteArray())
+                            shellCatalogFile.finishWrite(out)
+                        } catch (error: Exception) {
+                            shellCatalogFile.failWrite(out)
+                            throw error
+                        }
+                    }
                     shellReadAt = android.os.SystemClock.elapsedRealtime()
-                    return parsed
+                    return@synchronized ShellCatalog.parse(json)
                 }
             }
         }
-        return keptShellPackages()
+        cached?.let { runCatching { ShellCatalog.parse(it) }.getOrNull() } ?: ShellCatalog()
     }
 
     /** When the monitor last listed the packages; cleared by each change, so the next list asks again. */
@@ -303,8 +333,14 @@ class MonitorController(
     fun shellListStale(): Boolean = probe.service.value != null &&
         (shellReadAt == 0L || android.os.SystemClock.elapsedRealtime() - shellReadAt > SHELL_LIST_MAX_AGE_MS)
 
-    private fun keptShellPackages(): List<ShellPackage> =
-        runCatching { ShellPackage.parse(java.io.File(context.filesDir, SHELL_PACKAGES_FILE).readText()) }.getOrDefault(emptyList())
+    private fun shellCatalogJson(): JSONObject? = synchronized(shellCatalogFile) {
+        runCatching { JSONObject(shellCatalogFile.readFully().decodeToString()) }.getOrNull()
+    }
+
+    private fun keptShellCatalog(): ShellCatalog =
+        runCatching { shellCatalogJson()?.let(ShellCatalog::parse) }.getOrNull() ?: ShellCatalog()
+
+    private fun keptShellPackages(): List<ShellPackage> = keptShellCatalog().packages
 
     fun backupIcon(pkg: String): android.graphics.Bitmap? = backups.icon(pkg)
 
