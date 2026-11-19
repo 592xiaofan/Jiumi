@@ -6,11 +6,10 @@ Versions follow [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
-- With root, or Shizuku started with root, freeze, unfreeze, delete and restore apps as root, so system apps the shell cannot change can be frozen too. Shizuku started with root is now supported.
-- Detect when an app Jiumi froze is turned on again, mark it Freeze lifted and optionally freeze it again.
-- Resume an interrupted session on its own, where the connection method allows, after a restart, an update or a lost monitor, and start promptly after updates and boots.
-- Add notification settings: a compact running notice with a stop button, an optional session summary and attention alerts.
-- Uninstall only for the current user, group app management settings, and keep monitoring running when ADB persistence is changed.
+- With root, or Shizuku started with root (now supported), freezing, unfreezing, deleting and restoring apps run as root, so system apps the shell cannot change can be frozen.
+- Apps Jiumi froze that are turned back on are marked Freeze lifted, and can be refrozen automatically. Uninstalling now affects only the current user.
+- A compact notification shows monitoring time with a stop button. It can be turned off; session counts and attention alerts are optional.
+- An interrupted session resumes on its own when the connection allows. Starts after updates and reboots no longer stall, and changing ADB persistence no longer ends monitoring.
 
 ## [0.2.3]
 
