@@ -252,7 +252,7 @@ class ReportBuilder(
             val contacts = connections[key].orEmpty()
             val accesses = accessesByKey[key].orEmpty()
             val calls = callsByKey[key].orEmpty()
-            val nets = conversations(contacts, labeler(names, key.uid))
+            val nets = conversations(contacts, names)
             items(accesses, calls, nets, emptyList(), data)
                 .mapTo(timeline) { LogEntry(key, it) }
             val categoryWeights = (accesses.map { it.second to it.first.count } + calls.map { it.second to it.first.count })
@@ -273,7 +273,7 @@ class ReportBuilder(
                         .sumOf { it.first.count },
                 denied = accesses.filter { it.first.denied }.sumOf { it.first.count },
                 processStarts = starts[key] ?: 0,
-                destinations = contacts.map { labeler(names, key.uid)(it.addr) }.toSet().size,
+                destinations = nets.map { it.label }.toSet().size,
                 traffic = trafficByKey[key],
                 uploaded = nets.sumOf { it.connection.sent ?: 0L },
                 sentInBackground = nets.count { it.sentInBackground },
@@ -301,7 +301,7 @@ class ReportBuilder(
         val accessRows = data.accesses.filter { it.first.pkg == key.pkg }
         val callRows = data.calls.filter { ownerOf(it.first.uid, it.first.process) == key.pkg }
         val names = DomainNames(store.lookups(from - DomainNames.LOOKBACK_MS, to))
-        val nets = conversations(contacts, labeler(names, key.uid))
+        val nets = conversations(contacts, names)
         val starts = store.processStarts(from, to, key.uid)
             .filter { it.appKey == key }
         // Behaviors and network activity are told apart: a connection is not something the app read.
@@ -368,20 +368,19 @@ class ReportBuilder(
         rules.groups.flatMap { g -> g.categories.map { it to g.id } }.toMap()
 
     /**
-     * One app's connections as conversations, each named by [label] and marked when the app sent at
+     * One app's connections as conversations, each labeled with a prior lookup or its address and marked when the app sent at
      * least the threshold while in the background. Only what was measured is told: nothing is
      * guessed about what was sent or why.
      */
-    private fun conversations(contacts: List<JiumiStore.Connection>, label: (String) -> String): List<TimelineItem.NetItem> {
+    private fun conversations(contacts: List<JiumiStore.Connection>, names: DomainNames): List<TimelineItem.NetItem> {
         val threshold = attentionRules?.sentInBackgroundBytes ?: AttentionRules.DEFAULT_SENT_IN_BACKGROUND_BYTES
-        return NetCorrelation.conversations(contacts).map { c ->
-            TimelineItem.NetItem(c, label(c.addr), sentInBackground = (c.sentUnattended ?: 0L) >= threshold)
-        }
+        val byDestination = contacts.groupBy { names.domainOf(it.uid, it.addr, it.t) ?: it.addr }
+        return byDestination.flatMap { (label, records) ->
+            NetCorrelation.conversations(records).map { c ->
+                TimelineItem.NetItem(c, label, sentInBackground = (c.sentUnattended ?: 0L) >= threshold)
+            }
+        }.sortedBy { it.t }
     }
-
-    /** A destination by the domain [uid] looked up for it when one was recorded, else by its address. */
-    private fun labeler(names: DomainNames, uid: Int): (String) -> String =
-        if (names.isEmpty) { addr -> addr } else { addr -> names.domainOf(uid, addr) ?: addr }
 
     /**
      * The busiest 60 minutes of any category in [events] that reached its threshold, the one furthest
@@ -456,7 +455,6 @@ class ReportBuilder(
 
     companion object {
         private const val MATCH_MS = 60_000L
-        private const val MODE_ALLOWED = 0
         private const val HOUR_MS = 3_600_000L
 
         /**
@@ -482,7 +480,7 @@ class ReportBuilder(
          * for, and for an operation used only while active, a plain note is such a check.
          */
         fun countsAsUse(row: JiumiStore.Access, rules: AccessRules): Boolean {
-            if (row.result != MODE_ALLOWED && !row.denied) return false
+            if (!row.allowed && !row.denied) return false
             if (row.denied && row.op in rules.checkedOps) return false
             if (row.op in rules.activeOnlyOps) return row.source == "active" || row.source == "system" && row.end > row.t
             return true

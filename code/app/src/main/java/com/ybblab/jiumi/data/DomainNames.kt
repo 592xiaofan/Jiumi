@@ -5,23 +5,34 @@ package com.ybblab.jiumi.data
 
 import java.net.InetAddress
 
-/**
- * Names for addresses, from the lookups the domain recorder saw: the domain an app looked up that
- * resolved to an address it then connected to. The app's own lookup is preferred; another app's
- * lookup of the same address stands in when the app's answer came from the system's cache.
- */
+/** Matches network destinations to prior DNS observations made by the same UID. */
 class DomainNames(lookups: List<JiumiStore.Lookup>) {
-    private val byAddress: Map<String, List<JiumiStore.Lookup>> = buildMap<String, MutableList<JiumiStore.Lookup>> {
-        for (l in lookups) for (a in l.answers) canonical(a)?.let { getOrPut(it) { ArrayList() } += l }
+    private data class Key(val uid: Int, val address: String)
+
+    private val byAddress = buildMap<Key, MutableList<JiumiStore.Lookup>> {
+        for (lookup in lookups.filter { it.uid >= 0 && it.rcode == 0 }.sortedBy { it.end }) {
+            for (answer in lookup.answers) canonical(answer)?.let { address ->
+                getOrPut(Key(lookup.uid, address)) { ArrayList() } += lookup
+            }
+        }
     }
 
-    /** The domain [uid] most recently reached [addr] by, or null when no lookup gave that address. */
-    fun domainOf(uid: Int, addr: String): String? {
-        val list = canonical(addr)?.let(byAddress::get) ?: return null
-        return (list.lastOrNull { it.uid == uid } ?: list.lastOrNull())?.domain
+    fun domainOf(uid: Int, addr: String, connectedAt: Long): String? {
+        if (uid < 0 || byAddress.isEmpty()) return null
+        val address = canonical(addr) ?: return null
+        val matches = byAddress[Key(uid, address)] ?: return null
+        var low = 0
+        var high = matches.size
+        while (low < high) {
+            val middle = (low + high) ushr 1
+            if (matches[middle].end <= connectedAt) low = middle + 1 else high = middle
+        }
+        val latest = matches.getOrNull(low - 1) ?: return null
+        if (connectedAt - latest.end > LOOKBACK_MS) return null
+        // Several answers at the same observed time give no way to decide between their names.
+        val tied = matches.subList(0, low - 1).asReversed().takeWhile { it.end == latest.end }
+        return latest.domain.takeIf { tied.all { it.domain == latest.domain } }
     }
-
-    val isEmpty: Boolean get() = byAddress.isEmpty()
 
     companion object {
         /**
@@ -29,8 +40,11 @@ class DomainNames(lookups: List<JiumiStore.Lookup>) {
          * equal. Only literal addresses are parsed; nothing is looked up.
          */
         fun canonical(addr: String): String? {
-            if (addr.isEmpty() || !(addr[0].isDigit() || addr.contains(':') || addr[0].lowercaseChar() in 'a'..'f')) return null
-            if (!addr.all { it.isDigit() || it == '.' || it == ':' || it.lowercaseChar() in 'a'..'f' }) return null
+            val literal = if (':' in addr) addr.all { it in "0123456789abcdefABCDEF:." }
+                else addr.count { it == '.' } == 3 && addr.split('.').all { part ->
+                    part.isNotEmpty() && part.all { it in '0'..'9' } && part.toIntOrNull() in 0..255
+                }
+            if (!literal) return null
             return runCatching { InetAddress.getByName(addr).hostAddress }.getOrNull()
         }
 

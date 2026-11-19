@@ -23,6 +23,7 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
     ) {
         /** AppOpsManager.MODE_IGNORED or MODE_ERRORED; MODE_DEFAULT (3) defers to the permission and is not a denial. */
         val denied: Boolean get() = result == 1 || result == 2
+        val allowed: Boolean get() = result == 0
     }
 
     /**
