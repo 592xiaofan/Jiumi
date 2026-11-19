@@ -6,6 +6,7 @@ package com.ybblab.jiumi
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Sent by the system once this app has been updated or the phone has started; picks an open
@@ -19,6 +20,10 @@ class ResumeReceiver : BroadcastReceiver() {
             else -> return
         }
         val pending = goAsync()
-        (context.applicationContext as JiumiApp).controller.resumeInterrupted(trigger).invokeOnCompletion { pending.finish() }
+        // Let the broadcast go as soon as the monitor is launched: its answer is a broadcast too, and
+        // reaches this process only after this one is finished.
+        val done = AtomicBoolean(false)
+        val finish = { if (done.compareAndSet(false, true)) pending.finish() }
+        (context.applicationContext as JiumiApp).controller.resumeInterrupted(trigger, finish).invokeOnCompletion { finish() }
     }
 }

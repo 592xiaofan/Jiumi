@@ -517,7 +517,10 @@ class MonitorController(
     ) { pairingState, failure, service, l, e ->
         val ready = when (e.method) {
             com.ybblab.jiumi.access.AccessMethod.WIRELESS -> e.trust == PairingTrustState.PAIRED
-            com.ybblab.jiumi.access.AccessMethod.ROOT -> e.root == RootShell.State.READY
+            // Until this run of the app has asked again, a grant from before counts, as it does for
+            // starting unattended: otherwise every cold start shows "authorize" for a moment.
+            com.ybblab.jiumi.access.AccessMethod.ROOT -> e.root == RootShell.State.READY ||
+                (e.root == RootShell.State.UNCHECKED && access.root.wasReady)
             com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> e.shizuku.ready
         }
         val problem = l.problem?.takeUnless { ready && it == Problem.SHIZUKU }
@@ -577,26 +580,38 @@ class MonitorController(
      * again within seconds, so this waits a moment first. Only a channel that needs nobody is used:
      * Wireless debugging is not turned on unasked, and a root or Shizuku prompt is not opened.
      */
-    fun resumeInterrupted(trigger: String): kotlinx.coroutines.Job = scope.launch(Dispatchers.IO) {
-        // A monitor restarted by its supervisor, or still offering itself, gets there first.
-        kotlinx.coroutines.delay(RESUME_DELAY_MS)
-        val skip = when {
-            probe.service.value != null -> "monitor running"
-            local.value.busy != null -> "busy ${local.value.busy}"
-            store.sessions().none { it.end == null } -> "no open session"
-            !canStartUnattended() -> "${access.method.value} not ready"
-            else -> null
+    fun resumeInterrupted(trigger: String, launched: () -> Unit = {}): kotlinx.coroutines.Job = scope.launch(Dispatchers.IO) {
+        try {
+            // A monitor restarted by its supervisor, or still offering itself, gets there first.
+            kotlinx.coroutines.delay(RESUME_DELAY_MS)
+            val skip = when {
+                probe.service.value != null -> "monitor running"
+                local.value.busy != null -> "busy ${local.value.busy}"
+                store.sessions().none { it.end == null } -> "no open session"
+                !canStartUnattended() -> "${access.method.value} not ready"
+                else -> null
+            }
+            android.util.Log.i(TAG, "resume ($trigger): ${skip ?: "starting"}")
+            if (skip != null) return@launch
+            startMonitor(restoreWirelessDebugging = false, launched = launched)
+            // Held until the start is settled, so the process is not let go halfway.
+            withTimeoutOrNull(CONNECT_TIMEOUT_MS + START_TIMEOUT_MS) { local.first { it.busy == null } }
+        } finally {
+            launched()
         }
-        android.util.Log.i(TAG, "resume ($trigger): ${skip ?: "starting"}")
-        if (skip != null) return@launch
-        startMonitor(restoreWirelessDebugging = false)
-        // Held until the start is settled, so the process is not let go halfway.
-        withTimeoutOrNull(CONNECT_TIMEOUT_MS + START_TIMEOUT_MS) { local.first { it.busy == null } }
     }
 
-    fun startMonitor(restoreWirelessDebugging: Boolean = true) {
-        if (local.value.busy != null) return
-        local.update { it.copy(busy = Busy.STARTING, problem = null) }
+    /**
+     * Starts the monitor the chosen way. [launched] runs once the start command has gone out, before
+     * waiting for the monitor to answer (or when it never goes out): a broadcast receiver holding its
+     * broadcast open must let it go then, since the monitor answers with a broadcast of its own, which
+     * the system delivers to this process only after the one held.
+     */
+    fun startMonitor(restoreWirelessDebugging: Boolean = true, launched: () -> Unit = {}) {
+        // Claimed in one step: a resume and a tap arriving together must not both start one.
+        var claimed = false
+        local.update { l -> (l.busy == null).also { claimed = it }.let { if (it) l.copy(busy = Busy.STARTING, problem = null) else l } }
+        if (!claimed) return launched()
         scope.launch(Dispatchers.IO) {
             var problem: Problem? = null
             try {
@@ -605,12 +620,13 @@ class MonitorController(
                     return@launch
                 }
                 problem = when (access.method.value) {
-                    com.ybblab.jiumi.access.AccessMethod.WIRELESS -> startOverWireless(restoreWirelessDebugging)
-                    com.ybblab.jiumi.access.AccessMethod.ROOT -> startOverRoot()
-                    com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> startOverShizuku()
+                    com.ybblab.jiumi.access.AccessMethod.WIRELESS -> startOverWireless(restoreWirelessDebugging, launched)
+                    com.ybblab.jiumi.access.AccessMethod.ROOT -> startOverRoot(launched)
+                    com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> startOverShizuku(launched)
                 }
                 if (problem == null) openSessionIfNone()
             } finally {
+                launched()
                 // A monitor that answered after the wait ran out still counts as started.
                 val settled = problem.takeUnless { probe.service.value != null }
                 local.update { it.copy(busy = null, problem = settled) }
@@ -619,7 +635,7 @@ class MonitorController(
     }
 
     /** Over Wireless debugging (or its local channel): connect, start, and let ADB go again. */
-    private suspend fun startOverWireless(restoreWirelessDebugging: Boolean): Problem? {
+    private suspend fun startOverWireless(restoreWirelessDebugging: Boolean, launched: () -> Unit): Problem? {
         try {
             if (!pairing.isShellReady) {
                 pairing.reconnect(restoreWirelessDebugging = restoreWirelessDebugging)
@@ -630,6 +646,7 @@ class MonitorController(
             }
             pairing.shell(ownPermissionsCommand())
             pairing.shell(probe.startCommand())
+            launched()
             return waitForProbe()
         } finally {
             // The monitor does not depend on ADB; never keep the session open.
@@ -637,16 +654,18 @@ class MonitorController(
         }
     }
 
-    private suspend fun startOverRoot(): Problem? {
+    private suspend fun startOverRoot(launched: () -> Unit): Problem? {
         val command = ownPermissionsCommand() + "\n" + probe.startCommand()
         if (!access.root.shell(command, PROBE_SHELL_MS)) return Problem.START
+        launched()
         return waitForProbe()
     }
 
-    private suspend fun startOverShizuku(): Problem? {
+    private suspend fun startOverShizuku(launched: () -> Unit): Problem? {
         if (access.shizuku.shell("id -u", PROBE_SHELL_MS).trim() != "2000") return Problem.SHIZUKU
         access.shizuku.shell(ownPermissionsCommand(), PROBE_SHELL_MS)
         if (access.shizuku.shell(probe.startCommand(), START_TIMEOUT_MS).startsWith("[SHIZUKU_")) return Problem.SHIZUKU
+        launched()
         val problem = waitForProbe()
         access.shizuku.release()
         return problem

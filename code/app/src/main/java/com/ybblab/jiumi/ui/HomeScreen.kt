@@ -138,11 +138,16 @@ fun HomeScreen(
         // The monitoring service: running, interrupted, or ready to start once Wireless debugging is paired.
         val session = state.session
         item {
-            when {
-                state.sessionOpen && state.running && !pairingFlow && state.problem == null -> SessionStrip(state, controller)
-                state.sessionOpen && !state.running && paired && !pairingFlow && session != null ->
-                    InterruptedCard(state, session, controller)
-                else -> ServiceCard(state, controller, pairingFlow, paired, onOpenPairing)
+            // Never empty, even in the first frame before the card is measured: the list holds its place
+            // by the first row it can see, and would otherwise keep the next one there and push the card
+            // (with its progress and messages) above the screen as it grows.
+            Box(Modifier.fillMaxWidth().heightIn(min = 1.dp)) {
+                when {
+                    state.sessionOpen && state.running && !pairingFlow && state.problem == null -> SessionStrip(state, controller)
+                    state.sessionOpen && !state.running && paired && !pairingFlow && session != null ->
+                        InterruptedCard(state, session, controller)
+                    else -> ServiceCard(state, controller, pairingFlow, paired, onOpenPairing)
+                }
             }
         }
 
@@ -492,14 +497,18 @@ private fun ServiceCard(
         live = false,
         title = when {
             pairingFlow -> stringResource(R.string.pairing_in_progress)
+            // A start under way says so whatever the way's own state, so a tap is never met by nothing.
+            state.busy == Busy.STARTING && state.pairingState == PairingState.CONNECTING -> stringResource(R.string.pairing_connecting)
+            state.busy == Busy.STARTING -> stringResource(R.string.service_starting)
             !paired && state.method == com.ybblab.jiumi.access.AccessMethod.ROOT -> stringResource(rootStatus(state.root))
             !paired && state.method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> stringResource(R.string.service_shizuku_needed)
             !paired -> stringResource(if (state.trust == PairingTrustState.PAIRING_REQUIRED) R.string.service_repair else R.string.service_unpaired)
-            state.busy == Busy.STARTING && state.pairingState == PairingState.CONNECTING -> stringResource(R.string.pairing_connecting)
-            state.busy == Busy.STARTING -> stringResource(R.string.service_starting)
             else -> stringResource(R.string.hero_idle)
         },
         corner = when {
+            state.busy == Busy.STARTING -> { {
+                CornerButton(stringResource(R.string.action_start_short), busy = true, onClick = {})
+            } }
             !paired && state.method == com.ybblab.jiumi.access.AccessMethod.ROOT -> { {
                 CornerButton(stringResource(rootAction(state.root)), busy = state.root == RootShell.State.CHECKING,
                     onClick = controller::authorizeRoot)
