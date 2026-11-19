@@ -19,9 +19,7 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
 
     data class Access(
         val t: Long, val end: Long, val op: String, val uid: Int, val pkg: String?, val attr: String?,
-        val count: Int, val state: String?, val screen: Boolean?, val result: Int, val proxied: Boolean, val source: String,
-        /** Not stored: the report found the app lacked the permission AppOps deferred to (see ReportBuilder). */
-        val withoutPermission: Boolean = false
+        val count: Int, val state: String?, val screen: Boolean?, val result: Int, val proxied: Boolean, val source: String
     ) {
         /** AppOpsManager.MODE_IGNORED or MODE_ERRORED; MODE_DEFAULT (3) defers to the permission and is not a denial. */
         val denied: Boolean get() = result == 1 || result == 2

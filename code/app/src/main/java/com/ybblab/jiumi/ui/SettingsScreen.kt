@@ -164,11 +164,13 @@ fun SettingsScreen(
                 }
                 GroupFooter(stringResource(when {
                     needsUsb -> R.string.settings_adb_persistence_usb_required
-                    // Opening or closing the port restarts adbd, which would end the running monitor.
-                    state.running && persistence && !controller.hasLocalAdbPort -> R.string.settings_adb_persistence_next_start
-                    state.running && !persistence && controller.localPortClosePending -> R.string.settings_adb_persistence_close_after_stop
+                    state.running && controller.localPortClosePending -> R.string.settings_adb_persistence_close_after_stop
+                    persistence && !controller.hasLocalAdbPort -> R.string.settings_adb_persistence_next_start
                     else -> R.string.settings_adb_persistence_desc
                 }), warning = needsUsb)
+                if (controller.localPortClosePending && !state.running) Card {
+                    ListRow(stringResource(R.string.settings_close_legacy_adb), onClick = { controller.setAdbPersistence(false) })
+                }
             }
             item { GroupTitle(stringResource(R.string.section_monitoring), Modifier.padding(top = 24.dp)) }
             item {

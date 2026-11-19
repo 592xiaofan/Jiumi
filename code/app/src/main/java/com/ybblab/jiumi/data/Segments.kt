@@ -26,7 +26,7 @@ object Segments {
     internal fun key(item: TimelineItem): String = when (item) {
         is TimelineItem.AccessItem -> with(item.access) { "a|${item.category}|$attr|$denied|$proxied" }
         // Threads of one process share a segment; each member still names its thread.
-        is TimelineItem.CallItem -> with(item.call) { "c|${item.category}|$process|${item.refused}" }
+        is TimelineItem.CallItem -> with(item.call) { "c|${item.category}|$process" }
         // An app's network activity close together is one run, whatever it reached: a list shows a
         // burst of connections as one line, and the run's page lists each destination.
         is TimelineItem.NetItem -> "n"

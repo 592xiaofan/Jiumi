@@ -136,7 +136,7 @@ class LogExport(
                     listOf(Csv.time(t), Csv.time(end), t) + app + listOf("call") + data(item.category) + listOf(
                         if (iface.startsWith(PROVIDER_PREFIX)) name("op_", method)
                         else name("act_", "${iface.lowercase()}_${method.lowercase()}") ?: name("act_", method.lowercase()),
-                        "$iface.$method", count, state, screen, item.refused,
+                        "$iface.$method", count, state, screen, null,
                         null, null, null, null, null, null, null, null
                     )
                 }

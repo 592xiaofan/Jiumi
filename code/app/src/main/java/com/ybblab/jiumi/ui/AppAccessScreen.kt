@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ybblab.jiumi.MonitorController
 import com.ybblab.jiumi.R
 import com.ybblab.jiumi.data.AppKey
@@ -52,6 +53,7 @@ private data class PermissionRow(
 fun AppAccessScreen(controller: MonitorController, labels: AppLabels, key: AppKey, network: Boolean, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val monitor by controller.state.collectAsStateWithLifecycle()
     val readAction = if (network) "network" else "permissions"
     var state by remember(key, network) { mutableStateOf<JSONObject?>(null) }
     var pending by remember(key, network) { mutableStateOf(true) }
@@ -65,7 +67,7 @@ fun AppAccessScreen(controller: MonitorController, labels: AppLabels, key: AppKe
             pending = false
         }
     }
-    LaunchedEffect(key, network) {
+    LaunchedEffect(key, network, monitor.running) {
         state = controller.appAccess(key, readAction)
         pending = false
     }
@@ -135,7 +137,7 @@ fun AppAccessScreen(controller: MonitorController, labels: AppLabels, key: AppKe
         Spacer(Modifier.height(20.dp))
         val readable = state != null && (state?.has(if (network) "allowed" else "rows") == true)
         if (lock.isEmpty() && readable) GroupTitle(stringResource(R.string.access_scope))
-        if (network && (readable || lock.isNotEmpty() && lock != "unknown")) {
+        if (network && (readable || lock.isNotEmpty() && lock != "unknown" && lock != "monitor")) {
             val allowed = state?.optBoolean("allowed") == true
             Card {
                 ListRow(
@@ -211,6 +213,7 @@ fun AppAccessScreen(controller: MonitorController, labels: AppLabels, key: AppKe
                 "external" -> R.string.access_lock_external
                 "chain" -> R.string.access_lock_chain
                 "unsupported" -> R.string.access_lock_unsupported
+                "monitor" -> if (network) R.string.access_lock_monitor_network else R.string.access_lock_monitor_permissions
                 else -> R.string.access_unknown
             }))
             networkFailed -> Feedback(stringResource(R.string.access_rule_failed)) { refresh(lastAction.first) }

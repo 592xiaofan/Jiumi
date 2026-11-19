@@ -52,8 +52,10 @@ internal class ProbeService(
         }
     }
 
+    @Synchronized
     override fun configure(config: String) {
         enforceOwner()
+        if (stopping) return
         val parsed = JSONObject(config)
         configFile.writeText(parsed.toString())
         apply(parsed)
@@ -85,24 +87,52 @@ internal class ProbeService(
         )
     }
 
-    override fun readEvents(afterSeq: Long, max: Int): String {
+    override fun readEvents(epoch: Long, afterSeq: Long, max: Int): String {
         enforceOwner()
-        return spool.read(afterSeq, max.coerceIn(1, MAX_EVENTS_PER_READ)).toString()
+        return spool.read(epoch, afterSeq, max.coerceIn(1, MAX_EVENTS_PER_READ)).toString()
     }
 
     override fun readDiscreteHistory(fromTime: Long, max: Int): String {
         enforceOwner()
-        val dump = Shell.run(listOf("dumpsys", "appops", "--include-discrete", "0"), timeoutMs = 30_000).output
+        val dump = readAppOpsDump("Discrete accesses:", "--include-discrete", "0")
         return DiscreteHistory.parse(dump, watchedOps, fromTime, max.coerceIn(1, MAX_HISTORY_PER_READ)).toString()
     }
 
+    private data class HistorySnapshot(val since: Long, val slots: org.json.JSONArray)
+    private var historySnapshot: HistorySnapshot? = null
+
     override fun readHistoricalOps(sinceTime: Long, skip: Int, max: Int): String {
         enforceOwner()
-        val dump = Shell.run(listOf("dumpsys", "appops", "--history"), timeoutMs = 30_000).output
-        val slots = AppOpsHistory.parse(dump, watchedOps, sinceTime, System.currentTimeMillis(), ::isMakerOp)
-        val page = org.json.JSONArray()
-        for (i in skip.coerceAtLeast(0) until minOf(slots.length(), skip.coerceAtLeast(0) + max.coerceIn(1, MAX_HISTORY_SLOTS))) page.put(slots.get(i))
-        return page.toString()
+        synchronized(historyLock) {
+            val slots = if (skip == 0) {
+                historySnapshot = null
+                val dump = readAppOpsDump("History:", "--history")
+                AppOpsHistory.parse(dump, watchedOps, sinceTime, System.currentTimeMillis(), ::isMakerOp)
+                    .also { historySnapshot = HistorySnapshot(sinceTime, it) }
+            } else {
+                checkNotNull(historySnapshot?.takeIf { it.since == sinceTime }?.slots) { "Missing AppOps snapshot" }
+            }
+            val page = org.json.JSONArray()
+            val end = minOf(slots.length(), skip + max.coerceIn(1, MAX_HISTORY_SLOTS))
+            for (i in skip until end) page.put(slots.get(i))
+            if (end == slots.length() && page.length() < max) historySnapshot = null
+            return page.toString()
+        }
+    }
+
+    private val historyLock = Any()
+
+    private fun readAppOpsDump(section: String, vararg args: String): String {
+        val result = Shell.run(listOf("dumpsys", "appops") + args, timeoutMs = 30_000)
+        val found = result.output.lineSequence().any { raw ->
+            val line = raw.trim()
+            line == section || section == "History:" && line.startsWith("History:") &&
+                line.substringAfter(':').trimStart().startsWith("mode=HISTORICAL_MODE_ENABLED")
+        }
+        check(result.exitCode == 0 && !result.truncated && found && !result.output.contains("DUMP TIMEOUT")) {
+            "AppOps history could not be read"
+        }
+        return result.output
     }
 
     /**
@@ -138,9 +168,27 @@ internal class ProbeService(
             .toString()
     }
 
-    override fun shutdown() {
+    @Volatile private var finished = false
+    @Volatile private var stopping = false
+    val isRecording get() = !stopping
+    var finishEventLog: () -> Unit = {}
+
+    @Synchronized
+    override fun finishRecording() {
         enforceOwner()
-        ProbeMain.recordState("stop", "requested")
+        if (finished) return
+        stopping = true
+        accessWatcher.finishRecording()
+        tracer.finishRecording()
+        connectionWatcher.finishRecording()
+        finishEventLog()
+        spool.append(JSONObject().put("kind", "monitor").put("state", "stop").put("reason", "requested")
+            .put("t", System.currentTimeMillis()))
+        finished = true
+    }
+
+    override fun shutdown() {
+        finishRecording()
         mainHandler.postDelayed({ ProbeMain.exit(0, "shutdown requested") }, 100)
     }
 
@@ -290,17 +338,20 @@ internal class ProbeService(
         val launcher = launcherFuture.join()
         val dump = dumpFuture.join()
         val packages = PackageInventory.packages(user, dump, lists[0].orEmpty(), lists[1], lists[2], installers, launcher)
-        return JSONObject().put("packages", packages).put("modules", modulesFuture.join()).toString()
+        val complete = dump != null && "android" in dump.userStates &&
+            lists[1].orEmpty().keys.all { it in dump.userStates }
+        return JSONObject().put("packages", packages).put("packagesComplete", complete)
+            .put("modules", modulesFuture.join()).toString()
     }
 
     private fun packageList(vararg flags: String): String? = runCatching {
         Shell.run(listOf("pm", "list", "packages") + flags, timeoutMs = 30_000)
-            .takeIf { it.exitCode == 0 }?.output
+            .takeIf { it.exitCode == 0 && !it.truncated }?.output
     }.getOrNull()
 
     private fun readPackageDump(target: String, user: Int): PackageDump? {
         val result = Shell.run(listOf("dumpsys", "package", target), timeoutMs = 30_000)
-        return if (result.exitCode == 0) PackageDump.parse(result.output, user) else null
+        return if (result.exitCode == 0 && !result.truncated) PackageDump.parse(result.output, user) else null
     }
 
     /**

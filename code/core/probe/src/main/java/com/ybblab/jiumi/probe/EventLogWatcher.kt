@@ -18,24 +18,40 @@ internal class EventLogWatcher(
     private val onOwnStart: () -> Unit
 ) : Thread("event-log-watch") {
     init { isDaemon = true }
+    @Volatile private var finishing = false
+    @Volatile private var child: Process? = null
 
     // "1794279187.669  639  677 I am_proc_start: [0,3599,10150,com.example,service,{com.example/.Sync}]"
     private val procStart = Regex("^\\s*(\\d+)\\.(\\d{3})\\s.*am_proc_start: \\[(\\d+),(\\d+),(\\d+),([^,]+),([^,]*),(.*)]\\s*$")
 
     override fun run() {
-        while (true) {
+        while (!finishing) {
             runCatching {
                 val process = ProcessBuilder(COMMAND).redirectErrorStream(true).start()
+                child = process
                 register(process)
                 try {
-                    process.inputStream.bufferedReader().useLines { lines -> lines.forEach(::handle) }
+                    if (!finishing) process.inputStream.bufferedReader().useLines { lines -> lines.forEach(::handle) }
                 } finally {
+                    child = null
                     unregister(process)
                     process.destroy()
                 }
-            }.onFailure { ProbeMain.log("event log watch failed: ${it.javaClass.simpleName}") }
-            sleep(30_000)
+            }.onFailure { if (!finishing) ProbeMain.log("event log watch failed: ${it.javaClass.simpleName}") }
+            if (!finishing) try {
+                sleep(30_000)
+            } catch (_: InterruptedException) {
+                return
+            }
         }
+    }
+
+    fun finishRecording() {
+        finishing = true
+        child?.destroy()
+        interrupt()
+        join(5_000L)
+        check(!isAlive) { "Event log could not be drained" }
     }
 
     private fun handle(line: String) {

@@ -23,6 +23,7 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
     private val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
     private val buckets = LinkedHashMap<String, Bucket>()
     private var listeners: List<Any> = emptyList()
+    private var finishing = false
 
     private class Bucket(val event: JSONObject, val first: Long) {
         var last = first
@@ -31,6 +32,7 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
 
     /** Replaces the watched operations; unknown names on this Android version are skipped. */
     fun watch(ops: List<String>) = handler.post {
+        if (finishing) return@post
         stop()
         val supported = ops.filter { op -> runCatching { opCode(op) >= 0 }.getOrDefault(false) }
         if (supported.isEmpty()) return@post
@@ -39,6 +41,18 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
             runCatching { watchActive(supported) }.onFailure { ProbeMain.log("active watch failed: ${it.javaClass.simpleName}") }.getOrNull()
         )
         ProbeMain.log("watching ${supported.size} operations")
+    }
+
+    fun finishRecording() {
+        val drained = java.util.concurrent.CountDownLatch(1)
+        val result = java.util.concurrent.atomic.AtomicReference<Result<Unit>>()
+        check(handler.post {
+            finishing = true
+            result.set(runCatching { stop() })
+            drained.countDown()
+        })
+        check(drained.await(5, java.util.concurrent.TimeUnit.SECONDS)) { "AppOps watcher could not be drained" }
+        result.get().getOrThrow()
     }
 
     private fun stop() {
@@ -84,6 +98,7 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
             val attribution = args.getOrNull(3) as? String
             val t = System.currentTimeMillis()
             handler.post {
+                if (finishing) return@post
                 val op = args[0] as String
                 val uid = args[1] as Int
                 val pkg = args[2] as String?
@@ -106,6 +121,7 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
     }
 
     private fun noted(op: String, uid: Int, pkg: String?, attribution: String?, flags: Int, result: Int) = handler.post {
+        if (finishing) return@post
         val now = System.currentTimeMillis()
         val key = "$op|$uid|$pkg|$attribution|$flags|$result"
         val bucket = buckets[key]
@@ -133,7 +149,8 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
         while (iterator.hasNext()) {
             val bucket = iterator.next()
             if (!force && now - bucket.first < WINDOW_MS) continue
-            record(bucket.event.put("t", bucket.first).put("end", bucket.last).put("count", bucket.count))
+            val written = record(bucket.event.put("t", bucket.first).put("end", bucket.last).put("count", bucket.count))
+            if (finishing) written.getOrThrow()
             iterator.remove()
         }
         if (buckets.isNotEmpty()) handler.postDelayed({ flush(force = false) }, WINDOW_MS / 4)

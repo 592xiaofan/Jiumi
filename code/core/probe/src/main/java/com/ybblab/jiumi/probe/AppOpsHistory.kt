@@ -51,7 +51,8 @@ internal object AppOpsHistory {
         val slots = ArrayList<Slot>()
         val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
         val formatSeconds = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
-        var begin = -1L
+        var begin: Long? = null
+        var endRead = true
         var current: Slot? = null
         var uid = -1
         var pkg: String? = null
@@ -60,14 +61,28 @@ internal object AppOpsHistory {
             val line = DumpText.normalize(raw)
             when {
                 line.isEmpty() || line.startsWith("mode=") -> Unit
-                line == "snapshot:" -> { current = null; begin = -1L; uid = -1; pkg = null; op = null }
+                line == "snapshot:" -> {
+                    check(endRead) { "Incomplete AppOps snapshot" }
+                    endRead = false
+                    current = null
+                    begin = null
+                    uid = -1
+                    pkg = null
+                    op = null
+                }
                 stamp.find(line) != null -> {
                     val m = stamp.find(line)!!
                     val text = m.groupValues[2]
                     val t = (if ('.' in text) format else formatSeconds).parse(text)?.time ?: continue
                     if (m.groupValues[1] == "begin") begin = t
-                    // Slots wholly outside the window, or with times the clock got wrong, are skipped.
-                    else if (begin in 0..now && t > since && t >= begin) current = Slot(begin, t, LinkedHashMap()).also { slots += it }
+                    else {
+                        val start = checkNotNull(begin) { "Missing AppOps snapshot start" }
+                        endRead = true
+                        // Skip slots outside the window or affected by a clock change.
+                        if (start in 0..now && t > since && t >= start) {
+                            current = Slot(start, t, LinkedHashMap()).also { slots += it }
+                        }
+                    }
                 }
                 line.startsWith("Uid ") -> { uid = DumpText.uid(line.removePrefix("Uid ")); pkg = null; op = null }
                 line.startsWith("Package ") -> { pkg = line.removePrefix("Package ").removeSuffix(":"); op = null }
@@ -95,6 +110,7 @@ internal object AppOpsHistory {
                 else -> op = DumpText.operation(line)
             }
         }
+        check(endRead) { "Incomplete AppOps snapshot" }
         val out = JSONArray()
         for (slot in slots.sortedByDescending { it.from }) {
             val list = JSONArray()

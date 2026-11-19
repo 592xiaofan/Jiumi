@@ -60,7 +60,7 @@ object Behavior {
                 Record(t, end, count, item.category, !routine && !denied && unattended(state, screen), denied)
             }
             is TimelineItem.CallItem -> with(item.call) {
-                Record(t, end, count, item.category, !routine && !item.refused && unattended(state, screen), item.refused)
+                Record(t, end, count, item.category, !routine && unattended(state, screen), false)
             }
             else -> null
         }

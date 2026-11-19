@@ -3,7 +3,6 @@
 
 package com.ybblab.jiumi
 
-import android.app.AppOpsManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Process
@@ -54,6 +53,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -85,7 +85,7 @@ class MonitorController(
     data class SessionView(val session: JiumiStore.Session, val coverage: Coverage.Result, val latest: Boolean) {
         val running: Boolean get() = session.end == null
     }
-    enum class Problem { CONNECT, START, SHIZUKU }
+    enum class Problem { CONNECT, START, STOP, SHIZUKU }
 
     data class UiState(
         val pairingState: PairingState = PairingState.IDLE,
@@ -152,7 +152,8 @@ class MonitorController(
     )
 
     private val settings = context.getSharedPreferences("jiumi_settings", Context.MODE_PRIVATE)
-    private val owners = PackageOwners(context.packageManager)
+    @Volatile private var inventoryByUid: Map<Int, List<String>> = emptyMap()
+    private val owners = PackageOwners(context.packageManager, catalogPackages = { inventoryByUid[it].orEmpty() })
     private val sync = JiumiSync(store, rules)
     private val usage = NetworkUsage(context)
     private val appKinds = AppKinds(context.packageManager)
@@ -178,8 +179,6 @@ class MonitorController(
         traffic = { from, to -> usage.byUid(from, to) },
         kindOf = appKinds::kindOf,
         attentionRules = attentionRules,
-        holdsPermission = { op, pkg -> holdsPermission(op, pkg) },
-        holdsAnyPermission = { pkg, permissions -> holdsAnyPermission(pkg, permissions) },
         packagesOfUid = owners::packagesOf,
         persistentOf = appKinds::persistent,
         locationProviderOf = { pkg -> pkg != null && pkg in locationProviders }
@@ -300,11 +299,9 @@ class MonitorController(
         val cached = shellCatalogJson()
         probe.service.value?.let { service ->
             runCatching {
-                val json = JSONObject(service.listPackages())
-                if (!json.has("modules")) json.put("modules", cached?.optJSONArray("modules"))
+                val json = ShellCatalog.retainCompleteSections(JSONObject(service.listPackages()), cached)
                 val parsed = ShellCatalog.parse(json)
                 if (parsed.packages.isNotEmpty() || parsed.modules.orEmpty().isNotEmpty()) {
-                    if (parsed.packages.isEmpty()) json.put("packages", cached?.optJSONArray("packages") ?: org.json.JSONArray())
                     synchronized(shellCatalogFile) {
                         val out = shellCatalogFile.startWrite()
                         try {
@@ -315,12 +312,17 @@ class MonitorController(
                             throw error
                         }
                     }
+                    if (json.optBoolean("packagesComplete")) indexPackages(parsed)
                     shellReadAt = android.os.SystemClock.elapsedRealtime()
-                    return@synchronized ShellCatalog.parse(json)
+                    return@synchronized parsed
                 }
             }
         }
         cached?.let { runCatching { ShellCatalog.parse(it) }.getOrNull() } ?: ShellCatalog()
+    }
+
+    private fun indexPackages(catalog: ShellCatalog) {
+        inventoryByUid = catalog.packages.filter { it.installed && it.uid >= 0 }.groupBy({ it.uid }, { it.pkg })
     }
 
     /** When the monitor last listed the packages; cleared by each change, so the next list asks again. */
@@ -378,16 +380,16 @@ class MonitorController(
             }
             val response = changePackage(service, pkg, action)
             val ok = response?.optBoolean("ok") == true
-            when {
-                ok && action == ManageAction.REINSTALL -> backups.delete(pkg)
-                !ok && action == ManageAction.UNINSTALL -> backups.delete(pkg)
-            }
+            val stillInstalled = if (action == ManageAction.UNINSTALL && !ok) runCatching {
+                JSONObject(service.packageState(pkg, false)).opt("installed") as? Boolean
+            }.getOrNull() else null
+            if (ok && action == ManageAction.REINSTALL) backups.delete(pkg)
             shellReadAt = 0L
             val status = when (response?.optString("failure")) {
                 PackageChangeFailure.PERMISSION_DENIED.name -> ManageStatus.PERMISSION_DENIED
                 PackageChangeFailure.NOT_APPLIED.name -> ManageStatus.NOT_APPLIED
                 PackageChangeFailure.UNVERIFIED.name -> ManageStatus.UNVERIFIED
-                else -> ManageStatus.FAILED
+                else -> if (action == ManageAction.UNINSTALL && !ok && stillInstalled != true) ManageStatus.UNVERIFIED else ManageStatus.FAILED
             }
             if (ok || status == ManageStatus.UNVERIFIED) runCatching { shellPackages() }
             if (ok) store.insertUserAction(JiumiStore.UserAction(System.currentTimeMillis(), m.facts?.uid ?: m.backup?.uid ?: -1, pkg, action.id))
@@ -483,7 +485,19 @@ class MonitorController(
     suspend fun appAccess(key: com.ybblab.jiumi.data.AppKey, action: String, permission: String = ""):
         org.json.JSONObject? = withContext(Dispatchers.IO) {
         val pkg = key.pkg ?: return@withContext null
-        val service = ensureMonitor() ?: return@withContext null
+        val service = probe.service.value
+        if (service == null) {
+            val offline = JSONObject().put("lock", "monitor")
+            if (action != "permissions") return@withContext offline
+            val info = runCatching { context.packageManager.getPackageInfo(pkg, PackageManager.GET_PERMISSIONS) }.getOrNull()
+                ?.takeIf { it.applicationInfo?.uid == key.uid } ?: return@withContext offline
+            val flags = info.requestedPermissionsFlags ?: IntArray(0)
+            val rows = info.requestedPermissions.orEmpty().mapIndexed { index, name ->
+                JSONObject().put("name", name).put("editable", false)
+                    .put("allowed", flags.getOrNull(index)?.let { it and android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED != 0 })
+            }
+            return@withContext offline.put("rows", org.json.JSONArray(rows))
+        }
         runCatching { org.json.JSONObject(service.appAccess(pkg, key.uid, action, permission)) }.getOrNull()
     }
 
@@ -509,17 +523,13 @@ class MonitorController(
     /** A local port is open for this boot: the monitor can be started without Wi-Fi. */
     val hasLocalAdbPort: Boolean get() = pairing.hasLocalAdbPort
 
-    /** ADB persistence was turned off while the monitor ran; its port closes once monitoring stops. */
+    /** A classic listener opened by an older build still has a saved port for this boot. */
     val localPortClosePending: Boolean get() = pairing.localListenerClosePending
 
     /** The local port needs USB debugging on as well; null when the phone will not say. */
     fun usbDebuggingEnabled(): Boolean? = pairing.isUsbDebuggingEnabled()
 
-    /**
-     * Turns ADB persistence on or off. Opening or closing the local port restarts adbd, which ends the
-     * monitor with it, so neither happens while it runs: the port opens with the next start's
-     * connection, and one turned off is closed once monitoring stops (see [stopMonitor]).
-     */
+    /** Allows reusing verified loopback ADB. Closing a legacy listener waits for the monitor to stop. */
     fun setAdbPersistence(on: Boolean) {
         if (on) pairing.setPersistenceEnabled(true)
         else scope.launch(Dispatchers.IO) { pairing.disablePersistence() }
@@ -588,13 +598,25 @@ class MonitorController(
                     // A start that gave up waiting is answered all the same; it did not fail.
                     local.update { l -> if (l.problem == Problem.START) l.copy(problem = null) else l }
                     configure(service)
+                    scope.launch(Dispatchers.IO) {
+                        shellCatalog()
+                        refresh()
+                    }
                     refreshFootprint()
                     refresh()
                 }
                 hadMonitor = service != null
             }
         }
-        refresh()
+        scope.launch(Dispatchers.IO) {
+            synchronized(shellCatalogRefresh) {
+                val cached = shellCatalogJson()
+                if (cached?.optBoolean("packagesComplete", true) == true) {
+                    runCatching { ShellCatalog.parse(cached) }.getOrNull()?.let(::indexPackages)
+                }
+            }
+            refresh()
+        }
         // A session left open by a restart, an update or a monitor that was ended is picked up again
         // whenever the app starts; makers that withhold the update or boot broadcast are covered too.
         resumeInterrupted("app start")
@@ -791,20 +813,31 @@ class MonitorController(
 
     /** Ends the session; the monitor stops if it runs (after an interruption it may not). */
     fun stopMonitor() {
-        local.update { it.copy(busy = Busy.STOPPING) }
+        if (local.getAndUpdate { if (it.busy == null) it.copy(busy = Busy.STOPPING, problem = null) else it }.busy != null) return
         scope.launch(Dispatchers.IO) {
-            probe.service.value?.let { service ->
-                // Collect what it recorded before it goes.
-                syncLock.withLock { runCatching { sync.sync(service) } }
-                runCatching { service.shutdown() }
-                withTimeoutOrNull(5_000) { probe.service.first { it == null } }
+            val stopped = runCatching {
+                manageLock.withLock {
+                    probe.service.value?.let { service ->
+                        syncLock.withLock {
+                            service.finishRecording()
+                            sync.pullEvents(service)
+                        }
+                        service.shutdown()
+                        check(withTimeoutOrNull(5_000) { probe.service.first { it == null }; true } == true)
+                    }
+                }
+            }
+            if (stopped.isFailure) {
+                android.util.Log.w(TAG, "Could not finish monitoring", stopped.exceptionOrNull())
+                local.update { it.copy(busy = null, problem = Problem.STOP) }
+                return@launch
             }
             val now = System.currentTimeMillis()
             store.sessions().filter { it.end == null }.forEach { store.endSession(it.id, now) }
             showIndicator()
             local.update { it.copy(busy = null) }
             refresh()
-            // A port ADB persistence was turned off for while the monitor ran can be closed now.
+            // Closing a legacy listener can restart adbd, so wait until the session is finished.
             if (probe.service.value == null) runCatching { pairing.closePendingLocalListener() }
         }
     }
@@ -823,7 +856,9 @@ class MonitorController(
         if (session == null) {
             if (shownSince != null) {
                 MonitorNotificationService.hide(context)
-                if (on && open != null && !running && shownSince == open.start) MonitorNotice.postInterrupted(context)
+                if (on && open != null && !running && shownSince == open.start && local.value.busy != Busy.STOPPING) {
+                    MonitorNotice.postInterrupted(context)
+                }
                 shownSince = null
             }
         } else {
@@ -1139,31 +1174,6 @@ class MonitorController(
     }
 
     private fun definesPermission(name: String) = runCatching { context.packageManager.getPermissionInfo(name, 0) }.isSuccess
-
-    /** Whether [pkg] holds the permission AppOps defers [op] to; null for ops without one. */
-    private fun holdsPermission(op: String, pkg: String?): Boolean? {
-        pkg ?: return null
-        val permission = permissionOfOp[op] ?: return null
-        // Only an installed package can be judged; a daemon's name is not one.
-        runCatching { context.packageManager.getPackageInfo(pkg, 0) }.getOrNull() ?: return null
-        return context.packageManager.checkPermission(permission, pkg) == PackageManager.PERMISSION_GRANTED
-    }
-
-    /** Whether installed [pkg] holds any of [permissions]; null for anything that is not an installed package. */
-    private fun holdsAnyPermission(pkg: String?, permissions: List<String>): Boolean? {
-        pkg ?: return null
-        runCatching { context.packageManager.getPackageInfo(pkg, 0) }.getOrNull() ?: return null
-        return permissions.any { context.packageManager.checkPermission(it, pkg) == PackageManager.PERMISSION_GRANTED }
-    }
-
-    /** The permission behind each op, from the platform's own permission list ("android:get_usage_stats" → PACKAGE_USAGE_STATS). */
-    private val permissionOfOp: Map<String, String> by lazy {
-        runCatching {
-            context.packageManager.getPackageInfo("android", PackageManager.GET_PERMISSIONS).permissions.orEmpty()
-                .mapNotNull { p -> AppOpsManager.permissionToOp(p.name)?.let { op -> op to p.name } }
-                .toMap()
-        }.getOrDefault(emptyMap())
-    }
 
     private companion object {
         const val TAG = "JiumiSync"

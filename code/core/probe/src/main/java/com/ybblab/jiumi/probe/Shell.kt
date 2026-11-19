@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit
 
 /** Runs a short platform command as the shell user, with a deadline and bounded output. */
 internal object Shell {
-    class Result(val exitCode: Int, val output: String)
+    class Result(val exitCode: Int, val output: String, val truncated: Boolean)
 
     private const val MAX_OUTPUT_CHARS = 8_000_000
 
@@ -24,6 +24,8 @@ internal object Shell {
             }
         }.apply { start() }
         val output = StringBuilder()
+        var truncated = false
+        var readError: Throwable? = null
         val reader = Thread {
             runCatching {
                 process.inputStream.bufferedReader().use { r ->
@@ -31,10 +33,12 @@ internal object Shell {
                     while (true) {
                         val n = r.read(buffer)
                         if (n < 0) break
-                        if (output.length < MAX_OUTPUT_CHARS) output.append(buffer, 0, n)
+                        val available = (MAX_OUTPUT_CHARS - output.length).coerceAtLeast(0)
+                        output.append(buffer, 0, minOf(n, available))
+                        if (n > available) truncated = true
                     }
                 }
-            }
+            }.onFailure { readError = it }
         }.apply { start() }
         if (!process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
             process.destroyForcibly()
@@ -43,6 +47,8 @@ internal object Shell {
         }
         reader.join(2_000)
         feeder.join(1_000)
-        return Result(process.exitValue(), output.toString())
+        check(!reader.isAlive) { "command output did not finish" }
+        readError?.let { throw IllegalStateException("command output could not be read", it) }
+        return Result(process.exitValue(), output.toString(), truncated)
     }
 }

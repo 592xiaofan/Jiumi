@@ -146,8 +146,8 @@ sealed interface TimelineItem {
         override val t get() = access.t
     }
 
-    /** [refused]: the app lacks the permission the call needs, so it got nothing. */
-    data class CallItem(val call: JiumiStore.Call, val category: String, val refused: Boolean = false) : TimelineItem {
+    /** A traced request whose outcome the Binder trace cannot see. */
+    data class CallItem(val call: JiumiStore.Call, val category: String) : TimelineItem {
         override val t get() = call.t
     }
 
@@ -191,10 +191,6 @@ class ReportBuilder(
     private val traffic: (from: Long, to: Long) -> Map<Int, NetworkUsage.Traffic> = { _, _ -> emptyMap() },
     private val kindOf: (AppKey) -> AppKind = { AppKind.THIRD_PARTY },
     private val attentionRules: AttentionRules? = null,
-    /** Whether [pkg] holds the permission behind [op]; null when unknown or the op has none. */
-    private val holdsPermission: (op: String, pkg: String?) -> Boolean? = { _, _ -> null },
-    /** Whether [pkg] holds any of [permissions]; null when it is not an installed package. */
-    private val holdsAnyPermission: (pkg: String?, permissions: List<String>) -> Boolean? = { _, _ -> null },
     /** The packages that run under a uid. */
     private val packagesOfUid: (uid: Int) -> List<String> = { emptyList() },
     /** Whether [pkg] is a persistent system app, always running as part of the system (the status bar, the phone service). */
@@ -212,24 +208,21 @@ class ReportBuilder(
     private class Classified(
         val calls: List<Pair<JiumiStore.Call, String>>,
         val accesses: List<Pair<JiumiStore.Access, String>>,
-        val absorbed: Map<JiumiStore.Access, List<JiumiStore.Call>> = emptyMap(),
-        /** Calls that could not return their data: the app lacks the permission they need. */
-        val refusedCalls: Set<JiumiStore.Call> = emptySet()
+        val absorbed: Map<JiumiStore.Access, List<JiumiStore.Call>> = emptyMap()
     )
 
     fun report(from: Long, to: Long): Report {
         val data = classify(store.accesses(from, to), store.calls(from, to))
         val starts = store.processStartCounts(from, to)
         val keyedAccesses = data.accesses.map { AppKey(it.first.uid, it.first.pkg) to it }
-        val keyedCalls = data.calls.map { AppKey(it.first.uid, ownerOf(it.first.uid, it.first.process)) to it }
+        val keyedCalls = data.calls.map { callKey(it.first) to it }
 
         val events = data.accesses.map { (a, c) ->
             // A refused attempt gave the app nothing, wherever it was.
             Event(c, AppKey(a.uid, a.pkg), a.count, a.t, maxOf(a.t, a.end), !a.denied && isUnattended(a.state, a.screen), a.denied)
         } + keyedCalls.map { (key, c) ->
-            val refused = c.first in data.refusedCalls
             Event(c.second, key, c.first.count, c.first.t, maxOf(c.first.t, c.first.end),
-                !refused && isUnattended(c.first.state, c.first.screen), refused)
+                isUnattended(c.first.state, c.first.screen))
         }
         val eventsByKey = events.groupBy { it.key }
         val categories = events.groupBy { it.category }.map { (id, list) ->
@@ -276,10 +269,9 @@ class ReportBuilder(
                     ?: opCounts[key]?.maxOfOrNull { minOf(it.to, to) } ?: 0L,
                 background = accesses.filter { !it.first.denied && isUnattended(it.first.state, it.first.screen) }
                     .sumOf { it.first.count } +
-                    calls.filter { it.first !in data.refusedCalls && isUnattended(it.first.state, it.first.screen) }
+                    calls.filter { isUnattended(it.first.state, it.first.screen) }
                         .sumOf { it.first.count },
-                denied = accesses.filter { it.first.denied }.sumOf { it.first.count } +
-                    calls.filter { it.first in data.refusedCalls }.sumOf { it.first.count },
+                denied = accesses.filter { it.first.denied }.sumOf { it.first.count },
                 processStarts = starts[key] ?: 0,
                 destinations = contacts.map { labeler(names, key.uid)(it.addr) }.toSet().size,
                 traffic = trafficByKey[key],
@@ -304,20 +296,21 @@ class ReportBuilder(
 
     fun detail(key: AppKey, from: Long, to: Long): AppDetail {
         val data = classify(store.accesses(from, to, key.uid), store.calls(from, to, key.uid))
-        val contacts = store.connections(from, to, key.uid).filter { ownerOf(it.uid, null) == key.pkg && !isLookupTraffic(it) }.map(::persistent)
+        val ownsUidTraffic = key.uid != excludedUid && ownerOf(key.uid, null) == key.pkg
+        val contacts = if (ownsUidTraffic) store.connections(from, to, key.uid).filterNot(::isLookupTraffic).map(::persistent) else emptyList()
         val accessRows = data.accesses.filter { it.first.pkg == key.pkg }
         val callRows = data.calls.filter { ownerOf(it.first.uid, it.first.process) == key.pkg }
         val names = DomainNames(store.lookups(from - DomainNames.LOOKBACK_MS, to))
         val nets = conversations(contacts, labeler(names, key.uid))
         val starts = store.processStarts(from, to, key.uid)
-            .filter { key.pkg == null || it.appKey == key }
+            .filter { it.appKey == key }
         // Behaviors and network activity are told apart: a connection is not something the app read.
         val actions = key.pkg?.let { store.userActions(from, to, it) }.orEmpty().map { TimelineItem.ActionItem(it) }
         val items = (items(accessRows, callRows, emptyList(), starts, data) + actions).sortedByDescending { it.t }
         val routine = kindOf(key).id in attentionRules?.routineKinds.orEmpty()
         // Network activity is one list: where it connected, each with the lookups of its domain, then
         // what it only looked up.
-        val domains = domains(store.lookups(from, to, key.uid).filter { ownerOf(it.uid, null) == key.pkg }).associateBy { it.domain }
+        val domains = if (ownsUidTraffic) domains(store.lookups(from, to, key.uid)).associateBy { it.domain } else emptyMap()
         val destinations = nets.groupBy { it.label }.map { (label, list) ->
             val latest = list.maxBy { it.connection.end }
             Destination(label, list.size, latest.connection.end, sumOrNull(list.map { it.connection.sent }),
@@ -325,7 +318,7 @@ class ReportBuilder(
                 lookups = domains[label]?.lookups ?: 0)
         }.sortedByDescending { it.last }
         val reached = destinations.map { it.label }.toSet()
-        val traffic = if (key.uid == excludedUid) null else traffic(from, to)[key.uid]
+        val traffic = if (ownsUidTraffic) traffic(from, to)[key.uid] else null
         return AppDetail(items, categoryGroups(), rules.groups.associate { it.id to it.icon },
             Behavior.summaries(items, from, to, routine), routine, Behavior.chart(items, from, to, routine), destinations, traffic,
             domains.values.filter { it.domain !in reached }.sortedWith(compareByDescending<DomainSummary> { it.lookups }.thenByDescending { it.last }),
@@ -344,12 +337,10 @@ class ReportBuilder(
             // Kinds of data first, then the maker's own operations.
             .sortedWith(compareBy<SystemCount> { it.vendor }.thenByDescending { it.fg + it.bg + it.rejected })
 
-    /** The system's refusals of one way in among several count for nothing when the app holds another. */
+    /** Refusals of sensitive operations the system actually recorded. */
     private fun rejected(r: JiumiStore.OpCount): Long {
         // A check refused nothing the app asked for; what a maker's own operation guards is not published.
         if (r.op in rules.checkedOps || r.op in rules.activeOnlyOps || SystemCount.isVendor(r.op)) return 0
-        val other = rules.opPermission(r.op)
-        if (other != null && r.uid >= FIRST_APP_UID && holdsAnyPermission(r.pkg, other.anyOf) == true) return 0
         return r.fgRejected + r.bgRejected
     }
 
@@ -369,7 +360,7 @@ class ReportBuilder(
         data: Classified
     ): List<TimelineItem> {
         val accesses = accessRows.map { TimelineItem.AccessItem(it.first, it.second, data.absorbed[it.first].orEmpty()) }
-        val calls = callRows.map { TimelineItem.CallItem(it.first, it.second, refused = it.first in data.refusedCalls) }
+        val calls = callRows.map { TimelineItem.CallItem(it.first, it.second) }
         return Segments.merge(accesses + calls + starts.map { TimelineItem.ProcessItem(it) } + nets)
     }
 
@@ -420,30 +411,25 @@ class ReportBuilder(
         // A location provider locating whichever app asked: that app's own access is noted as well.
         val locating = attentionRules?.locationProviderCategories.orEmpty()
         // Work done for another app is that app's access, recorded for it as well: left out here.
-        val recordedAccesses = accessRows.filter { it.uid != excludedUid }.map(::effective).filter { countsAsUse(it, rules) }
+        val recordedAccesses = accessRows.filter { it.uid != excludedUid }.filter { countsAsUse(it, rules) }
             .map { if (persistentOf(it.pkg)) it.copy(state = PERSISTENT) else it }
             .mapNotNull { row -> rules.categoryOf(row.op)?.let { row to it } }
             .filterNot { (a, c) -> a.proxied || a.attr in serving || c in locating && locationProviderOf(a.pkg) }
         // The privacy record shows only what went through.
-        val byUid = recordedAccesses.filterNot { it.first.denied }.groupBy { it.first.uid }
-        val refused = HashSet<JiumiStore.Call>()
+        val byApp = recordedAccesses.filter { (a, _) -> !a.denied && a.pkg != null }
+            .groupBy { (a, _) -> AppKey(a.uid, a.pkg) }
         // A call the monitor could not tie to any caller tells nothing about anyone: left out.
         val traced = callRows.filter { it.uid != excludedUid && it.uid >= 0 }
             .map { if (persistentOf(ownerOf(it.uid, it.process))) it.copy(state = PERSISTENT) else it }.mapNotNull { call ->
             val category = rules.categoryOfCall(call.iface, call.method) ?: return@mapNotNull null
-            if (category in locating && locationProviderOf(ownerOf(call.uid, call.process))) return@mapNotNull null
-            // An installed app without the permission a call needs got nothing from it, or only its own.
-            when (callVerdict(call)) {
-                AccessRules.Without.OWN, AccessRules.Without.REDACTED -> return@mapNotNull null
-                AccessRules.Without.REFUSED -> { refused += call; return@mapNotNull call to category }
-                null -> Unit
-            }
+            val key = callKey(call)
+            if (category in locating && locationProviderOf(key.pkg)) return@mapNotNull null
             // Where the system records a kind of data whenever it hands it over, a call its record does
             // not show around then may have returned nothing (a clipboard read from the background, a
             // media query for the app's own files, a last location not yet known): what it got cannot
             // be told, so it is left out.
             val recordedAs = rules.recordedAs(category)
-            if (recordedAs.isNotEmpty() && byUid[call.uid].orEmpty().none { (a, c) ->
+            if (recordedAs.isNotEmpty() && byApp[key].orEmpty().none { (a, c) ->
                     c in recordedAs && a.t - MATCH_MS <= call.end && call.t <= maxOf(a.end, a.t) + MATCH_MS
                 }) return@mapNotNull null
             call to category
@@ -451,62 +437,26 @@ class ReportBuilder(
         // A note the system also makes when it only checks an app's rights (usage access, asked while
         // the app reads its own traffic) says what the app may read, not what it read: it counts only
         // beside a traced call of the same kind of data.
-        val callsByUid = traced.filterNot { it.first in refused }.groupBy { it.first.uid }
+        val callsByApp = traced.groupBy { callKey(it.first) }.filterKeys { it.pkg != null }
         val accesses = recordedAccesses.filter { (a, c) ->
-            a.op !in rules.callConfirmedOps || callsByUid[a.uid].orEmpty().any { (call, cc) ->
+            a.op !in rules.callConfirmedOps || callsByApp[AppKey(a.uid, a.pkg)].orEmpty().any { (call, cc) ->
                 cc == c && a.t - MATCH_MS <= call.end && call.t <= maxOf(a.end, a.t) + MATCH_MS
             }
         }
-        val calls = traced
-        // A refused access gave nothing, so it cannot stand for a call made at the same time.
-        val overlap = Overlap.absorb(accesses.filterNot { it.first.denied }, calls.filterNot { it.first in refused }, rules::recordedAs)
-        return Classified(calls.filter { it.first in refused } + overlap.calls, accesses, overlap.absorbed, refused)
+        val overlap = Overlap.absorb(accesses.filterNot { it.first.denied }, traced,
+            ownerOf = { callKey(it).pkg }, recordedAs = rules::recordedAs)
+        return Classified(overlap.calls, accesses, overlap.absorbed)
     }
 
-    /** What a call without the permission it needs amounts to; null when it needs none or the app holds one. */
-    private fun callVerdict(call: JiumiStore.Call): AccessRules.Without? {
-        if (call.uid < FIRST_APP_UID) return null
-        val rule = rules.callPermission(call.iface, call.method) ?: return null
-        val pkg = ownerOf(call.uid, call.process) ?: return null
-        return if (holdsAnyPermission(pkg, rule.anyOf) == false) rule.without else null
-    }
+    private fun callKey(call: JiumiStore.Call) = AppKey(call.uid, ownerOf(call.uid, call.process))
 
-    /**
-     * AppOps answers "default" when the decision rests on a permission; an app without that
-     * permission was refused (an app without usage access asking for usage stats). Only installed
-     * apps are judged: system daemons hold their rights by uid, not by a granted permission.
-     */
     /** A persistent system app is part of the system wherever its process stands; nothing it sends is sent while not in use. */
     private fun persistent(c: JiumiStore.Connection): JiumiStore.Connection =
         if (persistentOf(ownerOf(c.uid, null))) c.copy(state = PERSISTENT, sentUnattended = c.sentUnattended?.let { 0L }) else c
 
-    private fun effective(row: JiumiStore.Access): JiumiStore.Access = effective(row, rules, holdsPermission, holdsAnyPermission)
-
     companion object {
-        /**
-         * What an access amounted to for an installed app. The operation may be one way in among
-         * several, and an app holding another was not refused. AppOps answers "default" when the
-         * decision rests on the operation's own permission; an app without it was refused.
-         */
-        fun effective(
-            row: JiumiStore.Access,
-            rules: AccessRules,
-            holdsPermission: (op: String, pkg: String?) -> Boolean?,
-            holdsAnyPermission: (pkg: String?, permissions: List<String>) -> Boolean?
-        ): JiumiStore.Access {
-            if (row.uid < FIRST_APP_UID) return row
-            val other = rules.opPermission(row.op)
-            if (other != null && (row.denied || row.result == MODE_DEFAULT) && holdsAnyPermission(row.pkg, other.anyOf) == true)
-                return row.copy(result = MODE_ALLOWED)
-            return if (row.result == MODE_DEFAULT && holdsPermission(row.op, row.pkg) == false)
-                row.copy(result = MODE_IGNORED, withoutPermission = true) else row
-        }
-
         private const val MATCH_MS = 60_000L
         private const val MODE_ALLOWED = 0
-        private const val MODE_IGNORED = 1
-        private const val MODE_DEFAULT = 3
-        private const val FIRST_APP_UID = 10_000
         private const val HOUR_MS = 3_600_000L
 
         /**
@@ -532,6 +482,7 @@ class ReportBuilder(
          * for, and for an operation used only while active, a plain note is such a check.
          */
         fun countsAsUse(row: JiumiStore.Access, rules: AccessRules): Boolean {
+            if (row.result != MODE_ALLOWED && !row.denied) return false
             if (row.denied && row.op in rules.checkedOps) return false
             if (row.op in rules.activeOnlyOps) return row.source == "active" || row.source == "system" && row.end > row.t
             return true

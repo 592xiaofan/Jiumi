@@ -63,6 +63,12 @@ internal class ConnectionWatcher(
         ProbeMain.log("connection watch ${if (on) "on, every ${intervalMs} ms" else "off"}")
     }
 
+    fun finishRecording() = synchronized(lock) {
+        enabled = false
+        flushAll()
+        lock.notifyAll()
+    }
+
     override fun run() {
         while (true) {
             try {

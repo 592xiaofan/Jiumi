@@ -11,10 +11,10 @@ interface IProbeService {
     /** JSON {"ops":[...],"calls":{...},"network":{...},"spool":{"limitMb":n}}. Kept across monitor restarts. */
     void configure(String config);
     /**
-     * JSON {"events":[...],"last":seq,"first":seq,"more":bool}: spooled events after afterSeq, oldest
-     * first. Reading also releases the events at or before afterSeq; "first" is the oldest still kept.
+     * JSON {"epoch":n,"events":[...],"last":seq,"first":seq,"more":bool}. A cursor
+     * acknowledges events only in the same spool epoch.
      */
-    String readEvents(long afterSeq, int max);
+    String readEvents(long epoch, long afterSeq, int max);
     /**
      * The system's per-access record (the one behind its privacy dashboard; a few kinds of data, kept
      * about a week) for the operations being watched, at or after fromTime, oldest first, at most max.
@@ -29,6 +29,8 @@ interface IProbeService {
     String readHistoricalOps(long sinceTime, int skip, int max);
     /** The monitor's own resource use. Returns JSON. */
     String footprint();
+    /** Stops the collectors and writes their remaining events without closing the binder. */
+    void finishRecording();
     void shutdown();
     /**
      * Changes a package for the calling user: action "disable", "enable", "unsuspend", "uninstall"
@@ -42,8 +44,8 @@ interface IProbeService {
     String managePackage(String action, String packageName);
     /**
      * Every package for the calling user as the shell sees it, which some phones hide from apps.
-     * JSON {"packages":[{"pkg":name,"uid":n,"system":bool,"enabled":n,"suspended":bool,"installed":bool}]};
-     * "enabled" is the Package Manager setting, when known. "suspended" reports a shell suspension.
+     * JSON with packages, packagesComplete, and modules when the APEX list could be read.
+     * Each package has its name, UID, installation and suspension state, and available metadata.
      */
     String listPackages();
     /**

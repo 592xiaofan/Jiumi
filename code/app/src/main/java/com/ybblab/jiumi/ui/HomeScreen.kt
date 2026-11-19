@@ -143,7 +143,7 @@ fun HomeScreen(
             // (with its progress and messages) above the screen as it grows.
             Box(Modifier.fillMaxWidth().heightIn(min = 1.dp)) {
                 when {
-                    state.sessionOpen && state.running && !pairingFlow && state.problem == null -> SessionStrip(state, controller)
+                    state.sessionOpen && state.running && !pairingFlow && (state.problem == null || state.problem == Problem.STOP) -> SessionStrip(state, controller)
                     state.sessionOpen && !state.running && paired && !pairingFlow && session != null ->
                         InterruptedCard(state, session, controller)
                     else -> ServiceCard(state, controller, pairingFlow, paired, onOpenPairing)
@@ -449,7 +449,8 @@ private fun SessionStrip(state: MonitorController.UiState, controller: MonitorCo
                 Text(stringResource(R.string.monitor_now), style = MaterialTheme.typography.labelMedium, color = Ink.tertiary)
             }
             Row(Modifier.fillMaxWidth().padding(top = 10.dp)) { Figures(figures) }
-        }
+        },
+        message = if (state.busy == Busy.STOPPING) stringResource(R.string.monitor_saving) else statusMessage(state)
     )
 }
 
@@ -701,6 +702,7 @@ private fun problemText(problem: Problem): String = stringResource(
     when (problem) {
         Problem.CONNECT -> R.string.error_connect
         Problem.START -> R.string.error_service_start
+        Problem.STOP -> R.string.error_service_stop
         Problem.SHIZUKU -> R.string.error_shizuku
     }
 )

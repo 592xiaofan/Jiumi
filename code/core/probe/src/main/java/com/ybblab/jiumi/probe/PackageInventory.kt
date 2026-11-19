@@ -59,13 +59,15 @@ internal object PackageInventory {
         return json
     }
 
-    fun modules(output: String): JSONArray {
+    fun modules(output: String): JSONArray? {
         val json = JSONArray()
         val seen = HashSet<String>()
         for (line in output.lineSequence()) {
-            val match = moduleLine.matchEntire(line.trim()) ?: continue
+            if (line.isBlank()) continue
+            val match = moduleLine.matchEntire(line.trim()) ?: return null
             val (path, pkg, version) = match.destructured
-            if (!acceptsName(pkg) || !seen.add(pkg)) continue
+            if (!acceptsName(pkg)) return null
+            if (!seen.add(pkg)) continue
             json.put(JSONObject().put("pkg", pkg).put("path", path).put("version", version.toLongOrNull()))
         }
         return json

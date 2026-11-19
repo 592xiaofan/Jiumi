@@ -20,12 +20,21 @@ internal class EventSpool(private val directory: File, private val segmentBytes:
 
     private var seq: Long
     private var current: File
+    private val epoch: Long
 
     init {
         directory.mkdirs()
         val existing = segments()
         seq = existing.lastOrNull()?.let(::lastSequenceIn) ?: 0L
         current = existing.lastOrNull() ?: segmentFile(seq + 1)
+        val identity = File(directory, "events-epoch")
+        epoch = (if (existing.isEmpty()) null else runCatching { identity.readText().toLong() }.getOrNull())
+            ?: java.security.SecureRandom().nextLong().ushr(1).coerceAtLeast(1L).also {
+                val temp = File(directory, ".events-epoch")
+                temp.writeText(it.toString())
+                java.nio.file.Files.move(temp.toPath(), identity.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
     }
 
     @Synchronized
@@ -41,7 +50,8 @@ internal class EventSpool(private val directory: File, private val segmentBytes:
      * segments that end at or before it are deleted. "first" is the oldest sequence still kept.
      */
     @Synchronized
-    fun read(after: Long, max: Int): JSONObject {
+    fun read(knownEpoch: Long, cursor: Long, max: Int): JSONObject {
+        val after = cursor.takeIf { knownEpoch == epoch && it in 0..seq } ?: 0L
         val all = segments()
         all.zipWithNext().forEach { (segment, next) -> if (firstSequence(next) - 1 <= after) segment.delete() }
         val events = JSONArray()
@@ -58,7 +68,7 @@ internal class EventSpool(private val directory: File, private val segmentBytes:
             if (more) break
         }
         val first = segments().firstOrNull()?.let(::firstSequence) ?: (seq + 1)
-        return JSONObject().put("events", events).put("last", seq).put("first", first).put("more", more)
+        return JSONObject().put("epoch", epoch).put("events", events).put("last", seq).put("first", first).put("more", more)
     }
 
     @Synchronized
@@ -85,8 +95,9 @@ internal class EventSpool(private val directory: File, private val segmentBytes:
     private fun firstSequence(file: File): Long = file.name.removePrefix(PREFIX).removeSuffix(SUFFIX).toLongOrNull() ?: 0L
 
     private fun lastSequenceIn(file: File): Long? =
-        file.useLines { lines -> lines.lastOrNull { it.isNotBlank() } }?.let { runCatching { JSONObject(it).getLong("seq") }.getOrNull() }
-            ?: (firstSequence(file) - 1)
+        file.useLines { lines ->
+            lines.mapNotNull { runCatching { JSONObject(it).getLong("seq") }.getOrNull() }.lastOrNull()
+        } ?: (firstSequence(file) - 1)
 
     companion object {
         private const val PREFIX = "events-"

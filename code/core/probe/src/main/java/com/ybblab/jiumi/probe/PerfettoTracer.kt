@@ -42,6 +42,7 @@ internal class PerfettoTracer(
     private var packetWatermarkNs = 0L
     private val clients = HashMap<Int, Client?>()
     private val buckets = LinkedHashMap<String, Bucket>()
+    @Volatile private var finishing = false
 
     /** [thread] is the calling thread's name, which often tells an SDK apart from its host app. */
     private data class Client(val pid: Int, val uid: Int, val process: String, val thread: String?)
@@ -74,22 +75,45 @@ internal class PerfettoTracer(
     override fun run() {
         removeLeftoverTraces()
         var running: Session? = null
-        while (true) {
+        while (!finishing) {
             if (!enabled) {
                 running?.let { finish(it) }
                 running = null
                 buckets.forEach { (key, bucket) -> flush(key, bucket) }
                 buckets.clear()
-                synchronized(lock) { while (!enabled) lock.wait() }
+                synchronized(lock) { while (!enabled && !finishing) lock.wait() }
                 continue
             }
-            val current = running ?: startSession() ?: run { sleep(RETRY_MS); null } ?: continue
+            val current = running ?: startSession() ?: run { waitUntilFinishing(RETRY_MS); null } ?: continue
             // Start the next session before this one ends so no call falls between them.
-            sleep((SESSION_MS - OVERLAP_MS).coerceAtLeast(1_000))
-            val next = if (enabled) startSession() else null
+            waitUntilFinishing(SESSION_MS - OVERLAP_MS)
+            val next = if (enabled && !finishing) startSession() else null
             finish(current)
             running = next
         }
+        running?.let(::finish)
+        buckets.forEach { (key, bucket) -> flush(key, bucket) }
+        buckets.clear()
+    }
+
+    private fun waitUntilFinishing(ms: Long) {
+        val end = SystemClock.elapsedRealtime() + ms
+        synchronized(lock) {
+            var remaining = end - SystemClock.elapsedRealtime()
+            while (!finishing && remaining > 0) {
+                lock.wait(remaining)
+                remaining = end - SystemClock.elapsedRealtime()
+            }
+        }
+    }
+
+    fun finishRecording() {
+        synchronized(lock) {
+            finishing = true
+            lock.notifyAll()
+        }
+        join(SESSION_MS + 10_000L)
+        check(!isAlive) { "Perfetto trace could not be drained" }
     }
 
     private class Session(val process: Process, val file: File)

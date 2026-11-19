@@ -29,7 +29,6 @@ class AppLabels(private val context: Context) {
         }?.let { labels[key] = it; return it }
         return key.pkg?.let(::processLabel)
             ?: if (key.uid == ROOT_UID) context.getString(R.string.root_service) else null
-            ?: pm.getNameForUid(key.uid)?.let(::uidLabel)
             ?: "UID ${key.uid}"
     }
 
@@ -44,9 +43,6 @@ class AppLabels(private val context: Context) {
         val service = name.removePrefix(HARDWARE_PREFIX).substringBefore("-service").substringBefore('@')
         return context.getString(R.string.hardware_service, service)
     }
-
-    /** Shared system uids are named like android.uid.<name>:<uid>. */
-    private fun uidLabel(name: String): String = name.substringBefore(':').removePrefix("android.uid.")
 
     private companion object {
         const val ROOT_UID = 0

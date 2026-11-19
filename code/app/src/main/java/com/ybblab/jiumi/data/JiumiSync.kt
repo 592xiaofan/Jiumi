@@ -10,6 +10,9 @@ import org.json.JSONObject
 /** Copies the monitor's spool and the system access history into the local store. */
 class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
 
+    private var discreteRetryAfter = 0L
+    private var countsRetryAfter = 0L
+
     /**
      * Returns how many new events it stored. Now and then it also reads the system's own records,
      * which reach back before monitoring began: the per-access record (about a week, a few kinds of
@@ -17,13 +20,18 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
      */
     fun sync(service: IProbeService, now: Long = System.currentTimeMillis()): Int {
         val stored = pullEvents(service)
-        if (now - store.meta(KEY_DISCRETE_READ_AT) >= DISCRETE_EVERY_MS) {
-            runCatching { pullDiscrete(service) }.onFailure { android.util.Log.w(TAG, "system access record not read", it) }
-            store.setMeta(store.writableDatabase, KEY_DISCRETE_READ_AT, now)
+        val elapsed = android.os.SystemClock.elapsedRealtime()
+        if (elapsed >= discreteRetryAfter && now - store.meta(KEY_DISCRETE_READ_AT) >= DISCRETE_EVERY_MS) {
+            discreteRetryAfter = elapsed + HISTORY_RETRY_MS
+            runCatching { pullDiscrete(service) }
+                .onSuccess { store.setMeta(store.writableDatabase, KEY_DISCRETE_READ_AT, now) }
+                .onFailure { android.util.Log.w(TAG, "system access record not read", it) }
         }
-        if (now - store.meta(KEY_COUNTS_READ_AT) >= COUNTS_EVERY_MS) {
-            runCatching { pullCounts(service, now) }.onFailure { android.util.Log.w(TAG, "system access counts not read", it) }
-            store.setMeta(store.writableDatabase, KEY_COUNTS_READ_AT, now)
+        if (elapsed >= countsRetryAfter && now - store.meta(KEY_COUNTS_READ_AT) >= COUNTS_EVERY_MS) {
+            countsRetryAfter = elapsed + HISTORY_RETRY_MS
+            runCatching { pullCounts(service, now) }
+                .onSuccess { store.setMeta(store.writableDatabase, KEY_COUNTS_READ_AT, now) }
+                .onFailure { android.util.Log.w(TAG, "system access counts not read", it) }
         }
         return stored
     }
@@ -85,16 +93,17 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
             if (page.length() < PAGE_SLOTS) break
             skip += page.length()
         }
-        store.replaceOpCounts(counts)
+        if (counts.isNotEmpty()) store.replaceOpCounts(counts)
     }
 
-    private fun pullEvents(service: IProbeService): Int {
+    fun pullEvents(service: IProbeService): Int {
         var stored = 0
+        var epoch = store.meta(KEY_EVENT_EPOCH)
         var after = store.meta(KEY_EVENT_SEQ)
         while (true) {
-            val page = JSONObject(service.readEvents(after, PAGE))
-            // A monitor whose spool was cleared restarts its numbering; read it from the start.
-            if (page.getLong("last") < after) { after = 0; continue }
+            val page = JSONObject(service.readEvents(epoch, after, PAGE))
+            val pageEpoch = page.getLong("epoch")
+            if (pageEpoch != epoch || page.getLong("last") < after) after = 0L
             val events = page.getJSONArray("events")
             if (events.length() == 0) break
             val db = store.writableDatabase
@@ -102,11 +111,14 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
             try {
                 // Events the monitor dropped before they could be read (spool limit or low storage).
                 val first = page.optLong("first", after + 1)
-                if (after > 0 && first > after + 1) {
+                // A first read can start in the middle of a pre-existing spool already imported before an upgrade.
+                if (epoch != 0L && first > after + 1) {
                     store.insertMonitorEvent(db, JiumiStore.MonitorEvent(events.getJSONObject(0).optLong("t"), "lost", (first - after - 1).toString()))
                 }
                 for (i in 0 until events.length()) apply(db, events.getJSONObject(i))
                 after = events.getJSONObject(events.length() - 1).getLong("seq")
+                epoch = pageEpoch
+                store.setMeta(db, KEY_EVENT_EPOCH, epoch)
                 store.setMeta(db, KEY_EVENT_SEQ, after)
                 db.setTransactionSuccessful()
                 stored += events.length()
@@ -163,9 +175,11 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
     private companion object {
         const val TAG = "JiumiSync"
         const val KEY_EVENT_SEQ = "event_seq"
+        const val KEY_EVENT_EPOCH = "event_epoch"
         const val KEY_DISCRETE_FROM = "system_access_from"
         const val KEY_DISCRETE_READ_AT = "system_access_read_at"
         const val KEY_COUNTS_READ_AT = "system_counts_read_at"
+        const val HISTORY_RETRY_MS = 60_000L
         const val DISCRETE_EVERY_MS = 10 * 60_000L
         const val COUNTS_EVERY_MS = 30 * 60_000L
         const val COUNT_DAYS = 31

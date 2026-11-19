@@ -13,10 +13,6 @@ class AccessRules(
     val groups: List<Group> = emptyList(),
     /** IContentProvider transaction codes and their operation names. */
     val providerOperations: Map<Int, String> = emptyMap(),
-    /** What a traced call needs to return the data its category names; see [callPermission]. */
-    val callPermissions: List<CallPermission> = emptyList(),
-    /** Other ways into the data an operation guards; see [opPermission]. */
-    val opPermissions: List<OpPermission> = emptyList(),
     /** Operations the system also notes when it only checks an app's rights; their refusals say nothing. */
     val checkedOps: Set<String> = emptySet(),
     /** Operations used only while the system marks them active; their plain notes are checks. */
@@ -24,28 +20,6 @@ class AccessRules(
     /** Operations whose notes count as use only beside a traced call of the same category; see [callConfirmedOps]. */
     val callConfirmedOps: Set<String> = emptySet()
 ) {
-    /**
-     * [calls] return the data of their category only to an app holding one of [anyOf]. Without, the
-     * call is [Without.REFUSED] (the system gave nothing), [Without.REDACTED] (it gave the data with
-     * what identifies the user taken out, so nothing to report) or [Without.OWN] (it
-     * gave only the app's own information, so nothing to report).
-     */
-    data class CallPermission(val calls: List<String>, val anyOf: List<String>, val without: Without)
-
-    enum class Without { REFUSED, REDACTED, OWN }
-
-    /** The first rule naming this call, exactly or as Interface.*; null when the call needs nothing particular. */
-    fun callPermission(iface: String, method: String): CallPermission? =
-        callPermissions.firstOrNull { "$iface.$method" in it.calls || "$iface.*" in it.calls }
-
-    /**
-     * The system notes [ops] as one way in among several: an app holding any of [anyOf] gets the data
-     * whatever the operation itself answered, so a refusal noted for it refused nothing.
-     */
-    data class OpPermission(val ops: List<String>, val anyOf: List<String>)
-
-    fun opPermission(op: String): OpPermission? = opPermissions.firstOrNull { op in it.ops }
-
     data class Category(val id: String, val ops: List<String>, val calls: List<String>, val recordedAs: List<String>)
     /** [icon] names the group's symbol in the app. */
     data class Group(val id: String, val categories: List<String>, val icon: String = "")
@@ -105,16 +79,6 @@ class AccessRules(
                 },
                 root.optJSONObject("providerOperations")?.let { o ->
                     o.keys().asSequence().mapNotNull { k -> k.toIntOrNull()?.let { it to o.getString(k) } }.toMap()
-                }.orEmpty(),
-                root.optJSONArray("callPermissions")?.let { a ->
-                    (0 until a.length()).map { i ->
-                        val item = a.getJSONObject(i)
-                        CallPermission(item.strings("calls"), item.strings("anyOf"),
-                            when (item.optString("without")) { "own" -> Without.OWN; "redacted" -> Without.REDACTED; else -> Without.REFUSED })
-                    }
-                }.orEmpty(),
-                root.optJSONArray("opPermissions")?.let { a ->
-                    (0 until a.length()).map { i -> a.getJSONObject(i).let { OpPermission(it.strings("ops"), it.strings("anyOf")) } }
                 }.orEmpty(),
                 root.strings("checkedOps").toSet(),
                 root.strings("activeOnlyOps").toSet(),

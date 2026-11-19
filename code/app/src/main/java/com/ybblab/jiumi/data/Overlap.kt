@@ -23,17 +23,21 @@ object Overlap {
     fun absorb(
         accesses: List<Pair<JiumiStore.Access, String>>,
         calls: List<Pair<JiumiStore.Call, String>>,
+        ownerOf: (JiumiStore.Call) -> String?,
         recordedAs: (category: String) -> Set<String> = { emptySet() }
     ): Result {
         val room = HashMap<JiumiStore.Access, Int>()
         accesses.forEach { (a, _) -> room[a] = a.count }
-        val byKey = accesses.groupBy({ it.first.uid to it.second }, { it.first })
+        val byKey = accesses.filter { it.first.pkg != null }.groupBy({ (access, category) ->
+            AppKey(access.uid, access.pkg) to category
+        }, { it.first })
         val absorbed = LinkedHashMap<JiumiStore.Access, MutableList<JiumiStore.Call>>()
         val left = ArrayList<Pair<JiumiStore.Call, String>>()
         for (entry in calls.sortedBy { it.first.t }) {
             val (call, category) = entry
             var remaining = call.count
-            val candidates = (listOf(category) + (recordedAs(category) - category)).flatMap { byKey[call.uid to it].orEmpty() }
+            val key = AppKey(call.uid, ownerOf(call))
+            val candidates = (listOf(category) + (recordedAs(category) - category)).flatMap { byKey[key to it].orEmpty() }
             for (a in candidates) {
                 if (remaining == 0) break
                 if (call.t > maxOf(a.t, a.end) + SLACK_MS || call.end < a.t - SLACK_MS) continue

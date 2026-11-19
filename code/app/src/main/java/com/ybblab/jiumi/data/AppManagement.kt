@@ -217,6 +217,20 @@ data class SystemModule(val pkg: String, val path: String, val version: Long?)
 
 data class ShellCatalog(val packages: List<ShellPackage> = emptyList(), val modules: List<SystemModule>? = null) {
     companion object {
+        /** A partial read can supply a new section but cannot replace one already read in full. */
+        fun retainCompleteSections(fresh: JSONObject, saved: JSONObject?): JSONObject = fresh.apply {
+            val oldModules = saved?.optJSONArray("modules")
+            if (optJSONArray("modules") == null || optJSONArray("modules")?.length() == 0 && oldModules != null) {
+                put("modules", oldModules)
+            }
+            val oldPackages = saved?.optJSONArray("packages")
+            if (oldPackages != null && (!optBoolean("packagesComplete") && saved.optBoolean("packagesComplete", true) ||
+                    optJSONArray("packages")?.length() == 0)) {
+                put("packages", oldPackages)
+                put("packagesComplete", saved.optBoolean("packagesComplete", true))
+            }
+        }
+
         fun parse(json: JSONObject): ShellCatalog {
             val modules = json.optJSONArray("modules")?.let { array ->
                 List(array.length()) { i ->

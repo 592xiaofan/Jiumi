@@ -101,7 +101,7 @@ fun categoryOf(item: TimelineItem): String? = when (val head = headOf(item)) {
 fun isUnattended(item: TimelineItem): Boolean = when (val head = headOf(item)) {
     is TimelineItem.AccessItem -> !head.access.denied &&
         ReportBuilder.isUnattended(head.access.state, head.access.screen)
-    is TimelineItem.CallItem -> !head.refused && ReportBuilder.isUnattended(head.call.state, head.call.screen)
+    is TimelineItem.CallItem -> ReportBuilder.isUnattended(head.call.state, head.call.screen)
     is TimelineItem.NetItem -> ReportBuilder.isUnattended(head.connection.state, head.connection.screen)
     else -> false
 }
@@ -244,7 +244,7 @@ fun RecordBadges(item: TimelineItem, routine: Boolean) {
             // Read from the system's record, not seen by the monitor (it may not have been running).
             if (item.access.source == "system") badges += stringResource(R.string.badge_from_system) to grey
         }
-        is TimelineItem.CallItem -> if (item.refused) badges += stringResource(R.string.access_denied) to grey
+        is TimelineItem.CallItem -> badges += stringResource(R.string.badge_traced_call) to grey
         // The bytes sent in the background, as measured, when they reach the threshold; else all sent.
         is TimelineItem.NetItem -> {
             val background = item.connection.sentUnattended?.takeIf { item.sentInBackground && !routine && it > 0 }
@@ -260,7 +260,7 @@ fun RecordBadges(item: TimelineItem, routine: Boolean) {
         else -> null
     }
     // Refused: where the caller was says nothing about it.
-    val plain = item is TimelineItem.AccessItem && item.access.denied || item is TimelineItem.CallItem && item.refused
+    val plain = item is TimelineItem.AccessItem && item.access.denied
     if (state != null && !routine && !plain && state.first != ReportBuilder.PERSISTENT) {
         if (state.second == false) badges += stringResource(R.string.badge_locked) to StatusWarning
         else if (state.first in BACKGROUND_STATES) badges += stringResource(R.string.badge_not_in_use) to StatusWarning

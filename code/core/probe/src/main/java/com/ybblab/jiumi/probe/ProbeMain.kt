@@ -68,12 +68,14 @@ object ProbeMain {
                 offer.offerUntilAttached()
             }
             service.restoreConfiguration()
-            offer.offerUntilAttached()
-            EventLogWatcher(spool, packageName, register = { children += it }, unregister = { children -= it }) {
+            val eventLog = EventLogWatcher(spool, packageName, register = { children += it }, unregister = { children -= it }) {
                 handler.post { if (!service.isAttached) offer.offerUntilAttached() }
-            }.start()
+            }.also { it.start() }
+            service.finishEventLog = eventLog::finishRecording
+            offer.offerUntilAttached()
             handler.postDelayed(object : Runnable {
                 override fun run() {
+                    if (!service.isRecording) return
                     recordState("alive", null)
                     handler.postDelayed(this, HEARTBEAT_MS)
                 }
