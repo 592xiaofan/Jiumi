@@ -14,7 +14,7 @@ on:
         required: true
         type: string
       release_notes_zh:
-        description: Simplified Chinese in-app update notes
+        description: Simplified Chinese release and in-app update notes
         required: true
         type: string
 permissions:
@@ -92,6 +92,13 @@ jobs:
         run: |
           flags=()
           if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
+          release_dir="$RUNNER_TEMP/release"
+          {
+            printf '## English\n\n'
+            cat "$release_dir/notes.md"
+            printf '\n## 简体中文\n\n'
+            cat "$release_dir/notes.zh.md"
+          } > "$release_dir/release-notes.md"
           gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft "${flags[@]}" \
-            --title "Jiumi ${RELEASE_TAG#v}" --notes-file "$RUNNER_TEMP/release/notes.md" \
-            "$RUNNER_TEMP/release/"*.apk "$RUNNER_TEMP/release/"*.sha256 "$RUNNER_TEMP/release/release.json"
+            --title "Jiumi ${RELEASE_TAG#v}" --notes-file "$release_dir/release-notes.md" \
+            "$release_dir/"*.apk "$release_dir/"*.sha256 "$release_dir/release.json"
