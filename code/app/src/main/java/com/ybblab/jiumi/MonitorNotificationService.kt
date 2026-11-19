@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.ServiceCompat
 
 /**
@@ -25,7 +26,7 @@ class MonitorNotificationService : Service() {
             stop()
             return START_NOT_STICKY
         }
-        val running = shown ?: MonitorNotice.Running(System.currentTimeMillis(), null)
+        val running = shown ?: MonitorNotice.Running(System.currentTimeMillis(), SystemClock.elapsedRealtime(), null)
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         ServiceCompat.startForeground(this, MonitorNotice.RUNNING_ID, MonitorNotice.running(this, running), type)
         return START_NOT_STICKY
@@ -49,10 +50,12 @@ class MonitorNotificationService : Service() {
         }
 
         /** Changes what the shown notification says; nothing when it is not shown for the same session. */
-        fun update(context: Context, running: MonitorNotice.Running) = synchronized(lock) {
-            if (shown?.since != running.since || shown == running) return@synchronized
-            shown = running
-            MonitorNotice.update(context, running)
+        fun update(context: Context, since: Long, change: (MonitorNotice.Running) -> MonitorNotice.Running) = synchronized(lock) {
+            val current = shown?.takeIf { it.since == since } ?: return@synchronized
+            val updated = change(current)
+            if (updated == current) return@synchronized
+            shown = updated
+            MonitorNotice.update(context, updated)
         }
 
         fun hide(context: Context) = synchronized(lock) {

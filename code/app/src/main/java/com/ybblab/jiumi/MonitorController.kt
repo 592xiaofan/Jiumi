@@ -7,6 +7,7 @@ import android.app.AppOpsManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Process
+import android.os.SystemClock
 import com.ybblab.jiumi.adb.AirModePairingManager
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingState
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingTrustState
@@ -774,24 +775,33 @@ class MonitorController(
 
     /**
      * The persistent notification follows the monitor: shown while it runs within an open session and
-     * the user wants it, removed otherwise. Shown once per session start, so refreshes do not restart
-     * it. When the monitor stops under the open session it was shown for, a notice says so instead.
+     * the user wants it, removed otherwise. Refreshes correct the timer from newly imported monitor
+     * events. When the monitor stops under the open session it was shown for, a notice says so instead.
      */
+    @Synchronized
     private fun showIndicator() {
         val open = store.sessions().firstOrNull { it.end == null }
         val running = probe.service.value != null
         val on = local.value.notices.persistent
-        val since = open?.start?.takeIf { running && on }
-        if (since != shownSince) {
-            if (since == null) {
+        val session = open?.takeIf { running && on }
+        if (session == null) {
+            if (shownSince != null) {
                 MonitorNotificationService.hide(context)
                 if (on && open != null && !running && shownSince == open.start) MonitorNotice.postInterrupted(context)
+                shownSince = null
+            }
+        } else {
+            val since = session.start
+            val base = noticeChronometerBase(session)
+            if (since == shownSince) {
+                MonitorNotificationService.update(context, since) { it.copy(chronometerBase = base) }
             } else {
                 MonitorNotice.cancelInterrupted(context)
                 // A start refused while the app is in the background is tried again on the next refresh.
-                if (!MonitorNotificationService.show(context, MonitorNotice.Running(since, noticeSummary(since)))) return
+                val notice = MonitorNotice.Running(since, base, noticeSummary(since))
+                if (!MonitorNotificationService.show(context, notice)) return
+                shownSince = since
             }
-            shownSince = since
         }
         if (open == null || !on) MonitorNotice.cancelInterrupted(context)
         if (open == null) MonitorNotice.cancelAlerts(context)
@@ -825,8 +835,9 @@ class MonitorController(
             if (!notices.alerts) MonitorNotice.cancelAlerts(context)
             showIndicator()
             // The summary appears or goes at once, not at the next pull.
-            shownSince?.let { since ->
-                if (notices.summary != before.summary) MonitorNotificationService.update(context, MonitorNotice.Running(since, noticeSummary(since)))
+            if (notices.summary != before.summary) shownSince?.let { since ->
+                val summary = noticeSummary(since)
+                MonitorNotificationService.update(context, since) { it.copy(summary = summary) }
             }
         }
     }
@@ -834,6 +845,13 @@ class MonitorController(
     /** The summary for the notification of the session that began at [since], when the user wants one. */
     private fun noticeSummary(since: Long): NoticeSummary? =
         if (local.value.notices.summary) NoticeSummary.of(sessionReport(since)) else null
+
+    /** The chronometer uses elapsed realtime, seeded with the same covered duration as the session UI. */
+    private fun noticeChronometerBase(session: JiumiStore.Session): Long {
+        val now = System.currentTimeMillis()
+        val elapsed = SystemClock.elapsedRealtime()
+        return elapsed - coverage(session, now).coveredMs
+    }
 
     /**
      * The report of the open session that began at [since]: the one on screen when it covers that
@@ -890,7 +908,10 @@ class MonitorController(
         // A long session costs more to summarize; give the phone a breather in proportion.
         noticeIntervalMs = maxOf(NOTICE_INTERVAL_MS, (System.currentTimeMillis() - started) * 20)
         val notices = local.value.notices
-        if (notices.summary) MonitorNotificationService.update(context, MonitorNotice.Running(since, NoticeSummary.of(report)))
+        if (notices.summary) {
+            val summary = NoticeSummary.of(report)
+            MonitorNotificationService.update(context, since) { it.copy(summary = summary) }
+        }
         if (notices.alerts) alert(since, report)
     }
 

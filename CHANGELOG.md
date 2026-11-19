@@ -8,7 +8,7 @@ Versions follow [Semantic Versioning](https://semver.org).
 
 - With root, or Shizuku started with root (now supported), freezing, unfreezing, deleting and restoring apps run as root, so system apps the shell cannot change can be frozen.
 - Apps Jiumi froze that are turned back on are marked Freeze lifted, and can be refrozen automatically. Uninstalling now affects only the current user.
-- A compact notification shows monitoring time with a stop button. It can be turned off; session counts and attention alerts are optional.
+- A compact notification shows actual monitoring time, excluding interruptions, and has a stop button. It can be turned off; session counts and attention alerts are optional.
 - An interrupted session resumes on its own when the connection allows. Starts after updates and reboots no longer stall, and changing ADB persistence no longer ends monitoring.
 
 ## [0.2.3]

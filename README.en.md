@@ -79,7 +79,7 @@ Android provides permission access records, connection tables, system traces and
 2. Choose a launch method on first opening Jiumi. For wireless debugging, the recommended method, connect to Wi-Fi and follow the setup to allow notifications, turn on Developer options and enter the six-digit system pairing code in Jiumi's notification.
 3. Tap Start monitoring on the Monitor page. A persistent notification appears while monitoring is running. You can stop monitoring from the notification or the app.
 
-When monitoring is interrupted (a phone restart, a Jiumi update, or the debugging service ended by the system), Jiumi picks up the same session again where it can: with root or an authorized Shizuku it resumes on its own; with wireless debugging it resumes only while the debugging channel is still available, and otherwise the card shows Monitoring interrupted and you tap Resume once on Wi-Fi. Interrupted time does not count toward monitored time.
+After a phone restart, a Jiumi update, or an interruption to the debugging service, Jiumi automatically resumes the same session when the selected connection is available. If the card shows Monitoring interrupted, restore the selected connection and tap Resume. Interrupted time does not count toward monitored time.
 
 With wireless debugging, turning on USB debugging as well is recommended: without it, a running monitor ends when Android turns wireless debugging off, for example on leaving or changing Wi-Fi. USB debugging also enables ADB persistence, which lets you start or resume offline until the next restart; changing that switch while monitoring takes effect the next time monitoring starts or stops. See the [setup guide](https://jiumi.ybblab.com/en/download/) for details.
 

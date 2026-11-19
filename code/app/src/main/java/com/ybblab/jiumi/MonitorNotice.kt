@@ -11,7 +11,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.SystemClock
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.app.NotificationChannelCompat
@@ -45,7 +44,7 @@ object MonitorNotice {
     private const val NAMED_APPS = 3
 
     /** The persistent notification for a session that began at [since]. */
-    data class Running(val since: Long, val summary: NoticeSummary?)
+    data class Running(val since: Long, val chronometerBase: Long, val summary: NoticeSummary?)
 
     fun isStop(intent: Intent?): Boolean = intent?.action == ACTION_STOP
 
@@ -56,11 +55,9 @@ object MonitorNotice {
             PendingIntent.FLAG_IMMUTABLE)
         val title = text.getString(R.string.notification_monitoring)
         val line = running.summary?.let { summaryLine(text, it) }
-        // How long it has run, counted on the clock the chronometer reads.
-        val base = SystemClock.elapsedRealtime() - (System.currentTimeMillis() - running.since).coerceAtLeast(0)
         val content = RemoteViews(context.packageName, R.layout.notification_monitoring).apply {
             setTextViewText(R.id.notification_title, title)
-            setChronometer(R.id.notification_elapsed, base, null, true)
+            setChronometer(R.id.notification_elapsed, running.chronometerBase, null, true)
             if (line != null) {
                 setTextViewText(R.id.notification_text, line)
                 setViewVisibility(R.id.notification_text, View.VISIBLE)
