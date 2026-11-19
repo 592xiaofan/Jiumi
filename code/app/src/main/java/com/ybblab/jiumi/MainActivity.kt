@@ -148,7 +148,10 @@ class MainActivity : AppCompatActivity() {
                             Tab.APPS -> AppsScreen(controller, labels, onOpenApp = openApp,
                                 onOpenModule = { push("apex:$it") })
                             Tab.SETTINGS -> SettingsScreen(
+                                preferences,
                                 onOpenSection = { push("settings:${it.name}") },
+                                onOpenTheme = { push("theme") },
+                                onOpenLanguage = { push("language") },
                                 onOpenAbout = { push("about") }
                             )
                         } }
@@ -176,17 +179,20 @@ class MainActivity : AppCompatActivity() {
                         onOpenLog = openLog, onOpenApp = openApp)
                     top.startsWith("attention:") -> AttentionScreen(controller, labels, top.removePrefix("attention:"), onBack = pop,
                         onOpenApp = { push("app:${it.uid}|${it.pkg.orEmpty()}") })
-                    top.startsWith("settings:") -> SettingsSectionScreen(
-                        SettingsSection.valueOf(top.removePrefix("settings:")), controller, preferences, onBack = pop,
-                        onOpenTheme = { push("theme") }, onOpenLanguage = { push("language") },
-                        onOpenSpool = { push("spool") }, onOpenSessions = { push("sessions") }, onOpenExport = { push("export") },
-                        onOpenPairing = { push("pairing") },
-                        onOpenMonitor = {
-                            (1..stack.size).forEach { pages.removeState(pageKey(it)) }
-                            stack = listOf()
-                            tab = Tab.MONITOR
-                        }
-                    )
+                    top.startsWith("settings:") -> {
+                        val section = SettingsSection.entries.firstOrNull { "settings:${it.name}" == top }
+                        if (section == null) LaunchedEffect(top) { pop() }
+                        else SettingsSectionScreen(
+                            section, controller, onBack = pop,
+                            onOpenSpool = { push("spool") }, onOpenSessions = { push("sessions") }, onOpenExport = { push("export") },
+                            onOpenPairing = { push("pairing") },
+                            onOpenMonitor = {
+                                (1..stack.size).forEach { pages.removeState(pageKey(it)) }
+                                stack = listOf()
+                                tab = Tab.MONITOR
+                            }
+                        )
+                    }
                     top == "pairing" -> PairingScreen(controller, onBack = pop, onPair = ::pair,
                         onOpenWirelessDebugging = ::openWirelessDebugging)
                     top == "spool" -> SpoolScreen(controller, onBack = pop)

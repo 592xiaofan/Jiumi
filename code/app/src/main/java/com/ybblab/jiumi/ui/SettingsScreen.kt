@@ -56,17 +56,23 @@ internal enum class SettingsSection(
     val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
     CONNECTION(R.string.settings_connection, R.string.settings_connection_summary, JiumiIcons.Wifi),
-    MONITORING(R.string.settings_monitoring, R.string.settings_monitoring_summary, JiumiIcons.Activity),
+    NOTIFICATIONS(R.string.section_notifications, R.string.settings_notifications_summary, JiumiIcons.Notifications),
     RECORDS(R.string.settings_records, R.string.settings_records_summary, JiumiIcons.Storage),
-    MANAGEMENT(R.string.section_manage, R.string.settings_management_summary, JiumiIcons.Shield),
-    APPEARANCE(R.string.settings_appearance, R.string.settings_appearance_summary, JiumiIcons.Palette)
+    MANAGEMENT(R.string.settings_management, R.string.settings_management_summary, JiumiIcons.Shield)
 }
 
 @Composable
-internal fun SettingsScreen(onOpenSection: (SettingsSection) -> Unit, onOpenAbout: () -> Unit) {
+internal fun SettingsScreen(
+    preferences: AppPreferences,
+    onOpenSection: (SettingsSection) -> Unit,
+    onOpenTheme: () -> Unit,
+    onOpenLanguage: () -> Unit,
+    onOpenAbout: () -> Unit
+) {
     val list = androidx.compose.foundation.lazy.rememberLazyListState()
     val scrolled by remember { androidx.compose.runtime.derivedStateOf { list.canScrollBackward } }
     val update by com.ybblab.jiumi.update.UpdateNotice.available.collectAsStateWithLifecycle()
+    val theme by preferences.themeMode.collectAsStateWithLifecycle()
     HidingTopBar(stringResource(R.string.settings_title), scrolled) { top ->
         LazyColumn(
             state = list,
@@ -75,16 +81,35 @@ internal fun SettingsScreen(onOpenSection: (SettingsSection) -> Unit, onOpenAbou
                 bottom = 32.dp + LocalTabBarInset.current)
         ) {
             item {
+                GroupTitle(stringResource(R.string.section_monitoring))
                 Card {
-                    SettingsSection.entries.forEach { section ->
-                        ListRow(stringResource(section.title), subtitle = stringResource(section.summary),
-                            leading = { IconTile(section.icon) }, onClick = { onOpenSection(section) }) {
-                            Chevron()
+                    listOf(SettingsSection.CONNECTION, SettingsSection.NOTIFICATIONS, SettingsSection.RECORDS)
+                        .forEachIndexed { index, section ->
+                            if (index > 0) InsetDivider()
+                            SettingsSectionRow(section, onOpenSection)
                         }
-                        InsetDivider()
+                }
+            }
+            item {
+                GroupTitle(stringResource(R.string.settings_group_app), Modifier.padding(top = 24.dp))
+                Card {
+                    SettingsSectionRow(SettingsSection.MANAGEMENT, onOpenSection)
+                    InsetDivider()
+                    ListRow(stringResource(R.string.section_appearance), subtitle = themeLabel(theme),
+                        leading = { IconTile(JiumiIcons.Palette) }, onClick = onOpenTheme) {
+                        Chevron()
                     }
-                    ListRow(stringResource(R.string.settings_about_updates),
-                        subtitle = stringResource(R.string.settings_about_summary),
+                    InsetDivider()
+                    ListRow(stringResource(R.string.settings_language), subtitle = languageLabel(preferences.language),
+                        leading = { IconTile(JiumiIcons.Languages) }, onClick = onOpenLanguage) {
+                        Chevron()
+                    }
+                }
+            }
+            item {
+                GroupTitle(stringResource(R.string.settings_group_other), Modifier.padding(top = 24.dp))
+                Card {
+                    ListRow(stringResource(R.string.settings_about), subtitle = stringResource(R.string.settings_about_summary),
                         leading = { IconTile(JiumiIcons.Info) }, onClick = onOpenAbout) {
                         if (update != null) { NewDot(); TrailingValue(stringResource(R.string.update_new_badge)) }
                         Chevron()
@@ -96,13 +121,18 @@ internal fun SettingsScreen(onOpenSection: (SettingsSection) -> Unit, onOpenAbou
 }
 
 @Composable
+private fun SettingsSectionRow(section: SettingsSection, onOpenSection: (SettingsSection) -> Unit) {
+    ListRow(stringResource(section.title), subtitle = stringResource(section.summary),
+        leading = { IconTile(section.icon) }, onClick = { onOpenSection(section) }) {
+        Chevron()
+    }
+}
+
+@Composable
 internal fun SettingsSectionScreen(
     section: SettingsSection,
     controller: MonitorController,
-    preferences: AppPreferences,
     onBack: () -> Unit,
-    onOpenTheme: () -> Unit,
-    onOpenLanguage: () -> Unit,
     onOpenSpool: () -> Unit,
     onOpenSessions: () -> Unit,
     onOpenExport: () -> Unit,
@@ -206,9 +236,8 @@ internal fun SettingsSectionScreen(
                             ListRow(stringResource(R.string.settings_close_legacy_adb), onClick = { controller.setAdbPersistence(false) })
                         }
                     }
-                }
-                SettingsSection.MONITORING -> {
                     item {
+                        GroupTitle(stringResource(R.string.row_service), Modifier.padding(top = 24.dp))
                         Card {
                             // Where the monitor stands, as the Monitor tab shows it at the same moment; tapped,
                             // that tab, where it is started and stopped.
@@ -228,12 +257,13 @@ internal fun SettingsSectionScreen(
                             }
                         }
                         if (state.problem != null && !state.running && state.busy == null) statusMessage(state)?.let { GroupFooter(it, warning = true) }
-                        Spacer(Modifier.height(16.dp))
+                    }
+                    item {
+                        GroupTitle(stringResource(R.string.settings_domain_recording), Modifier.padding(top = 24.dp))
                         DomainRecordingRow()
                     }
-                    item { GroupTitle(stringResource(R.string.section_notifications), Modifier.padding(top = 24.dp)) }
-                    item { NoticeRows(state.notices, controller) }
                 }
+                SettingsSection.NOTIFICATIONS -> item { NoticeRows(state.notices, controller) }
                 SettingsSection.RECORDS -> {
                     item {
                         Card {
@@ -319,22 +349,6 @@ internal fun SettingsSectionScreen(
                         GroupFooter(stringResource(R.string.settings_expert_mode_desc))
                     }
                 }
-                SettingsSection.APPEARANCE -> {
-                    item {
-                        val themeMode by preferences.themeMode.collectAsStateWithLifecycle()
-                        Card {
-                            ListRow(stringResource(R.string.settings_theme), leading = { IconTile(JiumiIcons.Palette) }, onClick = onOpenTheme) {
-                                TrailingValue(themeLabel(themeMode))
-                                Chevron()
-                            }
-                            InsetDivider()
-                            ListRow(stringResource(R.string.settings_language), leading = { IconTile(JiumiIcons.Languages) }, onClick = onOpenLanguage) {
-                                TrailingValue(languageLabel(preferences.language))
-                                Chevron()
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -343,7 +357,7 @@ internal fun SettingsSectionScreen(
 @Composable
 fun ThemeScreen(preferences: AppPreferences, onBack: () -> Unit) {
     val mode by preferences.themeMode.collectAsStateWithLifecycle()
-    SubScreen(stringResource(R.string.settings_theme), onBack) { padding ->
+    SubScreen(stringResource(R.string.section_appearance), onBack) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).selectableGroup(), contentPadding = PaddingValues(16.dp)) {
             item {
                 Card {
