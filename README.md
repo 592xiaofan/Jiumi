@@ -38,7 +38,7 @@
 「应用」页按来源整理应用。在应用详情里查看行为记录，再决定要不要改动。所有管理操作都由你发起，揪咪改动后会读回系统状态确认是否生效，系统拒绝时显示原因。
 
 <p align="center">
-  <a href="code/images/app-disable.zh.png"><img src="code/images/app-disable.zh.png" width="250" alt="官网演示：停用应用的确认弹窗" /></a>&nbsp;
+  <a href="code/images/app-disable.zh.png"><img src="code/images/app-disable.zh.png" width="250" alt="官网演示：冻结应用的确认弹窗" /></a>&nbsp;
   <a href="code/images/app-delete.zh.png"><img src="code/images/app-delete.zh.png" width="250" alt="官网演示：删除应用的确认弹窗与备份说明" /></a>&nbsp;
   <a href="code/images/app-restore.zh.png"><img src="code/images/app-restore.zh.png" width="250" alt="官网演示：已删除应用的恢复和清除备份按钮" /></a>
 </p>

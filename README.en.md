@@ -38,7 +38,7 @@ A lightweight Android app behavior monitor and manager.
 Apps are grouped by source. Open an app's details to review its activity and decide whether to make a change. App management actions start with you. After each change, Jiumi reads the state back from Android to confirm it took effect, and shows the reason if Android refuses.
 
 <p align="center">
-  <a href="code/images/app-disable.en.png"><img src="code/images/app-disable.en.png" width="250" alt="Website demo showing the confirmation to disable an app" /></a>&nbsp;
+  <a href="code/images/app-disable.en.png"><img src="code/images/app-disable.en.png" width="250" alt="Website demo showing the confirmation to freeze an app" /></a>&nbsp;
   <a href="code/images/app-delete.en.png"><img src="code/images/app-delete.en.png" width="250" alt="Website demo showing the delete confirmation and backup notice" /></a>&nbsp;
   <a href="code/images/app-restore.en.png"><img src="code/images/app-restore.en.png" width="250" alt="Website demo showing Restore and Discard backup for a deleted app" /></a>
 </p>
