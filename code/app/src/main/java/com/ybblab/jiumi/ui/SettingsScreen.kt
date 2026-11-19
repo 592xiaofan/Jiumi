@@ -56,6 +56,7 @@ internal enum class SettingsSection(
     val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
     CONNECTION(R.string.settings_connection, R.string.settings_connection_summary, JiumiIcons.Wifi),
+    MONITORING(R.string.section_monitoring, R.string.settings_monitor_summary, JiumiIcons.Activity),
     NOTIFICATIONS(R.string.section_notifications, R.string.settings_notifications_summary, JiumiIcons.Notifications),
     RECORDS(R.string.settings_records, R.string.settings_records_summary, JiumiIcons.Storage),
     MANAGEMENT(R.string.settings_management, R.string.settings_management_summary, JiumiIcons.Shield)
@@ -81,13 +82,13 @@ internal fun SettingsScreen(
                 bottom = 32.dp + LocalTabBarInset.current)
         ) {
             item {
-                GroupTitle(stringResource(R.string.section_monitoring))
+                GroupTitle(stringResource(R.string.settings_group_monitor))
                 Card {
-                    listOf(SettingsSection.CONNECTION, SettingsSection.NOTIFICATIONS, SettingsSection.RECORDS)
-                        .forEachIndexed { index, section ->
-                            if (index > 0) InsetDivider()
-                            SettingsSectionRow(section, onOpenSection)
-                        }
+                    listOf(SettingsSection.CONNECTION, SettingsSection.MONITORING, SettingsSection.NOTIFICATIONS,
+                        SettingsSection.RECORDS).forEachIndexed { index, section ->
+                        if (index > 0) InsetDivider()
+                        SettingsSectionRow(section, onOpenSection)
+                    }
                 }
             }
             item {
@@ -236,8 +237,9 @@ internal fun SettingsSectionScreen(
                             ListRow(stringResource(R.string.settings_close_legacy_adb), onClick = { controller.setAdbPersistence(false) })
                         }
                     }
+                }
+                SettingsSection.MONITORING -> {
                     item {
-                        GroupTitle(stringResource(R.string.row_service), Modifier.padding(top = 24.dp))
                         Card {
                             // Where the monitor stands, as the Monitor tab shows it at the same moment; tapped,
                             // that tab, where it is started and stopped.

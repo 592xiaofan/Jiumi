@@ -43,13 +43,15 @@
     <string name="section_monitoring">Monitoring</string>
     <string name="action_stop">Stop</string>
     <string name="settings_title">Settings</string>
+    <string name="settings_group_monitor">Monitor settings</string>
+    <string name="settings_monitor_summary">Service status and domain recording</string>
     <string name="settings_group_app">App</string>
     <string name="settings_group_other">Other</string>
     <string name="settings_management">Management</string>
     <string name="settings_notifications_summary">Ongoing notification, summary and alerts</string>
     <string name="settings_domain_recording">Domain recording</string>
     <string name="settings_connection">Connection</string>
-    <string name="settings_connection_summary">Wireless debugging, Shizuku, Root and domain recording</string>
+    <string name="settings_connection_summary">Wireless debugging, Shizuku and Root</string>
     <string name="settings_adb_options">Advanced ADB options</string>
     <string name="settings_records">Logs</string>
     <string name="settings_records_summary">Monitoring history, export and buffer limit</string>
