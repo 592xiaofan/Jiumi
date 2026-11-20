@@ -262,28 +262,29 @@ class MonitorController(
         val catalog = if (fresh) shellCatalog() else keptShellCatalog()
         if (fresh) scope.launch(Dispatchers.IO) { checkFreezes() }
         val lapsed = Freezes.lapsedSince(store.userActions(0, Long.MAX_VALUE)).keys
-        val present = packageFacts.all(catalog.packages).mapNotNull { f ->
-            val state = when {
-                !f.installed -> if (f.preinstalled) AppState.DELETED else return@mapNotNull null
-                f.suspendedByShell -> AppState.SUSPENDED
-                f.disabled -> AppState.DISABLED
-                else -> AppState.ACTIVE
-            }
-            val component = f.hasCode != true || Management.isCore(f, manageRules) || (f.preinstalled && !f.launchable)
-            ListedApp(f.pkg, f.uid, state, source = Management.source(f), component = component,
-                lapsed = state == AppState.ACTIVE && f.pkg in lapsed)
-        }
+        val present = packageFacts.all(catalog.packages).mapNotNull { listedApp(it, lapsed) }
         val known = present.map { it.pkg }.toSet()
         present + saved.values.filter { it.pkg !in known }.map { ListedApp(it.pkg, it.uid, AppState.DELETED, it) } +
             catalog.modules.orEmpty().map { ListedApp(it.pkg, -1, null, module = true) }
     }
 
-    suspend fun appsForMonitoring(): List<AppKey> = withContext(Dispatchers.IO) {
-        val installed = packageFacts.all(keptShellPackages()).asSequence()
+    private fun listedApp(f: PackageFacts, lapsed: Set<String> = emptySet()): ListedApp? {
+        val state = when {
+            !f.installed -> if (f.preinstalled) AppState.DELETED else return null
+            f.suspendedByShell -> AppState.SUSPENDED
+            f.disabled -> AppState.DISABLED
+            else -> AppState.ACTIVE
+        }
+        val component = f.hasCode != true || Management.isCore(f, manageRules) || (f.preinstalled && !f.launchable)
+        return ListedApp(f.pkg, f.uid, state, source = Management.source(f), component = component,
+            lapsed = state == AppState.ACTIVE && f.pkg in lapsed)
+    }
+
+    suspend fun appsForMonitoring(fresh: Boolean = false): List<ListedApp> = withContext(Dispatchers.IO) {
+        val packages = if (fresh) shellPackages() else keptShellPackages()
+        packageFacts.all(packages).asSequence()
             .filter { it.installed && it.hasCode == true && it.uid >= 0 && it.pkg != context.packageName }
-            .map { AppKey(it.uid, it.pkg) }
-        val excluded = monitoringExclusions.value.active.values.asSequence().map { AppKey(it.uid, it.pkg) }
-        (installed + excluded).distinctBy { it.pkg }.toList()
+            .mapNotNull { listedApp(it) }.toList()
     }
 
     suspend fun setMonitoringExcluded(key: AppKey, excluded: Boolean): Boolean = withContext(Dispatchers.IO) {

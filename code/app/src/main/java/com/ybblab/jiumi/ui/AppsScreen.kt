@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -79,7 +80,7 @@ private enum class AppsFilter(val label: Int, val state: AppState?) {
 }
 
 /** Groups in their display order. */
-private enum class AppGroup(val label: Int, val source: AppSource?, val tint: Color) {
+internal enum class AppGroup(val label: Int, val source: AppSource?, val tint: Color) {
     STORE(R.string.apps_stat_store, AppSource.STORE, Color(0xFF4F8CF0)),
     SIDELOADED(R.string.apps_stat_sideloaded, AppSource.SIDELOADED, Color(0xFFE5A23B)),
     PREINSTALLED(R.string.apps_stat_preinstalled, AppSource.PREINSTALLED, Color(0xFF3FB28C)),
@@ -231,29 +232,9 @@ fun AppsScreen(controller: MonitorController, labels: AppLabels, onOpenApp: (App
             }
             list.forEachIndexed { index, (app, name) ->
                 item(key = "${if (app.module) "apex" else "app"}-${app.pkg}") {
-                    CardSlice(first = index == 0, last = index == list.lastIndex) {
-                        if (index > 0) InsetDivider()
-                        val badge = when (app.state) {
-                            AppState.DISABLED -> JiumiIcons.Snowflake
-                            AppState.DELETED -> JiumiIcons.Trash
-                            else -> null
-                        }
-                        ListRow(
-                            title = name,
-                            subtitle = listOfNotNull(
-                                stateText(app),
-                                app.backup?.let { stringResource(R.string.backup_size, formatBytes(it.bytes)) },
-                                app.pkg.takeIf { it != name }
-                            ).joinToString(" · ").ifEmpty { null },
-                            leading = {
-                                if (badge != null) {
-                                    AppIconWithBadge(controller, labels, app.pkg, LEADING_SIZE, badge, fromBackup = app.backup != null)
-                                } else if (app.module) IconTile(JiumiIcons.Cpu)
-                                else AppIcon(labels, app.pkg, LEADING_SIZE)
-                            },
-                            onClick = { if (app.module) onOpenModule(app.pkg) else onOpenApp(AppKey(app.uid, app.pkg)) },
-                            titleColor = if (badge != null) Ink.secondary else MaterialTheme.colorScheme.onSurface
-                        ) { Chevron() }
+                    AppListRow(controller, labels, app, name, first = index == 0, last = index == list.lastIndex,
+                        onClick = { if (app.module) onOpenModule(app.pkg) else onOpenApp(AppKey(app.uid, app.pkg)) }) {
+                        Chevron()
                     }
                 }
             }
@@ -407,6 +388,44 @@ internal fun SearchField(value: String, onChange: (String) -> Unit) {
                     modifier = Modifier.size(18.dp).clickable { onChange("") })
             }
         }
+    }
+}
+
+@Composable
+internal fun AppListRow(
+    controller: MonitorController,
+    labels: AppLabels,
+    app: ListedApp,
+    name: String,
+    first: Boolean,
+    last: Boolean,
+    onClick: (() -> Unit)? = null,
+    trailing: @Composable RowScope.() -> Unit
+) {
+    CardSlice(first, last) {
+        if (!first) InsetDivider()
+        val badge = when (app.state) {
+            AppState.DISABLED -> JiumiIcons.Snowflake
+            AppState.DELETED -> JiumiIcons.Trash
+            else -> null
+        }
+        ListRow(
+            title = name,
+            subtitle = listOfNotNull(
+                stateText(app),
+                app.backup?.let { stringResource(R.string.backup_size, formatBytes(it.bytes)) },
+                app.pkg.takeIf { it != name }
+            ).joinToString(" · ").ifEmpty { null },
+            leading = {
+                if (badge != null) {
+                    AppIconWithBadge(controller, labels, app.pkg, LEADING_SIZE, badge, fromBackup = app.backup != null)
+                } else if (app.module) IconTile(JiumiIcons.Cpu)
+                else AppIcon(labels, app.pkg, LEADING_SIZE)
+            },
+            onClick = onClick,
+            titleColor = if (badge != null) Ink.secondary else MaterialTheme.colorScheme.onSurface,
+            trailing = trailing
+        )
     }
 }
 
