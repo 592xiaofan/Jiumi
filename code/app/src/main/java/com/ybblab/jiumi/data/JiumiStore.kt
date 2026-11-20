@@ -5,6 +5,7 @@ package com.ybblab.jiumi.data
 
 import android.content.ContentValues
 import android.content.Context
+import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.ybblab.jiumi.probe.MonitoringExclusions
@@ -116,20 +117,29 @@ class JiumiStore(context: Context, private val exclusionState: StateFlow<Monitor
         val fg: Long, val bg: Long, val fgRejected: Long, val bgRejected: Long, val durationMs: Long
     )
 
-    /** Replaces every stored count: the system merges its slots as they age, so a new read supersedes the last. */
-    fun replaceOpCounts(counts: List<OpCount>) {
+    /** Refreshes the system counts, retaining cached slots the allowlist prevents us from reading. */
+    fun replaceOpCounts(counts: List<OpCount>, since: Long, slots: List<LongRange>) {
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val active = exclusions.active
-            if (active.isEmpty()) db.delete("op_history", null, null)
-            else {
-                // Keep already saved counts for excluded packages. Refresh the other packages as usual.
-                val user = android.os.Process.myUid() / 100_000
-                val placeholders = active.keys.joinToString(",") { "?" }
-                db.delete("op_history", "NOT (uid / 100000 = $user AND pkg IN ($placeholders))", active.keys.toTypedArray())
+            val policy = exclusions
+            val retained = if (policy.rules.isEmpty()) emptyList() else {
+                val packages = policy.rules.mapTo(HashSet()) { it.pkg }
+                db.rawQuery(
+                    "SELECT span_from, span_to, uid, pkg, op, fg, bg, fg_rejected, bg_rejected, duration FROM op_history",
+                    null
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            if (cursor.getString(3) !in packages) continue
+                            val row = cursor.readOpCount()
+                            if (keepCachedOpCount(row, policy, since, slots)) add(row)
+                        }
+                    }
+                }
             }
-            for (c in counts) db.insertWithOnConflict("op_history", null, ContentValues().apply {
+            db.delete("op_history", null, null)
+            for (c in retained + counts) db.insertWithOnConflict("op_history", null, ContentValues().apply {
                 put("span_from", c.from); put("span_to", c.to); put("uid", c.uid); put("pkg", c.pkg); put("op", c.op)
                 put("fg", c.fg); put("bg", c.bg); put("fg_rejected", c.fgRejected); put("bg_rejected", c.bgRejected)
                 put("duration", c.durationMs)
@@ -151,8 +161,7 @@ class JiumiStore(context: Context, private val exclusionState: StateFlow<Monitor
             "SELECT span_from, span_to, uid, pkg, op, fg, bg, fg_rejected, bg_rejected, duration FROM op_history WHERE $where", args
         ).use { c ->
             buildList {
-                while (c.moveToNext()) add(OpCount(c.getLong(0), c.getLong(1), c.getInt(2), c.getString(3), c.getString(4),
-                    c.getLong(5), c.getLong(6), c.getLong(7), c.getLong(8), c.getLong(9)))
+                while (c.moveToNext()) add(c.readOpCount())
             }.filterNot { exclusions.hides(it.uid, it.pkg) }
         }
     }
@@ -495,3 +504,26 @@ class JiumiStore(context: Context, private val exclusionState: StateFlow<Monitor
 /** A hosting component can identify a package even when it runs in a shared or custom process. */
 private fun processStartKey(uid: Int, process: String, component: String): AppKey =
     AppKey(uid, MonitoringExclusions.hostingPackage(component) ?: process.substringBefore(':'))
+
+
+private fun Cursor.readOpCount() = JiumiStore.OpCount(
+    getLong(0), getLong(1), getInt(2), getString(3), getString(4), getLong(5),
+    getLong(6), getLong(7), getLong(8), getLong(9)
+)
+
+/** A cached count can fill a gap in the refresh when it does not overlap any newly readable slot. */
+internal fun keepCachedOpCount(
+    row: JiumiStore.OpCount, policy: MonitoringExclusions, since: Long, slots: List<LongRange>
+): Boolean {
+    if (policy.hides(row.uid, row.pkg)) return true
+    if (row.to <= since) return false
+    val end = maxOf(row.from, row.to - 1)
+    var blocked = false
+    for (slot in slots) {
+        if (slot.last < row.from || slot.first > end) continue
+        // The system reports one total per slot, so a partial overlap cannot be split reliably.
+        if (!policy.blocks(row.uid, row.pkg, slot.first, slot.last)) return false
+        blocked = true
+    }
+    return blocked
+}

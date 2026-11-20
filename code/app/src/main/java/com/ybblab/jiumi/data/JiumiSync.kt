@@ -81,11 +81,15 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
         val since = now - COUNT_DAYS * DAY_MS
         val exclusions = store.exclusions
         val counts = ArrayList<JiumiStore.OpCount>()
+        val slots = ArrayList<LongRange>()
         var skip = 0
         while (true) {
             val page = JSONArray(service.readHistoricalOps(since, skip, PAGE_SLOTS))
             for (i in 0 until page.length()) {
                 val slot = page.getJSONObject(i)
+                val from = slot.getLong("from")
+                val to = slot.getLong("to")
+                slots += from..maxOf(from, to - 1)
                 val ops = slot.getJSONArray("ops")
                 for (j in 0 until ops.length()) {
                     val o = ops.getJSONObject(j)
@@ -95,8 +99,6 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
                     if (rules.categoryOf(op) == null && !SystemCount.isVendor(op)) continue
                     val uid = o.getInt("uid")
                     val pkg = o.getString("pkg")
-                    val from = slot.getLong("from")
-                    val to = slot.getLong("to")
                     if (exclusions.hides(uid, pkg) || exclusions.blocks(uid, pkg, from, to - 1)) continue
                     counts += JiumiStore.OpCount(from, to, uid, pkg,
                         o.getString("op"), o.getLong("fg"), o.getLong("bg"), o.getLong("fgRejected"), o.getLong("bgRejected"),
@@ -106,7 +108,7 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
             if (page.length() < PAGE_SLOTS) break
             skip += page.length()
         }
-        if (counts.isNotEmpty()) store.replaceOpCounts(counts)
+        if (counts.isNotEmpty()) store.replaceOpCounts(counts, since, slots)
     }
 
     fun pullEvents(service: IProbeService): Int {
