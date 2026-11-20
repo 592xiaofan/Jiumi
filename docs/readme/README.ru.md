@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="code/images/jiumi-icon.png" alt="Значок Jiumi" width="80" />
+<img src="../images/jiumi-icon.png" alt="Значок Jiumi" width="80" />
 
 # Jiumi 揪咪
 
@@ -9,19 +9,19 @@
 
 **[Скачать APK](https://github.com/ybblab/Jiumi/releases/latest)** · [Руководство](https://jiumi.ybblab.com/en/download/) · [Официальный сайт](https://jiumi.ybblab.com/en/)
 
-<sub>Android 11 и новее · APK около 4 МБ · <a href="LICENSE">Apache 2.0</a></sub>
+<sub>Android 11 и новее · APK около 4 МБ · <a href="../../LICENSE">Apache 2.0</a></sub>
 
-[简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · **Русский**
+[简体中文](../../README.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · **Русский**
 
 </div>
 
 ## Обзор приложения
 
 <p align="center">
-  <a href="code/images/monitor.en.png"><img src="code/images/monitor.en.png" width="132" alt="Обзор состояния мониторинга и действий, на которые стоит обратить внимание" /></a>&nbsp;
-  <a href="code/images/timeline.en.png"><img src="code/images/timeline.en.png" width="132" alt="Хронология действий и состояний приложений" /></a>&nbsp;
-  <a href="code/images/by-type.en.png"><img src="code/images/by-type.en.png" width="132" alt="Действия по типам с количеством приложений и записей" /></a>&nbsp;
-  <a href="code/images/apps.en.png"><img src="code/images/apps.en.png" width="132" alt="Список приложений по источнику установки" /></a>
+  <a href="../images/monitor.en.png"><img src="../images/monitor.en.png" width="132" alt="Обзор состояния мониторинга и действий, на которые стоит обратить внимание" /></a>&nbsp;
+  <a href="../images/timeline.en.png"><img src="../images/timeline.en.png" width="132" alt="Хронология действий и состояний приложений" /></a>&nbsp;
+  <a href="../images/by-type.en.png"><img src="../images/by-type.en.png" width="132" alt="Действия по типам с количеством приложений и записей" /></a>&nbsp;
+  <a href="../images/apps.en.png"><img src="../images/apps.en.png" width="132" alt="Список приложений по источнику установки" /></a>
 </p>
 
 ## Возможности
@@ -40,9 +40,9 @@
 Приложения сгруппированы по источнику установки. Откройте сведения о приложении, чтобы изучить его активность и решить, нужно ли что-либо менять. Действия по управлению запускаете вы. После каждого изменения Jiumi перечитывает состояние из Android, чтобы проверить, применилось ли оно. Если Android отклоняет изменение, Jiumi показывает причину.
 
 <p align="center">
-  <a href="code/images/app-disable.en.png"><img src="code/images/app-disable.en.png" width="250" alt="Демонстрация подтверждения заморозки приложения на сайте" /></a>&nbsp;
-  <a href="code/images/app-delete.en.png"><img src="code/images/app-delete.en.png" width="250" alt="Демонстрация подтверждения удаления и уведомления о резервной копии на сайте" /></a>&nbsp;
-  <a href="code/images/app-restore.en.png"><img src="code/images/app-restore.en.png" width="250" alt="Демонстрация восстановления удалённого приложения и удаления резервной копии на сайте" /></a>
+  <a href="../images/app-disable.en.png"><img src="../images/app-disable.en.png" width="250" alt="Демонстрация подтверждения заморозки приложения на сайте" /></a>&nbsp;
+  <a href="../images/app-delete.en.png"><img src="../images/app-delete.en.png" width="250" alt="Демонстрация подтверждения удаления и уведомления о резервной копии на сайте" /></a>&nbsp;
+  <a href="../images/app-restore.en.png"><img src="../images/app-restore.en.png" width="250" alt="Демонстрация восстановления удалённого приложения и удаления резервной копии на сайте" /></a>
 </p>
 
 | Действие | Результат |
@@ -62,7 +62,7 @@
 
 При работе приложений Android предоставляет записи об использовании разрешений, таблицы соединений, системные трассировки и журналы событий. Монитор Jiumi считывает доступные системные сигналы от имени **пользователя shell**. Приложение упорядочивает их по правилам и сохраняет в базе данных на телефоне. Мониторинг не внедряет код в другие приложения. Заморозку, удаление, отключение разрешений и блокировку доступа к сети нужно запускать самостоятельно в разделе управления приложениями.
 
-<p align="center"><img src="code/images/how-it-works.en.png" alt="Приложения генерируют системные сигналы Android. Монитор Jiumi считывает их от имени пользователя shell. Приложение упорядочивает и хранит записи на телефоне. Необязательная запись доменов принимает DNS-запросы через локальный VPN." width="900" /></p>
+<p align="center"><img src="../images/how-it-works.en.png" alt="Приложения генерируют системные сигналы Android. Монитор Jiumi считывает их от имени пользователя shell. Приложение упорядочивает и хранит записи на телефоне. Необязательная запись доменов принимает DNS-запросы через локальный VPN." width="900" /></p>
 
 | Источник сигналов | Что может увидеть Jiumi |
 | --- | --- |
@@ -101,13 +101,13 @@ cd code
 ./gradlew :app:assembleDebug
 ```
 
-Категории мониторинга, правила оповещений и защищённые приложения настраиваются в [каталоге правил](code/app/src/main/assets/rules/). Структура кода и порядок участия в проекте описаны в [CONTRIBUTING.md](CONTRIBUTING.md).
+Категории мониторинга, правила оповещений и защищённые приложения настраиваются в [каталоге правил](../../code/app/src/main/assets/rules/). Структура кода и порядок участия в проекте описаны в [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## Участие в проекте и лицензия
 
-Мы приветствуем сообщения о проблемах и запросы на внесение изменений. О проблемах безопасности сообщайте приватно по инструкции в [SECURITY.md](SECURITY.md).
+Мы приветствуем сообщения о проблемах и запросы на внесение изменений. О проблемах безопасности сообщайте приватно по инструкции в [SECURITY.md](../../SECURITY.md).
 
-Jiumi распространяется по [лицензии Apache 2.0](LICENSE). Сторонние компоненты и их лицензии перечислены в [NOTICE](NOTICE). Используйте Jiumi на устройствах, которыми вы владеете или на использование которых у вас есть разрешение.
+Jiumi распространяется по [лицензии Apache 2.0](../../LICENSE). Сторонние компоненты и их лицензии перечислены в [NOTICE](../../NOTICE). Используйте Jiumi на устройствах, которыми вы владеете или на использование которых у вас есть разрешение.
 
 ## История звёзд
 

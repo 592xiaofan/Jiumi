@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="code/images/jiumi-icon.png" alt="揪咪图标" width="80" />
+<img src="docs/images/jiumi-icon.png" alt="揪咪图标" width="80" />
 
 # 揪咪 Jiumi
 
@@ -11,17 +11,17 @@
 
 <sub>Android 11 及以上 · 安装包约 4 MB · <a href="LICENSE">Apache 2.0</a></sub>
 
-**简体中文** · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
+**简体中文** · [English](docs/readme/README.en.md) · [日本語](docs/readme/README.ja.md) · [한국어](docs/readme/README.ko.md) · [Español](docs/readme/README.es.md) · [Deutsch](docs/readme/README.de.md) · [Français](docs/readme/README.fr.md) · [हिन्दी](docs/readme/README.hi.md) · [Bahasa Indonesia](docs/readme/README.id.md) · [Português (Brasil)](docs/readme/README.pt-BR.md) · [Русский](docs/readme/README.ru.md)
 
 </div>
 
 ## 界面速览
 
 <p align="center">
-  <a href="code/images/monitor.zh.png"><img src="code/images/monitor.zh.png" width="132" alt="监测概览，显示监测状态和需要关注的行为" /></a>&nbsp;
-  <a href="code/images/timeline.zh.png"><img src="code/images/timeline.zh.png" width="132" alt="时间线，按时间查看应用行为和状态" /></a>&nbsp;
-  <a href="code/images/by-type.zh.png"><img src="code/images/by-type.zh.png" width="132" alt="按类型，查看各类行为涉及的应用和次数" /></a>&nbsp;
-  <a href="code/images/apps.zh.png"><img src="code/images/apps.zh.png" width="132" alt="应用，按来源查看及筛选应用" /></a>
+  <a href="docs/images/monitor.zh.png"><img src="docs/images/monitor.zh.png" width="132" alt="监测概览，显示监测状态和需要关注的行为" /></a>&nbsp;
+  <a href="docs/images/timeline.zh.png"><img src="docs/images/timeline.zh.png" width="132" alt="时间线，按时间查看应用行为和状态" /></a>&nbsp;
+  <a href="docs/images/by-type.zh.png"><img src="docs/images/by-type.zh.png" width="132" alt="按类型，查看各类行为涉及的应用和次数" /></a>&nbsp;
+  <a href="docs/images/apps.zh.png"><img src="docs/images/apps.zh.png" width="132" alt="应用，按来源查看及筛选应用" /></a>
 </p>
 
 ## 功能
@@ -40,9 +40,9 @@
 「应用」页按来源整理应用。在应用详情里查看行为记录，再决定要不要改动。所有管理操作都由你发起，揪咪改动后会读回系统状态确认是否生效，系统拒绝时显示原因。
 
 <p align="center">
-  <a href="code/images/app-disable.zh.png"><img src="code/images/app-disable.zh.png" width="250" alt="官网演示：冻结应用的确认弹窗" /></a>&nbsp;
-  <a href="code/images/app-delete.zh.png"><img src="code/images/app-delete.zh.png" width="250" alt="官网演示：删除应用的确认弹窗与备份说明" /></a>&nbsp;
-  <a href="code/images/app-restore.zh.png"><img src="code/images/app-restore.zh.png" width="250" alt="官网演示：已删除应用的恢复和清除备份按钮" /></a>
+  <a href="docs/images/app-disable.zh.png"><img src="docs/images/app-disable.zh.png" width="250" alt="官网演示：冻结应用的确认弹窗" /></a>&nbsp;
+  <a href="docs/images/app-delete.zh.png"><img src="docs/images/app-delete.zh.png" width="250" alt="官网演示：删除应用的确认弹窗与备份说明" /></a>&nbsp;
+  <a href="docs/images/app-restore.zh.png"><img src="docs/images/app-restore.zh.png" width="250" alt="官网演示：已删除应用的恢复和清除备份按钮" /></a>
 </p>
 
 | 操作 | 会发生什么 |
@@ -62,7 +62,7 @@
 
 Android 在应用运行时会产生权限访问记录、连接表、系统跟踪和事件日志。揪咪探针以 **shell 身份**读取可用的系统信号，App 再按规则整理成记录，存入手机上的数据库。监测过程不会向其他应用注入代码。冻结、删除、关闭权限和联网等操作需要你在应用管理中主动发起。
 
-<p align="center"><img src="code/images/how-it-works.zh.png" alt="应用行为产生 Android 系统信号，揪咪探针以 shell 身份读取，揪咪 App 整理并保存在本机。可选的域名记录通过本机 VPN 接收 DNS 查询。" width="900" /></p>
+<p align="center"><img src="docs/images/how-it-works.zh.png" alt="应用行为产生 Android 系统信号，揪咪探针以 shell 身份读取，揪咪 App 整理并保存在本机。可选的域名记录通过本机 VPN 接收 DNS 查询。" width="900" /></p>
 
 | 信号来源 | 揪咪能看到什么 |
 | --- | --- |

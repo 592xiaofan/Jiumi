@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="code/images/jiumi-icon.png" alt="Jiumi アイコン" width="80" />
+<img src="../images/jiumi-icon.png" alt="Jiumi アイコン" width="80" />
 
 # Jiumi 揪咪
 
@@ -9,19 +9,19 @@
 
 **[APK をダウンロード](https://github.com/ybblab/Jiumi/releases/latest)** · [ガイド](https://jiumi.ybblab.com/en/download/) · [ウェブサイト](https://jiumi.ybblab.com/en/)
 
-<sub>Android 11 以降 · APK 約 4 MB · <a href="LICENSE">Apache 2.0</a></sub>
+<sub>Android 11 以降 · APK 約 4 MB · <a href="../../LICENSE">Apache 2.0</a></sub>
 
-[简体中文](README.md) · [English](README.en.md) · **日本語** · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
+[简体中文](../../README.md) · [English](README.en.md) · **日本語** · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
 
 </div>
 
 ## アプリの概要
 
 <p align="center">
-  <a href="code/images/monitor.en.png"><img src="code/images/monitor.en.png" width="132" alt="モニタリングの状態と注意が必要なアクティビティを表示するモニター概要" /></a>&nbsp;
-  <a href="code/images/timeline.en.png"><img src="code/images/timeline.en.png" width="132" alt="アプリのアクティビティと状態のタイムライン" /></a>&nbsp;
-  <a href="code/images/by-type.en.png"><img src="code/images/by-type.en.png" width="132" alt="種類別にまとめたアクティビティと、アプリ数および記録数" /></a>&nbsp;
-  <a href="code/images/apps.en.png"><img src="code/images/apps.en.png" width="132" alt="インストール元ごとにまとめたアプリ一覧" /></a>
+  <a href="../images/monitor.en.png"><img src="../images/monitor.en.png" width="132" alt="モニタリングの状態と注意が必要なアクティビティを表示するモニター概要" /></a>&nbsp;
+  <a href="../images/timeline.en.png"><img src="../images/timeline.en.png" width="132" alt="アプリのアクティビティと状態のタイムライン" /></a>&nbsp;
+  <a href="../images/by-type.en.png"><img src="../images/by-type.en.png" width="132" alt="種類別にまとめたアクティビティと、アプリ数および記録数" /></a>&nbsp;
+  <a href="../images/apps.en.png"><img src="../images/apps.en.png" width="132" alt="インストール元ごとにまとめたアプリ一覧" /></a>
 </p>
 
 ## 機能
@@ -40,9 +40,9 @@
 アプリはインストール元ごとにまとめられています。アプリの詳細を開いてアクティビティを確認し、変更するかどうかを判断できます。アプリの管理操作はすべてユーザーが開始します。変更のたびに、Jiumi は Android から状態を読み戻して反映されたかを確認し、Android が拒否した場合はその理由を表示します。
 
 <p align="center">
-  <a href="code/images/app-disable.en.png"><img src="code/images/app-disable.en.png" width="250" alt="アプリを凍結する確認画面を示すウェブサイトのデモ" /></a>&nbsp;
-  <a href="code/images/app-delete.en.png"><img src="code/images/app-delete.en.png" width="250" alt="削除の確認とバックアップの案内を示すウェブサイトのデモ" /></a>&nbsp;
-  <a href="code/images/app-restore.en.png"><img src="code/images/app-restore.en.png" width="250" alt="削除したアプリの Restore と Discard backup を示すウェブサイトのデモ" /></a>
+  <a href="../images/app-disable.en.png"><img src="../images/app-disable.en.png" width="250" alt="アプリを凍結する確認画面を示すウェブサイトのデモ" /></a>&nbsp;
+  <a href="../images/app-delete.en.png"><img src="../images/app-delete.en.png" width="250" alt="削除の確認とバックアップの案内を示すウェブサイトのデモ" /></a>&nbsp;
+  <a href="../images/app-restore.en.png"><img src="../images/app-restore.en.png" width="250" alt="削除したアプリの Restore と Discard backup を示すウェブサイトのデモ" /></a>
 </p>
 
 | 操作 | 内容 |
@@ -62,7 +62,7 @@ Settings › App management の Runs as には、これらの操作を誰が実�
 
 Android は、アプリの実行に伴って権限アクセス記録、接続テーブル、システムトレース、イベントログを提供しています。Jiumi のモニターは、利用可能なシステムシグナルを **shell ユーザー** として読み取ります。アプリはそれらをルールに従って整理し、スマートフォン内のデータベースに保存します。モニタリングによって他のアプリにコードが注入されることはありません。凍結、削除、権限やネットワークアクセスのオフといった操作は、アプリの管理でユーザー自身が開始する必要があります。
 
-<p align="center"><img src="code/images/how-it-works.en.png" alt="アプリが Android のシステムシグナルを生成します。Jiumi のモニターがそれらを shell ユーザーとして読み取り、アプリが記録を整理してスマートフォン内に保存します。オプションのドメイン記録では、ローカル VPN を通じて DNS クエリを受け取ります。" width="900" /></p>
+<p align="center"><img src="../images/how-it-works.en.png" alt="アプリが Android のシステムシグナルを生成します。Jiumi のモニターがそれらを shell ユーザーとして読み取り、アプリが記録を整理してスマートフォン内に保存します。オプションのドメイン記録では、ローカル VPN を通じて DNS クエリを受け取ります。" width="900" /></p>
 
 | シグナル源 | Jiumi が把握できること |
 | --- | --- |
@@ -101,13 +101,13 @@ cd code
 ./gradlew :app:assembleDebug
 ```
 
-モニタリングのカテゴリ、注意ルール、保護対象のアプリは [rules ディレクトリ](code/app/src/main/assets/rules/) で設定されています。コードの構成と貢献の手順については [CONTRIBUTING.md](CONTRIBUTING.md) をご覧ください。
+モニタリングのカテゴリ、注意ルール、保護対象のアプリは [rules ディレクトリ](../../code/app/src/main/assets/rules/) で設定されています。コードの構成と貢献の手順については [CONTRIBUTING.md](../../CONTRIBUTING.md) をご覧ください。
 
 ## 貢献とライセンス
 
-Issue と Pull Request を歓迎します。セキュリティ上の問題は [SECURITY.md](SECURITY.md) に記載された方法で非公開で報告してください。
+Issue と Pull Request を歓迎します。セキュリティ上の問題は [SECURITY.md](../../SECURITY.md) に記載された方法で非公開で報告してください。
 
-Jiumi は [Apache License 2.0](LICENSE) のもとでライセンスされています。サードパーティのコンポーネントとそのライセンスは [NOTICE](NOTICE) に記載されています。Jiumi は、所有しているデバイスまたは使用を許可されているデバイスでご使用ください。
+Jiumi は [Apache License 2.0](../../LICENSE) のもとでライセンスされています。サードパーティのコンポーネントとそのライセンスは [NOTICE](../../NOTICE) に記載されています。Jiumi は、所有しているデバイスまたは使用を許可されているデバイスでご使用ください。
 
 ## スター履歴
 

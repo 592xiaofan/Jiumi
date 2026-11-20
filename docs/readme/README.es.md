@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="code/images/jiumi-icon.png" alt="Icono de Jiumi" width="80" />
+<img src="../images/jiumi-icon.png" alt="Icono de Jiumi" width="80" />
 
 # Jiumi 揪咪
 
@@ -9,19 +9,19 @@ Una herramienta ligera para monitorizar la actividad de las aplicaciones de Andr
 
 **[Descargar el APK](https://github.com/ybblab/Jiumi/releases/latest)** · [Guía](https://jiumi.ybblab.com/en/download/) · [Sitio web](https://jiumi.ybblab.com/en/)
 
-<sub>Android 11 o posterior · APK de unos 4 MB · <a href="LICENSE">Apache 2.0</a></sub>
+<sub>Android 11 o posterior · APK de unos 4 MB · <a href="../../LICENSE">Apache 2.0</a></sub>
 
-[简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · **Español** · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
+[简体中文](../../README.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · **Español** · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
 
 </div>
 
 ## Vistazo a la aplicación
 
 <p align="center">
-  <a href="code/images/monitor.en.png"><img src="code/images/monitor.en.png" width="132" alt="Vista general con el estado de la monitorización y la actividad que requiere atención" /></a>&nbsp;
-  <a href="code/images/timeline.en.png"><img src="code/images/timeline.en.png" width="132" alt="Cronología de la actividad y los estados de las aplicaciones" /></a>&nbsp;
-  <a href="code/images/by-type.en.png"><img src="code/images/by-type.en.png" width="132" alt="Actividad agrupada por tipo, con el número de aplicaciones y de registros" /></a>&nbsp;
-  <a href="code/images/apps.en.png"><img src="code/images/apps.en.png" width="132" alt="Lista de aplicaciones agrupadas por origen de instalación" /></a>
+  <a href="../images/monitor.en.png"><img src="../images/monitor.en.png" width="132" alt="Vista general con el estado de la monitorización y la actividad que requiere atención" /></a>&nbsp;
+  <a href="../images/timeline.en.png"><img src="../images/timeline.en.png" width="132" alt="Cronología de la actividad y los estados de las aplicaciones" /></a>&nbsp;
+  <a href="../images/by-type.en.png"><img src="../images/by-type.en.png" width="132" alt="Actividad agrupada por tipo, con el número de aplicaciones y de registros" /></a>&nbsp;
+  <a href="../images/apps.en.png"><img src="../images/apps.en.png" width="132" alt="Lista de aplicaciones agrupadas por origen de instalación" /></a>
 </p>
 
 ## Funciones
@@ -40,9 +40,9 @@ Una herramienta ligera para monitorizar la actividad de las aplicaciones de Andr
 Las aplicaciones se agrupan por origen de instalación. Abre los detalles de una aplicación para revisar su actividad y decidir si quieres hacer algún cambio. Tú inicias las acciones de gestión. Después de cada cambio, Jiumi consulta el estado en Android para confirmar que se aplicó. Si Android lo rechaza, Jiumi muestra el motivo.
 
 <p align="center">
-  <a href="code/images/app-disable.en.png"><img src="code/images/app-disable.en.png" width="250" alt="Demostración web de la confirmación para congelar una aplicación" /></a>&nbsp;
-  <a href="code/images/app-delete.en.png"><img src="code/images/app-delete.en.png" width="250" alt="Demostración web de la confirmación de eliminación y el aviso sobre la copia de seguridad" /></a>&nbsp;
-  <a href="code/images/app-restore.en.png"><img src="code/images/app-restore.en.png" width="250" alt="Demostración web de las opciones para restaurar una aplicación eliminada o descartar su copia de seguridad" /></a>
+  <a href="../images/app-disable.en.png"><img src="../images/app-disable.en.png" width="250" alt="Demostración web de la confirmación para congelar una aplicación" /></a>&nbsp;
+  <a href="../images/app-delete.en.png"><img src="../images/app-delete.en.png" width="250" alt="Demostración web de la confirmación de eliminación y el aviso sobre la copia de seguridad" /></a>&nbsp;
+  <a href="../images/app-restore.en.png"><img src="../images/app-restore.en.png" width="250" alt="Demostración web de las opciones para restaurar una aplicación eliminada o descartar su copia de seguridad" /></a>
 </p>
 
 | Acción | Qué ocurre |
@@ -62,7 +62,7 @@ Los componentes esenciales del sistema están protegidos de forma predeterminada
 
 Mientras se ejecutan las aplicaciones, Android genera registros de acceso a permisos, tablas de conexiones, trazas del sistema y registros de eventos. El monitor de Jiumi lee las señales disponibles como **usuario shell**. La aplicación las organiza mediante reglas y las guarda en una base de datos en el teléfono. La monitorización no inyecta código en otras aplicaciones. Las acciones de congelar, eliminar, revocar permisos o cortar el acceso a la red requieren que las inicies desde la gestión de aplicaciones.
 
-<p align="center"><img src="code/images/how-it-works.en.png" alt="Las aplicaciones generan señales del sistema Android. El monitor de Jiumi las lee como usuario shell y la aplicación organiza y guarda los registros en el teléfono. El registro opcional de dominios recibe las consultas DNS a través de una VPN local." width="900" /></p>
+<p align="center"><img src="../images/how-it-works.en.png" alt="Las aplicaciones generan señales del sistema Android. El monitor de Jiumi las lee como usuario shell y la aplicación organiza y guarda los registros en el teléfono. El registro opcional de dominios recibe las consultas DNS a través de una VPN local." width="900" /></p>
 
 | Fuente de señales | Qué puede ver Jiumi |
 | --- | --- |
@@ -101,13 +101,13 @@ cd code
 ./gradlew :app:assembleDebug
 ```
 
-Las categorías de monitorización, las reglas de los avisos y las aplicaciones protegidas se configuran en el [directorio de reglas](code/app/src/main/assets/rules/). Consulta [CONTRIBUTING.md](CONTRIBUTING.md) para conocer la estructura del código y cómo colaborar.
+Las categorías de monitorización, las reglas de los avisos y las aplicaciones protegidas se configuran en el [directorio de reglas](../../code/app/src/main/assets/rules/). Consulta [CONTRIBUTING.md](../../CONTRIBUTING.md) para conocer la estructura del código y cómo colaborar.
 
 ## Contribuciones y licencia
 
-Los informes de problemas y las solicitudes de incorporación de cambios son bienvenidos. Informa de los problemas de seguridad por vía privada siguiendo las instrucciones de [SECURITY.md](SECURITY.md).
+Los informes de problemas y las solicitudes de incorporación de cambios son bienvenidos. Informa de los problemas de seguridad por vía privada siguiendo las instrucciones de [SECURITY.md](../../SECURITY.md).
 
-Jiumi se distribuye bajo la [licencia Apache 2.0](LICENSE). Los componentes de terceros y sus licencias figuran en [NOTICE](NOTICE). Usa Jiumi solo en dispositivos que sean tuyos o que estés autorizado a usar.
+Jiumi se distribuye bajo la [licencia Apache 2.0](../../LICENSE). Los componentes de terceros y sus licencias figuran en [NOTICE](../../NOTICE). Usa Jiumi solo en dispositivos que sean tuyos o que estés autorizado a usar.
 
 ## Historial de estrellas
 

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="code/images/jiumi-icon.png" alt="Jiumi का आइकन" width="80" />
+<img src="../images/jiumi-icon.png" alt="Jiumi का आइकन" width="80" />
 
 # Jiumi 揪咪
 
@@ -9,19 +9,19 @@ Android ऐप की गतिविधियों पर नज़र रख�
 
 **[APK डाउनलोड करें](https://github.com/ybblab/Jiumi/releases/latest)** · [उपयोग मार्गदर्शिका](https://jiumi.ybblab.com/en/download/) · [आधिकारिक वेबसाइट](https://jiumi.ybblab.com/en/)
 
-<sub>Android 11 या बाद का संस्करण · APK लगभग 4 MB · <a href="LICENSE">Apache 2.0</a></sub>
+<sub>Android 11 या बाद का संस्करण · APK लगभग 4 MB · <a href="../../LICENSE">Apache 2.0</a></sub>
 
-[简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · **हिन्दी** · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
+[简体中文](../../README.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · **हिन्दी** · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
 
 </div>
 
 ## ऐप की एक झलक
 
 <p align="center">
-  <a href="code/images/monitor.en.png"><img src="code/images/monitor.en.png" width="132" alt="निगरानी की स्थिति और ध्यान देने योग्य गतिविधियों का सारांश" /></a>&nbsp;
-  <a href="code/images/timeline.en.png"><img src="code/images/timeline.en.png" width="132" alt="ऐप की गतिविधियों और स्थिति की समयरेखा" /></a>&nbsp;
-  <a href="code/images/by-type.en.png"><img src="code/images/by-type.en.png" width="132" alt="प्रकार के अनुसार गतिविधियाँ, साथ में ऐप और रिकॉर्ड की संख्या" /></a>&nbsp;
-  <a href="code/images/apps.en.png"><img src="code/images/apps.en.png" width="132" alt="इंस्टॉलेशन के स्रोत के अनुसार ऐप की सूची" /></a>
+  <a href="../images/monitor.en.png"><img src="../images/monitor.en.png" width="132" alt="निगरानी की स्थिति और ध्यान देने योग्य गतिविधियों का सारांश" /></a>&nbsp;
+  <a href="../images/timeline.en.png"><img src="../images/timeline.en.png" width="132" alt="ऐप की गतिविधियों और स्थिति की समयरेखा" /></a>&nbsp;
+  <a href="../images/by-type.en.png"><img src="../images/by-type.en.png" width="132" alt="प्रकार के अनुसार गतिविधियाँ, साथ में ऐप और रिकॉर्ड की संख्या" /></a>&nbsp;
+  <a href="../images/apps.en.png"><img src="../images/apps.en.png" width="132" alt="इंस्टॉलेशन के स्रोत के अनुसार ऐप की सूची" /></a>
 </p>
 
 ## सुविधाएँ
@@ -40,9 +40,9 @@ Android ऐप की गतिविधियों पर नज़र रख�
 ऐप को उनके इंस्टॉलेशन के स्रोत के अनुसार समूहों में दिखाया जाता है। किसी ऐप का विवरण खोलकर उसकी गतिविधि देखें और तय करें कि कोई बदलाव करना है या नहीं। प्रबंधन की कार्रवाइयाँ आप शुरू करते हैं। हर बदलाव के बाद Jiumi Android से स्थिति दोबारा पढ़कर पुष्टि करता है कि बदलाव लागू हुआ। Android के मना करने पर Jiumi वजह बताता है।
 
 <p align="center">
-  <a href="code/images/app-disable.en.png"><img src="code/images/app-disable.en.png" width="250" alt="वेबसाइट का डेमो जिसमें ऐप फ़्रीज़ करने की पुष्टि दिखाई गई है" /></a>&nbsp;
-  <a href="code/images/app-delete.en.png"><img src="code/images/app-delete.en.png" width="250" alt="वेबसाइट का डेमो जिसमें ऐप हटाने की पुष्टि और बैकअप की सूचना दिखाई गई है" /></a>&nbsp;
-  <a href="code/images/app-restore.en.png"><img src="code/images/app-restore.en.png" width="250" alt="वेबसाइट का डेमो जिसमें हटाए गए ऐप को बहाल करने और उसका बैकअप हटाने के विकल्प दिखाए गए हैं" /></a>
+  <a href="../images/app-disable.en.png"><img src="../images/app-disable.en.png" width="250" alt="वेबसाइट का डेमो जिसमें ऐप फ़्रीज़ करने की पुष्टि दिखाई गई है" /></a>&nbsp;
+  <a href="../images/app-delete.en.png"><img src="../images/app-delete.en.png" width="250" alt="वेबसाइट का डेमो जिसमें ऐप हटाने की पुष्टि और बैकअप की सूचना दिखाई गई है" /></a>&nbsp;
+  <a href="../images/app-restore.en.png"><img src="../images/app-restore.en.png" width="250" alt="वेबसाइट का डेमो जिसमें हटाए गए ऐप को बहाल करने और उसका बैकअप हटाने के विकल्प दिखाए गए हैं" /></a>
 </p>
 
 | कार्रवाई | क्या होता है |
@@ -62,7 +62,7 @@ Android ऐप की गतिविधियों पर नज़र रख�
 
 ऐप चलने पर Android अनुमति-उपयोग रिकॉर्ड, कनेक्शन टेबल, सिस्टम ट्रेस और इवेंट लॉग उपलब्ध कराता है। Jiumi का मॉनिटर उपलब्ध सिस्टम संकेतों को **shell उपयोगकर्ता** के रूप में पढ़ता है। ऐप उन्हें नियमों के अनुसार व्यवस्थित करता है और फ़ोन पर डेटाबेस में रखता है। निगरानी के दौरान दूसरे ऐप में कोड इंजेक्ट नहीं होता। फ़्रीज़ करने, हटाने, अनुमतियाँ बंद करने या नेटवर्क एक्सेस रोकने के लिए आपको ऐप प्रबंधन में खुद कार्रवाई शुरू करनी होती है।
 
-<p align="center"><img src="code/images/how-it-works.en.png" alt="ऐप Android सिस्टम से जुड़े संकेत पैदा करते हैं। Jiumi का मॉनिटर उन्हें shell उपयोगकर्ता के रूप में पढ़ता है। Jiumi रिकॉर्ड को व्यवस्थित करके फ़ोन पर सहेजता है। वैकल्पिक डोमेन रिकॉर्डिंग स्थानीय VPN के ज़रिए DNS क्वेरी लेती है।" width="900" /></p>
+<p align="center"><img src="../images/how-it-works.en.png" alt="ऐप Android सिस्टम से जुड़े संकेत पैदा करते हैं। Jiumi का मॉनिटर उन्हें shell उपयोगकर्ता के रूप में पढ़ता है। Jiumi रिकॉर्ड को व्यवस्थित करके फ़ोन पर सहेजता है। वैकल्पिक डोमेन रिकॉर्डिंग स्थानीय VPN के ज़रिए DNS क्वेरी लेती है।" width="900" /></p>
 
 | संकेत का स्रोत | Jiumi क्या देख सकता है |
 | --- | --- |
@@ -101,13 +101,13 @@ cd code
 ./gradlew :app:assembleDebug
 ```
 
-निगरानी की श्रेणियाँ, अलर्ट के नियम और सुरक्षित ऐप की सेटिंग [rules डायरेक्टरी](code/app/src/main/assets/rules/) में हैं। कोड की संरचना और योगदान का तरीका [CONTRIBUTING.md](CONTRIBUTING.md) में देखें।
+निगरानी की श्रेणियाँ, अलर्ट के नियम और सुरक्षित ऐप की सेटिंग [rules डायरेक्टरी](../../code/app/src/main/assets/rules/) में हैं। कोड की संरचना और योगदान का तरीका [CONTRIBUTING.md](../../CONTRIBUTING.md) में देखें।
 
 ## योगदान और लाइसेंस
 
-समस्याओं की रिपोर्ट और पुल रिक्वेस्ट का स्वागत है। सुरक्षा समस्याओं की निजी तौर पर रिपोर्ट करने के लिए [SECURITY.md](SECURITY.md) में दिए निर्देशों का पालन करें।
+समस्याओं की रिपोर्ट और पुल रिक्वेस्ट का स्वागत है। सुरक्षा समस्याओं की निजी तौर पर रिपोर्ट करने के लिए [SECURITY.md](../../SECURITY.md) में दिए निर्देशों का पालन करें।
 
-Jiumi [Apache License 2.0](LICENSE) के तहत उपलब्ध है। दूसरे पक्षों के घटक और उनके लाइसेंस [NOTICE](NOTICE) में दर्ज हैं। Jiumi का इस्तेमाल ऐसे डिवाइस पर करें जो आपका है या जिसका इस्तेमाल करने की आपको अनुमति है।
+Jiumi [Apache License 2.0](../../LICENSE) के तहत उपलब्ध है। दूसरे पक्षों के घटक और उनके लाइसेंस [NOTICE](../../NOTICE) में दर्ज हैं। Jiumi का इस्तेमाल ऐसे डिवाइस पर करें जो आपका है या जिसका इस्तेमाल करने की आपको अनुमति है।
 
 ## GitHub स्टार का इतिहास
 

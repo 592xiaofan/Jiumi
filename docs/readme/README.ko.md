@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="code/images/jiumi-icon.png" alt="Jiumi 아이콘" width="80" />
+<img src="../images/jiumi-icon.png" alt="Jiumi 아이콘" width="80" />
 
 # Jiumi 揪咪
 
@@ -9,19 +9,19 @@ Android 앱의 활동을 모니터링하고 앱을 관리하는 가벼운 도구
 
 **[APK 다운로드](https://github.com/ybblab/Jiumi/releases/latest)** · [사용 가이드](https://jiumi.ybblab.com/en/download/) · [공식 웹사이트](https://jiumi.ybblab.com/en/)
 
-<sub>Android 11 이상 · APK 약 4 MB · <a href="LICENSE">Apache 2.0</a></sub>
+<sub>Android 11 이상 · APK 약 4 MB · <a href="../../LICENSE">Apache 2.0</a></sub>
 
-[简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · **한국어** · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
+[简体中文](../../README.md) · [English](README.en.md) · [日本語](README.ja.md) · **한국어** · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
 
 </div>
 
 ## 앱 둘러보기
 
 <p align="center">
-  <a href="code/images/monitor.en.png"><img src="code/images/monitor.en.png" width="132" alt="모니터링 상태와 주의가 필요한 활동을 보여 주는 개요" /></a>&nbsp;
-  <a href="code/images/timeline.en.png"><img src="code/images/timeline.en.png" width="132" alt="앱 활동과 상태의 타임라인" /></a>&nbsp;
-  <a href="code/images/by-type.en.png"><img src="code/images/by-type.en.png" width="132" alt="유형별 활동과 앱 수 및 기록 수" /></a>&nbsp;
-  <a href="code/images/apps.en.png"><img src="code/images/apps.en.png" width="132" alt="설치 출처별로 분류된 앱 목록" /></a>
+  <a href="../images/monitor.en.png"><img src="../images/monitor.en.png" width="132" alt="모니터링 상태와 주의가 필요한 활동을 보여 주는 개요" /></a>&nbsp;
+  <a href="../images/timeline.en.png"><img src="../images/timeline.en.png" width="132" alt="앱 활동과 상태의 타임라인" /></a>&nbsp;
+  <a href="../images/by-type.en.png"><img src="../images/by-type.en.png" width="132" alt="유형별 활동과 앱 수 및 기록 수" /></a>&nbsp;
+  <a href="../images/apps.en.png"><img src="../images/apps.en.png" width="132" alt="설치 출처별로 분류된 앱 목록" /></a>
 </p>
 
 ## 기능
@@ -40,9 +40,9 @@ Android 앱의 활동을 모니터링하고 앱을 관리하는 가벼운 도구
 앱은 설치 출처별로 분류됩니다. 앱의 상세 화면에서 활동을 확인한 뒤 변경할지 결정할 수 있습니다. 앱 관리 작업은 사용자가 시작합니다. 변경 후 Jiumi는 Android에서 상태를 다시 읽어 적용 여부를 확인합니다. Android가 작업을 거부하면 이유를 표시합니다.
 
 <p align="center">
-  <a href="code/images/app-disable.en.png"><img src="code/images/app-disable.en.png" width="250" alt="앱 동결 확인 화면을 보여 주는 웹사이트 데모" /></a>&nbsp;
-  <a href="code/images/app-delete.en.png"><img src="code/images/app-delete.en.png" width="250" alt="삭제 확인과 백업 안내를 보여 주는 웹사이트 데모" /></a>&nbsp;
-  <a href="code/images/app-restore.en.png"><img src="code/images/app-restore.en.png" width="250" alt="삭제된 앱의 복원 및 백업 삭제 옵션을 보여 주는 웹사이트 데모" /></a>
+  <a href="../images/app-disable.en.png"><img src="../images/app-disable.en.png" width="250" alt="앱 동결 확인 화면을 보여 주는 웹사이트 데모" /></a>&nbsp;
+  <a href="../images/app-delete.en.png"><img src="../images/app-delete.en.png" width="250" alt="삭제 확인과 백업 안내를 보여 주는 웹사이트 데모" /></a>&nbsp;
+  <a href="../images/app-restore.en.png"><img src="../images/app-restore.en.png" width="250" alt="삭제된 앱의 복원 및 백업 삭제 옵션을 보여 주는 웹사이트 데모" /></a>
 </p>
 
 | 작업 | 동작 |
@@ -62,7 +62,7 @@ Android 앱의 활동을 모니터링하고 앱을 관리하는 가벼운 도구
 
 앱이 실행되면 Android는 권한 접근 기록, 연결 테이블, 시스템 트레이스, 이벤트 로그를 제공합니다. Jiumi 모니터는 사용 가능한 시스템 신호를 **shell 사용자**로 읽습니다. 앱은 신호를 규칙에 따라 정리하고 휴대전화의 데이터베이스에 저장합니다. 모니터링 과정에서 다른 앱에 코드를 주입하지 않습니다. 앱 동결, 삭제, 권한 해제, 네트워크 접근 차단 등의 작업은 앱 관리에서 사용자가 직접 시작해야 합니다.
 
-<p align="center"><img src="code/images/how-it-works.en.png" alt="앱이 Android 시스템 신호를 생성하면 Jiumi 모니터가 shell 사용자로 신호를 읽습니다. 앱은 기록을 정리해 휴대전화에 저장합니다. 선택 기능인 도메인 기록은 로컬 VPN을 통해 DNS 쿼리를 받습니다." width="900" /></p>
+<p align="center"><img src="../images/how-it-works.en.png" alt="앱이 Android 시스템 신호를 생성하면 Jiumi 모니터가 shell 사용자로 신호를 읽습니다. 앱은 기록을 정리해 휴대전화에 저장합니다. 선택 기능인 도메인 기록은 로컬 VPN을 통해 DNS 쿼리를 받습니다." width="900" /></p>
 
 | 신호 출처 | Jiumi가 확인할 수 있는 정보 |
 | --- | --- |
@@ -101,13 +101,13 @@ cd code
 ./gradlew :app:assembleDebug
 ```
 
-모니터링 분류, 주의 규칙, 보호 대상 앱은 [규칙 디렉터리](code/app/src/main/assets/rules/)에서 설정합니다. 코드 구조와 기여 방법은 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고하세요.
+모니터링 분류, 주의 규칙, 보호 대상 앱은 [규칙 디렉터리](../../code/app/src/main/assets/rules/)에서 설정합니다. 코드 구조와 기여 방법은 [CONTRIBUTING.md](../../CONTRIBUTING.md)를 참고하세요.
 
 ## 기여 및 라이선스
 
-이슈와 풀 리퀘스트를 환영합니다. 보안 문제는 [SECURITY.md](SECURITY.md)의 안내에 따라 비공개로 신고해 주세요.
+이슈와 풀 리퀘스트를 환영합니다. 보안 문제는 [SECURITY.md](../../SECURITY.md)의 안내에 따라 비공개로 신고해 주세요.
 
-Jiumi에는 [Apache License 2.0](LICENSE)이 적용됩니다. 타사 구성 요소와 라이선스는 [NOTICE](NOTICE)에 나와 있습니다. 본인이 소유하거나 사용 권한을 받은 기기에서 Jiumi를 사용하세요.
+Jiumi에는 [Apache License 2.0](../../LICENSE)이 적용됩니다. 타사 구성 요소와 라이선스는 [NOTICE](../../NOTICE)에 나와 있습니다. 본인이 소유하거나 사용 권한을 받은 기기에서 Jiumi를 사용하세요.
 
 ## 스타 추이
 

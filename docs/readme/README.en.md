@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="code/images/jiumi-icon.png" alt="Jiumi icon" width="80" />
+<img src="../images/jiumi-icon.png" alt="Jiumi icon" width="80" />
 
 # Jiumi 揪咪
 
@@ -9,19 +9,19 @@ A lightweight Android app behavior monitor and manager.
 
 **[Download APK](https://github.com/ybblab/Jiumi/releases/latest)** · [Guide](https://jiumi.ybblab.com/en/download/) · [Website](https://jiumi.ybblab.com/en/)
 
-<sub>Android 11 and later · APK about 4 MB · <a href="LICENSE">Apache 2.0</a></sub>
+<sub>Android 11 and later · APK about 4 MB · <a href="../../LICENSE">Apache 2.0</a></sub>
 
-[简体中文](README.md) · **English** · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
+[简体中文](../../README.md) · **English** · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
 
 </div>
 
 ## A quick look at the app
 
 <p align="center">
-  <a href="code/images/monitor.en.png"><img src="code/images/monitor.en.png" width="132" alt="Monitor overview with monitoring status and activity that needs attention" /></a>&nbsp;
-  <a href="code/images/timeline.en.png"><img src="code/images/timeline.en.png" width="132" alt="Timeline of app activity and status" /></a>&nbsp;
-  <a href="code/images/by-type.en.png"><img src="code/images/by-type.en.png" width="132" alt="Activity grouped by type with app and record counts" /></a>&nbsp;
-  <a href="code/images/apps.en.png"><img src="code/images/apps.en.png" width="132" alt="App list grouped by installation source" /></a>
+  <a href="../images/monitor.en.png"><img src="../images/monitor.en.png" width="132" alt="Monitor overview with monitoring status and activity that needs attention" /></a>&nbsp;
+  <a href="../images/timeline.en.png"><img src="../images/timeline.en.png" width="132" alt="Timeline of app activity and status" /></a>&nbsp;
+  <a href="../images/by-type.en.png"><img src="../images/by-type.en.png" width="132" alt="Activity grouped by type with app and record counts" /></a>&nbsp;
+  <a href="../images/apps.en.png"><img src="../images/apps.en.png" width="132" alt="App list grouped by installation source" /></a>
 </p>
 
 ## Features
@@ -40,9 +40,9 @@ A lightweight Android app behavior monitor and manager.
 Apps are grouped by source. Open an app's details to review its activity and decide whether to make a change. App management actions start with you. After each change, Jiumi reads the state back from Android to confirm it took effect, and shows the reason if Android refuses.
 
 <p align="center">
-  <a href="code/images/app-disable.en.png"><img src="code/images/app-disable.en.png" width="250" alt="Website demo showing the confirmation to freeze an app" /></a>&nbsp;
-  <a href="code/images/app-delete.en.png"><img src="code/images/app-delete.en.png" width="250" alt="Website demo showing the delete confirmation and backup notice" /></a>&nbsp;
-  <a href="code/images/app-restore.en.png"><img src="code/images/app-restore.en.png" width="250" alt="Website demo showing Restore and Discard backup for a deleted app" /></a>
+  <a href="../images/app-disable.en.png"><img src="../images/app-disable.en.png" width="250" alt="Website demo showing the confirmation to freeze an app" /></a>&nbsp;
+  <a href="../images/app-delete.en.png"><img src="../images/app-delete.en.png" width="250" alt="Website demo showing the delete confirmation and backup notice" /></a>&nbsp;
+  <a href="../images/app-restore.en.png"><img src="../images/app-restore.en.png" width="250" alt="Website demo showing Restore and Discard backup for a deleted app" /></a>
 </p>
 
 | Action | What happens |
@@ -62,7 +62,7 @@ Core system components are protected by default. Changing a component the phone 
 
 Android provides permission access records, connection tables, system traces and event logs as apps run. The Jiumi monitor reads available system signals as the **shell user**. The app organizes them by rules and stores them in a database on your phone. Monitoring does not inject code into other apps. Actions such as freezing, deleting, or turning off permissions or network access require you to start them in app management.
 
-<p align="center"><img src="code/images/how-it-works.en.png" alt="Apps generate Android system signals. The Jiumi monitor reads them as the shell user, and the app organizes and stores the records on the phone. Optional domain recording takes DNS queries through a local VPN." width="900" /></p>
+<p align="center"><img src="../images/how-it-works.en.png" alt="Apps generate Android system signals. The Jiumi monitor reads them as the shell user, and the app organizes and stores the records on the phone. Optional domain recording takes DNS queries through a local VPN." width="900" /></p>
 
 | Signal source | What Jiumi can see |
 | --- | --- |
@@ -101,13 +101,13 @@ cd code
 ./gradlew :app:assembleDebug
 ```
 
-Monitoring categories, attention rules and protected apps are configured in the [rules directory](code/app/src/main/assets/rules/). See [CONTRIBUTING.md](CONTRIBUTING.md) for the code layout and contribution process.
+Monitoring categories, attention rules and protected apps are configured in the [rules directory](../../code/app/src/main/assets/rules/). See [CONTRIBUTING.md](../../CONTRIBUTING.md) for the code layout and contribution process.
 
 ## Contributing and license
 
-Issues and pull requests are welcome. Report security issues privately as described in [SECURITY.md](SECURITY.md).
+Issues and pull requests are welcome. Report security issues privately as described in [SECURITY.md](../../SECURITY.md).
 
-Jiumi is licensed under the [Apache License 2.0](LICENSE). Third-party components and their licenses are listed in [NOTICE](NOTICE). Use Jiumi on devices you own or are authorized to use.
+Jiumi is licensed under the [Apache License 2.0](../../LICENSE). Third-party components and their licenses are listed in [NOTICE](../../NOTICE). Use Jiumi on devices you own or are authorized to use.
 
 ## Star history
 

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="code/images/jiumi-icon.png" alt="Jiumi-App-Symbol" width="80" />
+<img src="../images/jiumi-icon.png" alt="Jiumi-App-Symbol" width="80" />
 
 # Jiumi 揪咪
 
@@ -9,19 +9,19 @@ Ein schlankes Tool für Android, mit dem du App-Aktivitäten überwachen und App
 
 **[APK herunterladen](https://github.com/ybblab/Jiumi/releases/latest)** · [Anleitung](https://jiumi.ybblab.com/en/download/) · [Website](https://jiumi.ybblab.com/en/)
 
-<sub>Android 11 oder neuer · APK ca. 4 MB · <a href="LICENSE">Apache 2.0</a></sub>
+<sub>Android 11 oder neuer · APK ca. 4 MB · <a href="../../LICENSE">Apache 2.0</a></sub>
 
-[简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · **Deutsch** · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
+[简体中文](../../README.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · **Deutsch** · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
 
 </div>
 
 ## Die App im Überblick
 
 <p align="center">
-  <a href="code/images/monitor.en.png"><img src="code/images/monitor.en.png" width="132" alt="Übersicht mit Überwachungsstatus und auffälligen Aktivitäten" /></a>&nbsp;
-  <a href="code/images/timeline.en.png"><img src="code/images/timeline.en.png" width="132" alt="Zeitverlauf der App-Aktivitäten und Zustände" /></a>&nbsp;
-  <a href="code/images/by-type.en.png"><img src="code/images/by-type.en.png" width="132" alt="Nach Typ gruppierte Aktivitäten mit Anzahl der Apps und Einträge" /></a>&nbsp;
-  <a href="code/images/apps.en.png"><img src="code/images/apps.en.png" width="132" alt="Nach Installationsquelle gruppierte App-Liste" /></a>
+  <a href="../images/monitor.en.png"><img src="../images/monitor.en.png" width="132" alt="Übersicht mit Überwachungsstatus und auffälligen Aktivitäten" /></a>&nbsp;
+  <a href="../images/timeline.en.png"><img src="../images/timeline.en.png" width="132" alt="Zeitverlauf der App-Aktivitäten und Zustände" /></a>&nbsp;
+  <a href="../images/by-type.en.png"><img src="../images/by-type.en.png" width="132" alt="Nach Typ gruppierte Aktivitäten mit Anzahl der Apps und Einträge" /></a>&nbsp;
+  <a href="../images/apps.en.png"><img src="../images/apps.en.png" width="132" alt="Nach Installationsquelle gruppierte App-Liste" /></a>
 </p>
 
 ## Funktionen
@@ -40,9 +40,9 @@ Ein schlankes Tool für Android, mit dem du App-Aktivitäten überwachen und App
 Die Apps sind nach Installationsquelle gruppiert. Öffne die Details einer App, um ihre Aktivitäten zu prüfen und zu entscheiden, ob du etwas ändern möchtest. Du stößt die Verwaltungsaktionen an. Nach jeder Änderung liest Jiumi den Zustand von Android erneut aus, um zu prüfen, ob die Änderung wirksam wurde. Wenn Android sie ablehnt, zeigt Jiumi den Grund an.
 
 <p align="center">
-  <a href="code/images/app-disable.en.png"><img src="code/images/app-disable.en.png" width="250" alt="Website-Demo mit Bestätigung zum Einfrieren einer App" /></a>&nbsp;
-  <a href="code/images/app-delete.en.png"><img src="code/images/app-delete.en.png" width="250" alt="Website-Demo mit Löschbestätigung und Hinweis zur Sicherung" /></a>&nbsp;
-  <a href="code/images/app-restore.en.png"><img src="code/images/app-restore.en.png" width="250" alt="Website-Demo mit Optionen zum Wiederherstellen einer gelöschten App und zum Verwerfen ihrer Sicherung" /></a>
+  <a href="../images/app-disable.en.png"><img src="../images/app-disable.en.png" width="250" alt="Website-Demo mit Bestätigung zum Einfrieren einer App" /></a>&nbsp;
+  <a href="../images/app-delete.en.png"><img src="../images/app-delete.en.png" width="250" alt="Website-Demo mit Löschbestätigung und Hinweis zur Sicherung" /></a>&nbsp;
+  <a href="../images/app-restore.en.png"><img src="../images/app-restore.en.png" width="250" alt="Website-Demo mit Optionen zum Wiederherstellen einer gelöschten App und zum Verwerfen ihrer Sicherung" /></a>
 </p>
 
 | Aktion | Was dabei passiert |
@@ -62,7 +62,7 @@ Wichtige Systemkomponenten sind standardmäßig geschützt. Änderungen an einer
 
 Während Apps laufen, stellt Android Protokolle zu Berechtigungszugriffen, Verbindungstabellen, System-Traces und Ereignisprotokolle bereit. Der Jiumi-Monitor liest die verfügbaren Systemsignale als **Shell-Benutzer**. Die App ordnet sie anhand von Regeln und speichert sie in einer Datenbank auf deinem Smartphone. Die Überwachung schleust keinen Code in andere Apps ein. Aktionen wie Einfrieren, Löschen, Entziehen von Berechtigungen oder Sperren des Netzwerkzugriffs musst du in der App-Verwaltung selbst auslösen.
 
-<p align="center"><img src="code/images/how-it-works.en.png" alt="Apps erzeugen Android-Systemsignale. Jiumi liest sie als Shell-Benutzer, ordnet die Einträge und speichert sie auf dem Gerät. Die optionale Domainerfassung empfängt DNS-Anfragen über ein lokales VPN." width="900" /></p>
+<p align="center"><img src="../images/how-it-works.en.png" alt="Apps erzeugen Android-Systemsignale. Jiumi liest sie als Shell-Benutzer, ordnet die Einträge und speichert sie auf dem Gerät. Die optionale Domainerfassung empfängt DNS-Anfragen über ein lokales VPN." width="900" /></p>
 
 | Signalquelle | Was Jiumi erkennen kann |
 | --- | --- |
@@ -101,13 +101,13 @@ cd code
 ./gradlew :app:assembleDebug
 ```
 
-Überwachungskategorien, Regeln für Auffälligkeiten und geschützte Apps sind im [Regelverzeichnis](code/app/src/main/assets/rules/) konfiguriert. Den Aufbau des Codes und Hinweise zur Mitarbeit findest du in [CONTRIBUTING.md](CONTRIBUTING.md).
+Überwachungskategorien, Regeln für Auffälligkeiten und geschützte Apps sind im [Regelverzeichnis](../../code/app/src/main/assets/rules/) konfiguriert. Den Aufbau des Codes und Hinweise zur Mitarbeit findest du in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## Mitarbeit und Lizenz
 
-Issues und Pull Requests sind willkommen. Bitte melde Sicherheitsprobleme vertraulich nach den Hinweisen in [SECURITY.md](SECURITY.md).
+Issues und Pull Requests sind willkommen. Bitte melde Sicherheitsprobleme vertraulich nach den Hinweisen in [SECURITY.md](../../SECURITY.md).
 
-Jiumi steht unter der [Apache License 2.0](LICENSE). Drittanbieterkomponenten und ihre Lizenzen stehen in [NOTICE](NOTICE). Verwende Jiumi auf Geräten, die dir gehören oder die du mit Erlaubnis nutzen darfst.
+Jiumi steht unter der [Apache License 2.0](../../LICENSE). Drittanbieterkomponenten und ihre Lizenzen stehen in [NOTICE](../../NOTICE). Verwende Jiumi auf Geräten, die dir gehören oder die du mit Erlaubnis nutzen darfst.
 
 ## Verlauf der GitHub-Sterne
 

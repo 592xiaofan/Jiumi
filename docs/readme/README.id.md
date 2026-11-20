@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="code/images/jiumi-icon.png" alt="Ikon Jiumi" width="80" />
+<img src="../images/jiumi-icon.png" alt="Ikon Jiumi" width="80" />
 
 # Jiumi 揪咪
 
@@ -9,19 +9,19 @@ Alat ringan untuk memantau aktivitas dan mengelola aplikasi Android.
 
 **[Unduh APK](https://github.com/ybblab/Jiumi/releases/latest)** · [Panduan](https://jiumi.ybblab.com/en/download/) · [Situs resmi](https://jiumi.ybblab.com/en/)
 
-<sub>Android 11 atau lebih baru · APK sekitar 4 MB · <a href="LICENSE">Apache 2.0</a></sub>
+<sub>Android 11 atau lebih baru · APK sekitar 4 MB · <a href="../../LICENSE">Apache 2.0</a></sub>
 
-[简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · **Bahasa Indonesia** · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
+[简体中文](../../README.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · **Bahasa Indonesia** · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
 
 </div>
 
 ## Sekilas tentang aplikasi
 
 <p align="center">
-  <a href="code/images/monitor.en.png"><img src="code/images/monitor.en.png" width="132" alt="Ringkasan status pemantauan dan aktivitas yang perlu diperhatikan" /></a>&nbsp;
-  <a href="code/images/timeline.en.png"><img src="code/images/timeline.en.png" width="132" alt="Linimasa aktivitas dan status aplikasi" /></a>&nbsp;
-  <a href="code/images/by-type.en.png"><img src="code/images/by-type.en.png" width="132" alt="Aktivitas yang dikelompokkan menurut jenis, beserta jumlah aplikasi dan catatan" /></a>&nbsp;
-  <a href="code/images/apps.en.png"><img src="code/images/apps.en.png" width="132" alt="Daftar aplikasi yang dikelompokkan menurut sumber pemasangan" /></a>
+  <a href="../images/monitor.en.png"><img src="../images/monitor.en.png" width="132" alt="Ringkasan status pemantauan dan aktivitas yang perlu diperhatikan" /></a>&nbsp;
+  <a href="../images/timeline.en.png"><img src="../images/timeline.en.png" width="132" alt="Linimasa aktivitas dan status aplikasi" /></a>&nbsp;
+  <a href="../images/by-type.en.png"><img src="../images/by-type.en.png" width="132" alt="Aktivitas yang dikelompokkan menurut jenis, beserta jumlah aplikasi dan catatan" /></a>&nbsp;
+  <a href="../images/apps.en.png"><img src="../images/apps.en.png" width="132" alt="Daftar aplikasi yang dikelompokkan menurut sumber pemasangan" /></a>
 </p>
 
 ## Fitur
@@ -40,9 +40,9 @@ Alat ringan untuk memantau aktivitas dan mengelola aplikasi Android.
 Aplikasi dikelompokkan menurut sumber pemasangan. Buka detail aplikasi untuk meninjau aktivitasnya dan memutuskan apakah perlu melakukan perubahan. Anda yang memulai tindakan pengelolaan. Setelah setiap perubahan, Jiumi membaca kembali status dari Android untuk memastikan perubahan diterapkan. Jika Android menolak, Jiumi menampilkan alasannya.
 
 <p align="center">
-  <a href="code/images/app-disable.en.png"><img src="code/images/app-disable.en.png" width="250" alt="Demo situs web yang memperlihatkan konfirmasi untuk membekukan aplikasi" /></a>&nbsp;
-  <a href="code/images/app-delete.en.png"><img src="code/images/app-delete.en.png" width="250" alt="Demo situs web yang memperlihatkan konfirmasi penghapusan dan pemberitahuan pencadangan" /></a>&nbsp;
-  <a href="code/images/app-restore.en.png"><img src="code/images/app-restore.en.png" width="250" alt="Demo situs web yang memperlihatkan opsi untuk memulihkan aplikasi yang dihapus atau membuang cadangannya" /></a>
+  <a href="../images/app-disable.en.png"><img src="../images/app-disable.en.png" width="250" alt="Demo situs web yang memperlihatkan konfirmasi untuk membekukan aplikasi" /></a>&nbsp;
+  <a href="../images/app-delete.en.png"><img src="../images/app-delete.en.png" width="250" alt="Demo situs web yang memperlihatkan konfirmasi penghapusan dan pemberitahuan pencadangan" /></a>&nbsp;
+  <a href="../images/app-restore.en.png"><img src="../images/app-restore.en.png" width="250" alt="Demo situs web yang memperlihatkan opsi untuk memulihkan aplikasi yang dihapus atau membuang cadangannya" /></a>
 </p>
 
 | Tindakan | Hasil |
@@ -62,7 +62,7 @@ Komponen inti sistem dilindungi secara bawaan. Mengubah komponen yang dibutuhkan
 
 Saat aplikasi berjalan, Android menyediakan catatan akses izin, tabel koneksi, rekaman penelusuran sistem, dan log peristiwa. Monitor Jiumi membaca sinyal sistem yang tersedia sebagai **pengguna shell**. Aplikasi mengelompokkannya berdasarkan aturan dan menyimpan catatan di basis data pada ponsel. Pemantauan tidak menyuntikkan kode ke aplikasi lain. Anda perlu memulai sendiri tindakan seperti membekukan, menghapus, menonaktifkan izin, atau memblokir akses jaringan melalui pengelolaan aplikasi.
 
-<p align="center"><img src="code/images/how-it-works.en.png" alt="Aplikasi menghasilkan sinyal sistem Android. Monitor Jiumi membacanya sebagai pengguna shell. Aplikasi Jiumi mengelompokkan dan menyimpan catatan di ponsel. Pencatatan domain opsional menerima kueri DNS melalui VPN lokal." width="900" /></p>
+<p align="center"><img src="../images/how-it-works.en.png" alt="Aplikasi menghasilkan sinyal sistem Android. Monitor Jiumi membacanya sebagai pengguna shell. Aplikasi Jiumi mengelompokkan dan menyimpan catatan di ponsel. Pencatatan domain opsional menerima kueri DNS melalui VPN lokal." width="900" /></p>
 
 | Sumber sinyal | Yang dapat dilihat Jiumi |
 | --- | --- |
@@ -101,13 +101,13 @@ cd code
 ./gradlew :app:assembleDebug
 ```
 
-Kategori pemantauan, aturan peringatan, dan aplikasi yang dilindungi dikonfigurasi di [direktori aturan](code/app/src/main/assets/rules/). Lihat [CONTRIBUTING.md](CONTRIBUTING.md) untuk struktur kode dan cara berkontribusi.
+Kategori pemantauan, aturan peringatan, dan aplikasi yang dilindungi dikonfigurasi di [direktori aturan](../../code/app/src/main/assets/rules/). Lihat [CONTRIBUTING.md](../../CONTRIBUTING.md) untuk struktur kode dan cara berkontribusi.
 
 ## Kontribusi dan lisensi
 
-Kami menyambut laporan masalah dan pull request. Laporkan masalah keamanan secara privat sesuai petunjuk di [SECURITY.md](SECURITY.md).
+Kami menyambut laporan masalah dan pull request. Laporkan masalah keamanan secara privat sesuai petunjuk di [SECURITY.md](../../SECURITY.md).
 
-Jiumi menggunakan [Lisensi Apache 2.0](LICENSE). Komponen pihak ketiga beserta lisensinya tercantum di [NOTICE](NOTICE). Gunakan Jiumi pada perangkat milik Anda atau yang penggunaannya telah diizinkan.
+Jiumi menggunakan [Lisensi Apache 2.0](../../LICENSE). Komponen pihak ketiga beserta lisensinya tercantum di [NOTICE](../../NOTICE). Gunakan Jiumi pada perangkat milik Anda atau yang penggunaannya telah diizinkan.
 
 ## Riwayat bintang
 

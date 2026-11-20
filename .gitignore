@@ -55,7 +55,7 @@ AGENTS.md
 
 # Maintainer-only release notes, tests and posters from real device records
 /CHANGELOG.zh.md
-/docs/
 /code/**/src/test/
 /code/third_party/libadb/tests/
 /code/images/promo-*.webp
+/docs/images/promo-*.webp
