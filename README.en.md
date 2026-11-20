@@ -7,7 +7,7 @@
 A lightweight Android app behavior monitor and manager.
 <br>No root or computer needed. Records stay on your phone.
 
-**[Download APK](https://github.com/ybblab/Jiumi/releases/latest)** · [Guide](https://jiumi.ybblab.com/en/download/) · [Website](https://jiumi.ybblab.com/en/) · [简体中文](README.md)
+**[Download APK](https://github.com/ybblab/Jiumi/releases/latest)** · [Guide](https://jiumi.ybblab.com/en/download/) · [Website](https://jiumi.ybblab.com/en/) · [简体中文](README.md) · [日本語](README.ja.md)
 
 <sub>Android 11 and later · APK about 4 MB · <a href="LICENSE">Apache 2.0</a></sub>
 
