@@ -4,6 +4,13 @@ Notable changes to Jiumi, newest first. The English in-app update notes come fro
 Chinese in-app notes are supplied when preparing the release.
 Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+## [0.3.2]
+
+- **Add a monitoring allowlist.** Find it under Settings → Monitoring. Allowlisted apps appear at the top, generate no new monitoring records, and have their saved records hidden. Removing an app resumes monitoring and shows its saved records. Activity during the excluded period is never backfilled.
+- **Standardize app management terms.** Use Disable, Enable, and Uninstall consistently. Confirmation dialogs for disabling and uninstalling explain whether app data is kept.
+
 ## [0.3.1]
 
 - Reorganize Settings into four cards, separate connection from monitoring, move Expert mode under Advanced, and show full links on the About page.
