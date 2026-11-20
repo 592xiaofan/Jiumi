@@ -4,6 +4,13 @@ Notable changes to Jiumi, newest first. The English in-app update notes come fro
 Chinese in-app notes are supplied when preparing the release.
 Versions follow [Semantic Versioning](https://semver.org).
 
+## [0.3.1]
+
+- Reorganize Settings into four cards, separate connection from monitoring, move Expert mode under Advanced, and show full links on the About page.
+- Include system components and APEX modules in the package inventory. Keep the total fixed during search and filtering, and retain the cached list offline.
+- Improve foreground and background counts, shared-UID and domain attribution, and access deduplication. Fix history pagination and interrupted writes, and warn when traces could not be fully saved.
+- Keep APK backups when an uninstall result is uncertain. Viewing access details no longer starts monitoring. ADB persistence is off by default, and domain recording supports DNS over TCP.
+
 ## [0.3.0]
 
 - Use root or Shizuku started with root to freeze and unfreeze apps, or remove and restore preinstalled apps for the current user.

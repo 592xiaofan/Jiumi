@@ -94,10 +94,9 @@ jobs:
           if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
           release_dir="$RUNNER_TEMP/release"
           {
-            printf '## English\n\n'
-            cat "$release_dir/notes.md"
-            printf '\n## 简体中文\n\n'
             cat "$release_dir/notes.zh.md"
+            printf '\n---\n\n'
+            cat "$release_dir/notes.md"
           } > "$release_dir/release-notes.md"
           gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft "${flags[@]}" \
             --title "Jiumi ${RELEASE_TAG#v}" --notes-file "$release_dir/release-notes.md" \
