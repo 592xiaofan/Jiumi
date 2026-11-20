@@ -3,6 +3,7 @@
 
 package com.ybblab.jiumi.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -79,11 +80,11 @@ internal fun SettingsScreen(
         LazyColumn(
             state = list,
             modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top + PageTopGap,
                 bottom = 32.dp + LocalTabBarInset.current)
         ) {
             item {
-                GroupTitle(stringResource(R.string.settings_group_monitor))
                 Card {
                     listOf(SettingsSection.CONNECTION, SettingsSection.MONITORING, SettingsSection.NOTIFICATIONS,
                         SettingsSection.RECORDS).forEachIndexed { index, section ->
@@ -93,7 +94,6 @@ internal fun SettingsScreen(
                 }
             }
             item {
-                GroupTitle(stringResource(R.string.settings_group_app), Modifier.padding(top = 20.dp))
                 Card {
                     SettingsSectionRow(SettingsSection.MANAGEMENT, onOpenSection)
                     InsetDivider()
@@ -101,7 +101,6 @@ internal fun SettingsScreen(
                 }
             }
             item {
-                GroupTitle(stringResource(R.string.settings_group_display), Modifier.padding(top = 20.dp))
                 Card {
                     ListRow(stringResource(R.string.section_appearance), subtitle = themeLabel(theme),
                         leading = { IconTile(JiumiIcons.Palette) }, onClick = onOpenTheme) {
@@ -115,7 +114,6 @@ internal fun SettingsScreen(
                 }
             }
             item {
-                GroupTitle(stringResource(R.string.settings_group_about), Modifier.padding(top = 24.dp))
                 Card {
                     ListRow(stringResource(R.string.settings_about), subtitle = stringResource(R.string.settings_about_summary),
                         leading = { IconTile(JiumiIcons.Info) }, onClick = onOpenAbout) {

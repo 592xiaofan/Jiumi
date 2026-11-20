@@ -43,11 +43,7 @@
     <string name="section_monitoring">监测</string>
     <string name="action_stop">停止</string>
     <string name="settings_title">设置</string>
-    <string name="settings_group_monitor">监测设置</string>
     <string name="settings_monitor_summary">服务状态与域名记录</string>
-    <string name="settings_group_app">应用设置</string>
-    <string name="settings_group_display">显示设置</string>
-    <string name="settings_group_about">关于揪咪</string>
     <string name="settings_management">管理</string>
     <string name="settings_notifications_summary">常驻通知、摘要与提醒</string>
     <string name="settings_domain_recording">域名记录</string>

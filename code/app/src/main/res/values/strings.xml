@@ -43,11 +43,7 @@
     <string name="section_monitoring">Monitoring</string>
     <string name="action_stop">Stop</string>
     <string name="settings_title">Settings</string>
-    <string name="settings_group_monitor">Monitor settings</string>
     <string name="settings_monitor_summary">Service status and domain recording</string>
-    <string name="settings_group_app">App settings</string>
-    <string name="settings_group_display">Display settings</string>
-    <string name="settings_group_about">About Jiumi</string>
     <string name="settings_management">Management</string>
     <string name="settings_notifications_summary">Ongoing notification, summary and alerts</string>
     <string name="settings_domain_recording">Domain recording</string>
