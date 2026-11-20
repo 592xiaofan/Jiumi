@@ -93,7 +93,7 @@ internal fun SettingsScreen(
                 }
             }
             item {
-                GroupTitle(stringResource(R.string.settings_group_app), Modifier.padding(top = 24.dp))
+                GroupTitle(stringResource(R.string.settings_group_app), Modifier.padding(top = 20.dp))
                 Card {
                     SettingsSectionRow(SettingsSection.MANAGEMENT, onOpenSection)
                     InsetDivider()
@@ -101,7 +101,7 @@ internal fun SettingsScreen(
                 }
             }
             item {
-                GroupTitle(stringResource(R.string.settings_group_display), Modifier.padding(top = 24.dp))
+                GroupTitle(stringResource(R.string.settings_group_display), Modifier.padding(top = 20.dp))
                 Card {
                     ListRow(stringResource(R.string.section_appearance), subtitle = themeLabel(theme),
                         leading = { IconTile(JiumiIcons.Palette) }, onClick = onOpenTheme) {
