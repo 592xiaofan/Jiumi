@@ -40,27 +40,27 @@ A lightweight Android app behavior monitor and manager.
 Apps are grouped by source. Open an app's details to review its activity and decide whether to make a change. App management actions start with you. After each change, Jiumi reads the state back from Android to confirm it took effect, and shows the reason if Android refuses.
 
 <p align="center">
-  <a href="../images/app-disable.en.png"><img src="../images/app-disable.en.png" width="250" alt="Website demo showing the confirmation to freeze an app" /></a>&nbsp;
-  <a href="../images/app-delete.en.png"><img src="../images/app-delete.en.png" width="250" alt="Website demo showing the delete confirmation and backup notice" /></a>&nbsp;
-  <a href="../images/app-restore.en.png"><img src="../images/app-restore.en.png" width="250" alt="Website demo showing Restore and Discard backup for a deleted app" /></a>
+  <a href="../images/app-disable.en.png"><img src="../images/app-disable.en.png" width="250" alt="Website demo showing the confirmation to disable an app" /></a>&nbsp;
+  <a href="../images/app-delete.en.png"><img src="../images/app-delete.en.png" width="250" alt="Website demo showing the uninstall confirmation and backup notice" /></a>&nbsp;
+  <a href="../images/app-restore.en.png"><img src="../images/app-restore.en.png" width="250" alt="Website demo showing Restore and Discard backup for an uninstalled app" /></a>
 </p>
 
 | Action | What happens |
 | --- | --- |
 | Permissions | Turn permissions off or on one at a time under Permissions in the app's details. Manageable permissions turns them all off at once; turning it back on restores only the permissions Jiumi turned off. Permissions the system locks are shown as read only. |
 | Network access | On supported devices, block or restore network access for a single app with Android's own firewall, without using the VPN slot. The switch is locked with a reason when the app shares a UID with other apps, the rule was set by another tool, or Jiumi cannot confirm that only this app is affected. |
-| Freeze or unfreeze | Freezing has Android disable the app for the current user and keeps its data. Unfreeze it under Apps › Frozen. Frozen apps carry a snowflake badge. |
-| Freeze lifted | When an app Jiumi froze is found turned on again, the list and its details mark it Freeze lifted, and the timeline records when it was found; who turned it on is not known. With Settings › App management › Freeze again when a freeze is lifted on, Jiumi freezes it again. |
-| Delete an app you installed | Enter the full package name to confirm. Jiumi backs up the APKs before uninstalling. You can try to reinstall the app from Apps › Deleted. **Uninstalling deletes app data. The backup can only restore the installation files.** |
-| Remove a preinstalled app | Enable the option in Settings › App management to remove supported preinstalled apps for the current user. The system copy and app data are kept, and you can try to restore the app from Apps › Deleted. Deleted apps carry a trash badge. |
+| Disable or enable | Disabling applies to the current user and keeps the app and its data. Enable it again under Apps › Disabled. Disabled apps carry a snowflake badge. |
+| Re-enabled | When Jiumi finds an app it disabled has been enabled again, it marks the app Re-enabled in the list and its details. The timeline records when Jiumi detected the change. Turn on Settings › App management › Disable again when re-enabled to have Jiumi disable it again. |
+| Uninstall an app you installed | Enter the full package name to confirm. Jiumi backs up the base APK and any split APKs before uninstalling. You can try to reinstall the app from Apps › Uninstalled. **Uninstalling clears app data. The backup contains only the installation files.** |
+| Uninstall a preinstalled app | Turn on Allow uninstalling preinstalled apps in Settings › App management to uninstall supported preinstalled apps for the current user. The factory copy and app data are kept. You can try to restore the app from Apps › Uninstalled. Uninstalled apps carry a trash badge. |
 
-Runs as, in Settings › App management, shows who carries out these actions. With root, or Shizuku started with root, freezing, unfreezing, deleting for the current user and restoring run as root, so Jiumi can change system apps the phone does not let the shell change. With wireless debugging they run as the shell, and the phone does not let it change some system apps; Jiumi shows the reason. Uninstalling an app you installed affects only the current user, so a copy in a work profile or second space is kept.
+Runs as, in Settings › App management, shows who carries out these actions. With root, or Shizuku started with root, disabling and enabling apps and uninstalling and restoring preinstalled apps run as root, so Jiumi can change system apps the phone does not let the shell change. With wireless debugging they run as the shell, and the phone does not let it change some system apps; Jiumi shows the reason. The shell uninstalls and restores apps you installed. Uninstalling affects only the current user and keeps copies in a work profile or second space.
 
 Core system components are protected by default. Changing a component the phone depends on can affect system features. Jiumi displays a warning before such changes.
 
 ## How does Jiumi see background activity without root?
 
-Android provides permission access records, connection tables, system traces and event logs as apps run. The Jiumi monitor reads available system signals as the **shell user**. The app organizes them by rules and stores them in a database on your phone. Monitoring does not inject code into other apps. Actions such as freezing, deleting, or turning off permissions or network access require you to start them in app management.
+Android provides permission access records, connection tables, system traces and event logs as apps run. The Jiumi monitor reads available system signals as the **shell user**. The app organizes them by rules and stores them in a database on your phone. Monitoring does not inject code into other apps. Actions such as disabling or uninstalling apps, turning off permissions or blocking network access require you to start them in app management.
 
 <p align="center"><img src="../images/how-it-works.en.png" alt="Apps generate Android system signals. The Jiumi monitor reads them as the shell user, and the app organizes and stores the records on the phone. Optional domain recording takes DNS queries through a local VPN." width="900" /></p>
 
@@ -71,7 +71,7 @@ Android provides permission access records, connection tables, system traces and
 | System traces (Perfetto) | Identifiable system service calls and per-connection traffic where the system supports it. |
 | Event logs | When a process started and the reason Android recorded. |
 
-**Choose wireless debugging, Shizuku or root.** The monitor runs as the shell user with all three. Wireless debugging pairs on the phone itself. Shizuku can be started over ADB or with root, and needs permission granted to Jiumi. The root option switches to the shell user to start the monitor; in addition, freezing, unfreezing, deleting for the current user and restoring apps run directly as root, so Jiumi can change apps Android does not let the shell change. The same goes for Shizuku started with root.
+**Choose wireless debugging, Shizuku or root.** The monitor runs as the shell user with all three. Wireless debugging pairs on the phone itself. Shizuku can be started over ADB or with root, and needs permission granted to Jiumi. The root option switches to the shell user to start the monitor; in addition, disabling and enabling apps and uninstalling and restoring preinstalled apps run directly as root, so Jiumi can change apps Android does not let the shell change. The same goes for Shizuku started with root.
 
 **Optional domain recording** uses a local VPN to receive DNS queries and forward them unchanged to the current network's DNS servers. Other traffic goes directly to its destination. Domain recording occupies the system VPN slot, and queries using an app's own encrypted DNS or a named Private DNS provider may bypass it.
 
