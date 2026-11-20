@@ -7,9 +7,11 @@
 一款轻量的 Android 应用行为监测与管理工具。
 <br>无需 Root，也无需电脑，记录保存在本机。
 
-**[下载 APK](https://github.com/ybblab/Jiumi/releases/latest)** · [使用指南](https://jiumi.ybblab.com/download/) · [官网](https://jiumi.ybblab.com) · [English](README.en.md) · [日本語](README.ja.md)
+**[下载 APK](https://github.com/ybblab/Jiumi/releases/latest)** · [使用指南](https://jiumi.ybblab.com/download/) · [官网](https://jiumi.ybblab.com)
 
 <sub>Android 11 及以上 · 安装包约 4 MB · <a href="LICENSE">Apache 2.0</a></sub>
+
+**简体中文** · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
 
 </div>
 

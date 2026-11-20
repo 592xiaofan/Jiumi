@@ -7,9 +7,11 @@
 軽量な Android アプリ行動モニター兼管理ツールです。
 <br>Root もパソコンも不要で、記録はスマートフォン内に保存されます。
 
-**[APK をダウンロード](https://github.com/ybblab/Jiumi/releases/latest)** · [ガイド](https://jiumi.ybblab.com/en/download/) · [ウェブサイト](https://jiumi.ybblab.com/en/) · [简体中文](README.md) · [English](README.en.md)
+**[APK をダウンロード](https://github.com/ybblab/Jiumi/releases/latest)** · [ガイド](https://jiumi.ybblab.com/en/download/) · [ウェブサイト](https://jiumi.ybblab.com/en/)
 
 <sub>Android 11 以降 · APK 約 4 MB · <a href="LICENSE">Apache 2.0</a></sub>
+
+[简体中文](README.md) · [English](README.en.md) · **日本語** · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [हिन्दी](README.hi.md) · [Bahasa Indonesia](README.id.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md)
 
 </div>
 
