@@ -43,9 +43,10 @@
     <string name="section_monitoring">Monitoring</string>
     <string name="action_stop">Stop</string>
     <string name="settings_title">Settings</string>
-    <string name="settings_monitor_summary">Service status, excluded apps and domain recording</string>
-    <string name="monitoring_exclusions">Apps excluded from monitoring</string>
-    <string name="monitoring_exclusions_selected">Excluded</string>
+    <string name="settings_monitor_summary">Service status, monitoring allowlist and domain recording</string>
+    <string name="monitoring_exclusions">Monitoring allowlist</string>
+    <string name="monitoring_exclusions_selected">On the allowlist</string>
+    <string name="monitoring_exclusions_desc">Apps on the allowlist generate no new monitoring records. Saved records are hidden until the app is removed from the list. Activity from the excluded period stays out of the record.</string>
     <string name="monitoring_exclusions_save_error">Could not save the change. Try again.</string>
     <string name="settings_management">App management</string>
     <string name="settings_notifications_summary">Ongoing notification, summary and alerts</string>

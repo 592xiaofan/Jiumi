@@ -44,8 +44,9 @@
     <string name="action_stop">停止</string>
     <string name="settings_title">设置</string>
     <string name="settings_monitor_summary">服务状态、监测白名单与域名记录</string>
-    <string name="monitoring_exclusions">不监测的应用</string>
-    <string name="monitoring_exclusions_selected">已排除</string>
+    <string name="monitoring_exclusions">监测白名单</string>
+    <string name="monitoring_exclusions_selected">已加入白名单</string>
+    <string name="monitoring_exclusions_desc">加入白名单后，揪咪不再为该应用生成新的监测记录，已有记录暂时隐藏。移出后恢复监测和显示，白名单生效期间的活动不会补录。</string>
     <string name="monitoring_exclusions_save_error">保存失败，请重试。</string>
     <string name="settings_management">应用管理</string>
     <string name="settings_notifications_summary">常驻通知、摘要与提醒</string>

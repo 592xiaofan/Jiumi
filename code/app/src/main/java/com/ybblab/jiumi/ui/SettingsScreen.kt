@@ -276,6 +276,7 @@ internal fun SettingsSectionScreen(
                                 Chevron()
                             }
                         }
+                        GroupFooter(stringResource(R.string.monitoring_exclusions_desc))
                     }
                     item {
                         GroupTitle(stringResource(R.string.settings_domain_recording), Modifier.padding(top = 24.dp))
