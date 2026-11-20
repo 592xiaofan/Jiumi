@@ -375,7 +375,7 @@ private fun stateText(app: ListedApp): String? = when (app.state) {
  * in both themes (a bare grey wash all but vanishes on a black page).
  */
 @Composable
-private fun SearchField(value: String, onChange: (String) -> Unit) {
+internal fun SearchField(value: String, onChange: (String) -> Unit) {
     val dark = com.ybblab.jiumi.ui.theme.LocalAppIsDark.current
     Surface(
         shape = AppShapes.Control,

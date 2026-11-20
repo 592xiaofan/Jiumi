@@ -33,6 +33,7 @@ import com.ybblab.jiumi.ui.LanguageScreen
 import com.ybblab.jiumi.ui.SessionsScreen
 import com.ybblab.jiumi.ui.SettingsScreen
 import com.ybblab.jiumi.ui.SettingsSection
+import com.ybblab.jiumi.ui.MonitoringExclusionsScreen
 import com.ybblab.jiumi.ui.SettingsSectionScreen
 import com.ybblab.jiumi.ui.SpoolScreen
 import com.ybblab.jiumi.ui.ThemeScreen
@@ -186,6 +187,7 @@ class MainActivity : AppCompatActivity() {
                             section, controller, onBack = pop,
                             onOpenSpool = { push("spool") }, onOpenSessions = { push("sessions") }, onOpenExport = { push("export") },
                             onOpenPairing = { push("pairing") },
+                            onOpenMonitoringExclusions = { push("monitoring-exclusions") },
                             onOpenMonitor = {
                                 (1..stack.size).forEach { pages.removeState(pageKey(it)) }
                                 stack = listOf()
@@ -196,6 +198,7 @@ class MainActivity : AppCompatActivity() {
                     top == "pairing" -> PairingScreen(controller, onBack = pop, onPair = ::pair,
                         onOpenWirelessDebugging = ::openWirelessDebugging)
                     top == "spool" -> SpoolScreen(controller, onBack = pop)
+                    top == "monitoring-exclusions" -> MonitoringExclusionsScreen(controller, labels, onBack = pop)
                     top == "about" -> AboutScreen(labels, onBack = pop, onOpenLicenses = { push("licenses") })
                     top == "licenses" -> LicensesScreen(onBack = pop, onOpenNotice = { push("notice:$it") })
                     top.startsWith("notice:") -> NoticeScreen(top.removePrefix("notice:").toInt(), onBack = pop)

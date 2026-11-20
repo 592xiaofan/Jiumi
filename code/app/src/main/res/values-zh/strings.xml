@@ -43,7 +43,10 @@
     <string name="section_monitoring">监测</string>
     <string name="action_stop">停止</string>
     <string name="settings_title">设置</string>
-    <string name="settings_monitor_summary">服务状态与域名记录</string>
+    <string name="settings_monitor_summary">服务状态、监测白名单与域名记录</string>
+    <string name="monitoring_exclusions">不监测的应用</string>
+    <string name="monitoring_exclusions_description">加入白名单后，不生成新记录，已有记录暂时隐藏。对于 Android 只能整机读取的数据，揪咪会在写入记录前排除。只能按共享 UID 识别的记录会一并排除。</string>
+    <string name="monitoring_exclusions_save_error">保存失败，请重试。</string>
     <string name="settings_management">应用管理</string>
     <string name="settings_notifications_summary">常驻通知、摘要与提醒</string>
     <string name="settings_domain_recording">域名记录</string>

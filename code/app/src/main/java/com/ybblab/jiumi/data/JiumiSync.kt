@@ -39,6 +39,7 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
     /** Each refresh pages through one snapshot. Commit the time cursor only after its last page. */
     private fun pullDiscrete(service: IProbeService) {
         val from = store.meta(KEY_DISCRETE_FROM)
+        val exclusions = store.exclusions
         var offset = 0
         while (true) {
             val page = JSONObject(service.readDiscreteHistory(from, offset, PAGE_HISTORY))
@@ -52,10 +53,13 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
             try {
                 for (i in 0 until events.length()) {
                     val e = events.getJSONObject(i)
+                    val uid = e.getInt("uid")
+                    val pkg = e.str("pkg")
+                    if (exclusions.hides(uid, pkg) || exclusions.blocks(uid, pkg, e.getLong("t"), e.getLong("end"))) continue
                     if (rules.categoryOf(e.getString("op")) == null) continue
                     store.insertAccess(db, JiumiStore.Access(
-                        t = e.getLong("t"), end = e.getLong("end"), op = e.getString("op"), uid = e.getInt("uid"),
-                        pkg = e.str("pkg"), attr = e.str("attr"), count = 1, state = e.str("state"), screen = null,
+                        t = e.getLong("t"), end = e.getLong("end"), op = e.getString("op"), uid = uid,
+                        pkg = pkg, attr = e.str("attr"), count = 1, state = e.str("state"), screen = null,
                         result = 0, proxied = e.optString("via").endsWith("d"), source = "system"
                     ))
                 }
@@ -75,6 +79,7 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
      */
     private fun pullCounts(service: IProbeService, now: Long) {
         val since = now - COUNT_DAYS * DAY_MS
+        val exclusions = store.exclusions
         val counts = ArrayList<JiumiStore.OpCount>()
         var skip = 0
         while (true) {
@@ -88,7 +93,12 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
                     // component used them, and when the user was not using it, is still worth showing.
                     val op = o.getString("op")
                     if (rules.categoryOf(op) == null && !SystemCount.isVendor(op)) continue
-                    counts += JiumiStore.OpCount(slot.getLong("from"), slot.getLong("to"), o.getInt("uid"), o.getString("pkg"),
+                    val uid = o.getInt("uid")
+                    val pkg = o.getString("pkg")
+                    val from = slot.getLong("from")
+                    val to = slot.getLong("to")
+                    if (exclusions.hides(uid, pkg) || exclusions.blocks(uid, pkg, from, to - 1)) continue
+                    counts += JiumiStore.OpCount(from, to, uid, pkg,
                         o.getString("op"), o.getLong("fg"), o.getLong("bg"), o.getLong("fgRejected"), o.getLong("bgRejected"),
                         o.optLong("durationMs"))
                 }
@@ -100,6 +110,7 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
     }
 
     fun pullEvents(service: IProbeService): Int {
+        val exclusions = store.exclusions
         var stored = 0
         var epoch = store.meta(KEY_EVENT_EPOCH)
         var after = store.meta(KEY_EVENT_SEQ)
@@ -129,7 +140,10 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
                         lost += sequence - after - 1
                         if (lossTime == 0L) lossTime = event.getLong("t")
                     }
-                    apply(db, event)
+                    if (!exclusions.blocksEvent(event)) {
+                        apply(db, event)
+                        stored++
+                    }
                     after = sequence
                 }
                 if (!more && last > after) {
@@ -142,7 +156,7 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
                 store.setMeta(db, KEY_EVENT_EPOCH, epoch)
                 store.setMeta(db, KEY_EVENT_SEQ, after)
                 db.setTransactionSuccessful()
-                stored += events.length() + if (lost > 0) 1 else 0
+                if (lost > 0) stored++
             } finally {
                 db.endTransaction()
             }

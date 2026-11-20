@@ -143,6 +143,7 @@ internal fun SettingsSectionScreen(
     onOpenSessions: () -> Unit,
     onOpenExport: () -> Unit,
     onOpenPairing: () -> Unit,
+    onOpenMonitoringExclusions: () -> Unit,
     onOpenMonitor: () -> Unit
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
@@ -264,6 +265,17 @@ internal fun SettingsSectionScreen(
                             }
                         }
                         if (state.problem != null && !state.running && state.busy == null) statusMessage(state)?.let { GroupFooter(it, warning = true) }
+                    }
+                    item {
+                        val exclusions by controller.monitoringExclusions.collectAsStateWithLifecycle()
+                        Spacer(Modifier.height(16.dp))
+                        Card {
+                            ListRow(stringResource(R.string.monitoring_exclusions), leading = { IconTile(JiumiIcons.Shield) },
+                                onClick = onOpenMonitoringExclusions) {
+                                TrailingValue(exclusions.active.size.toString())
+                                Chevron()
+                            }
+                        }
                     }
                     item {
                         GroupTitle(stringResource(R.string.settings_domain_recording), Modifier.padding(top = 24.dp))

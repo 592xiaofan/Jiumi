@@ -101,6 +101,7 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
                 val op = args[0] as String
                 val uid = args[1] as Int
                 val pkg = args[2] as String?
+                if (spool.exclusions.blocks(uid, pkg, t)) return@post
                 record(JSONObject()
                     .put("kind", "active")
                     .put("t", t)
@@ -122,7 +123,7 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
     private fun noted(op: String, uid: Int, pkg: String?, attribution: String?, flags: Int, result: Int) {
         val time = System.currentTimeMillis()
         handler.post {
-            if (finishing) return@post
+            if (finishing || spool.exclusions.blocks(uid, pkg, time)) return@post
             val key = NotedKey(op, uid, pkg, attribution, flags, result)
             val observed = ObservationState(states.stateAt(uid, time), states.screenAt(time))
             val bucket = buckets[key]

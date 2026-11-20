@@ -20,7 +20,7 @@ import java.util.Locale
 internal object DiscreteHistory {
     private val access = Regex("^Access \\[([a-z]+)-([a-z]+)\\] at (\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d(?:\\.\\d{1,3})?)(?: for (\\d+) milliseconds)?")
 
-    fun parse(dump: String, ops: Set<String>, fromTime: Long): List<JSONObject> {
+    fun parse(dump: String, ops: Set<String>, fromTime: Long, exclusions: MonitoringExclusions = MonitoringExclusions()): List<JSONObject> {
         val section = dump.substringAfter("Discrete accesses:", missingDelimiterValue = "")
         val found = ArrayList<JSONObject>()
         var uid = -1
@@ -37,6 +37,7 @@ internal object DiscreteHistory {
                 line.startsWith("Package: ") -> { pkg = line.removePrefix("Package: "); op = null }
                 line.startsWith("Attribution: ") -> attribution = line.removePrefix("Attribution: ").takeUnless { it == "null" }
                 line.startsWith("Access ") || line.startsWith("Reject ") -> {
+                    if (exclusions.hides(uid, pkg)) continue
                     val match = access.find(line) ?: continue
                     val name = op ?: continue
                     if (name !in ops || uid < 0) continue
@@ -44,6 +45,7 @@ internal object DiscreteHistory {
                     val t = (if ('.' in stamp) withMillis else withoutMillis).parse(stamp)?.time ?: continue
                     if (t < fromTime) continue
                     val duration = match.groupValues[4].toLongOrNull() ?: 0L
+                    if (exclusions.blocks(uid, pkg, t, t + duration)) continue
                     found += JSONObject()
                         .put("kind", "history")
                         .put("t", t)

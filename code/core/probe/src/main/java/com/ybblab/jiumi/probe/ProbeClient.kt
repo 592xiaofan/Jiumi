@@ -46,7 +46,8 @@ class ProbeClient(private val context: Context) {
         )
     }
 
-    fun startCommand(): String = ProbeLaunch.startCommand(context.applicationInfo.sourceDir, context.packageName)
+    fun startCommand(config: String): String =
+        ProbeLaunch.startCommand(context.applicationInfo.sourceDir, context.packageName, config)
 
     private fun validate(intent: Intent): IBinder? = try {
         val extras = intent.extras

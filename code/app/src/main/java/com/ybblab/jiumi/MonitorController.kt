@@ -19,6 +19,7 @@ import com.ybblab.jiumi.data.AppSource
 import com.ybblab.jiumi.data.ManageAction
 import com.ybblab.jiumi.data.ManageRules
 import com.ybblab.jiumi.data.Management
+import com.ybblab.jiumi.data.MonitoringPreferences
 import com.ybblab.jiumi.data.PackageFacts
 import com.ybblab.jiumi.data.PackageFactsSource
 import com.ybblab.jiumi.data.Refusal
@@ -43,6 +44,7 @@ import com.ybblab.jiumi.data.NoticeSummary
 import com.ybblab.jiumi.data.Freezes
 import com.ybblab.jiumi.probe.PackageChangeFailure
 import com.ybblab.jiumi.probe.ProbeClient
+import com.ybblab.jiumi.dns.DomainVpnService
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -71,7 +73,8 @@ class MonitorController(
     private val probe: ProbeClient,
     private val rules: AccessRules,
     private val store: JiumiStore,
-    val access: com.ybblab.jiumi.access.Access
+    val access: com.ybblab.jiumi.access.Access,
+    private val monitoring: MonitoringPreferences
 ) {
     enum class Busy { STARTING, STOPPING }
     /**
@@ -155,6 +158,7 @@ class MonitorController(
     @Volatile private var inventoryByUid: Map<Int, List<String>> = emptyMap()
     private val owners = PackageOwners(context.packageManager, catalogPackages = { inventoryByUid[it].orEmpty() })
     private val sync = JiumiSync(store, rules)
+    val monitoringExclusions = monitoring.exclusions
     private val usage = NetworkUsage(context)
     private val appKinds = AppKinds(context.packageManager)
 
@@ -176,14 +180,19 @@ class MonitorController(
     private val attentionRules = AttentionRules.load(context)
     private val builder = ReportBuilder(
         store, rules, Process.myUid(), owners::ownerOf,
-        traffic = { from, to -> usage.byUid(from, to) },
+        traffic = { from, to ->
+            val exclusions = monitoringExclusions.value
+            usage.byUid(from, to) { uid -> !exclusions.hides(uid) && !exclusions.blocks(uid, null, from, to) }
+        },
         kindOf = appKinds::kindOf,
         attentionRules = attentionRules,
-        packagesOfUid = owners::packagesOf,
+        packagesOfUid = { uid -> owners.packagesOf(uid).filterNot { monitoringExclusions.value.hides(uid, it) } },
         persistentOf = appKinds::persistent,
         locationProviderOf = { pkg -> pkg != null && pkg in locationProviders }
     )
     private val syncLock = Mutex()
+    private var configuredService: com.ybblab.jiumi.probe.IProbeService? = null
+    private var sentConfig: String? = null
 
     private val local = MutableStateFlow(Local(
         // Call tracing is always on: most kinds of data (device IDs, clipboard, the app list) are seen only by it.
@@ -269,6 +278,55 @@ class MonitorController(
             catalog.modules.orEmpty().map { ListedApp(it.pkg, -1, null, module = true) }
     }
 
+    suspend fun appsForMonitoring(): List<AppKey> = withContext(Dispatchers.IO) {
+        val installed = packageFacts.all(keptShellPackages()).asSequence()
+            .filter { it.installed && it.hasCode == true && it.uid >= 0 && it.pkg != context.packageName }
+            .map { AppKey(it.uid, it.pkg) }
+        val excluded = monitoringExclusions.value.active.values.asSequence().map { AppKey(it.uid, it.pkg) }
+        (installed + excluded).distinctBy { it.pkg }.toList()
+    }
+
+    suspend fun setMonitoringExcluded(key: AppKey, excluded: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val pkg = key.pkg ?: return@withContext false
+        if (!Management.isCatalogPackage(pkg) || key.uid < 0 || pkg == context.packageName) return@withContext false
+        syncLock.withLock {
+            val uid = installedUid(pkg) ?: key.uid
+            saveMonitoringExclusions(monitoringExclusions.value.set(pkg, uid, excluded, System.currentTimeMillis()))
+        }
+    }
+
+    fun refreshMonitoringPackages() {
+        if (monitoringExclusions.value.active.isEmpty()) return
+        scope.launch(Dispatchers.IO) {
+            syncLock.withLock {
+                val current = monitoringExclusions.value
+                val now = System.currentTimeMillis()
+                val updated = current.active.values.fold(current) { rules, app ->
+                    installedUid(app.pkg)?.let { rules.set(app.pkg, it, excluded = true, now) } ?: rules
+                }
+                saveMonitoringExclusions(updated)
+            }
+        }
+    }
+
+    private fun installedUid(pkg: String): Int? = runCatching { context.packageManager.getPackageUid(pkg, 0) }.getOrNull()
+
+    /** Called under syncLock, so an import cannot commit against an older policy. */
+    private fun saveMonitoringExclusions(next: com.ybblab.jiumi.probe.MonitoringExclusions): Boolean {
+        if (next === monitoringExclusions.value) return true
+        if (!monitoring.save(next)) return false
+        local.update { it.copy(ledger = null) }
+        MonitorNotice.cancelAlerts(context)
+        probe.service.value?.let(::configure)
+        DomainVpnService.refresh(context)
+        rebuild()
+        shownSince?.let { since ->
+            val summary = noticeSummary(since)
+            MonitorNotificationService.update(context, since) { it.copy(summary = summary) }
+        }
+        return true
+    }
+
     suspend fun historicalApps(query: String): List<ListedApp> = withContext(Dispatchers.IO) {
         store.recordedPackages(query, Process.myUid() / PER_USER_RANGE).map {
             ListedApp(requireNotNull(it.pkg), it.uid, AppState.HISTORICAL)
@@ -348,6 +406,9 @@ class MonitorController(
 
     /** How often [pkg]'s alarms woke the phone since it started; null while the monitor is not running. */
     suspend fun wakeups(pkg: String): com.ybblab.jiumi.data.Wakeups? = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val ownUser = Process.myUid() / PER_USER_RANGE * PER_USER_RANGE
+        if (monitoringExclusions.value.blocks(ownUser, pkg, now - SystemClock.elapsedRealtime(), now)) return@withContext null
         val service = probe.service.value ?: return@withContext null
         runCatching { service.alarmWakeups(pkg) }.getOrNull()
             ?.let { com.ybblab.jiumi.data.Wakeups.parse(it, pkg, System.currentTimeMillis()) }
@@ -704,7 +765,7 @@ class MonitorController(
                 if (!pairing.isShellReady) return Problem.CONNECT
             }
             pairing.shell(ownPermissionsCommand())
-            pairing.shell(probe.startCommand())
+            pairing.shell(probe.startCommand(probeConfiguration()))
             launched()
             return waitForProbe()
         } finally {
@@ -714,7 +775,7 @@ class MonitorController(
     }
 
     private suspend fun startOverRoot(launched: () -> Unit): Problem? {
-        val command = ownPermissionsCommand() + "\n" + probe.startCommand()
+        val command = ownPermissionsCommand() + "\n" + probe.startCommand(probeConfiguration())
         if (!access.root.shell(command, PROBE_SHELL_MS)) return Problem.START
         launched()
         return waitForProbe()
@@ -723,7 +784,7 @@ class MonitorController(
     private suspend fun startOverShizuku(launched: () -> Unit): Problem? {
         if (access.shizuku.shell("id -u", PROBE_SHELL_MS).trim() != "2000") return Problem.SHIZUKU
         access.shizuku.shell(ownPermissionsCommand(), PROBE_SHELL_MS)
-        if (access.shizuku.shell(probe.startCommand(), START_TIMEOUT_MS).startsWith("[SHIZUKU_")) return Problem.SHIZUKU
+        if (access.shizuku.shell(probe.startCommand(probeConfiguration()), START_TIMEOUT_MS).startsWith("[SHIZUKU_")) return Problem.SHIZUKU
         launched()
         val problem = waitForProbe()
         access.shizuku.release()
@@ -794,6 +855,7 @@ class MonitorController(
     /** Updates Root or Shizuku readiness when returning from a root manager or Shizuku without restarting. */
     fun onAppResumed() {
         appVisible = true
+        refreshMonitoringPackages()
         when (access.method.value) {
             com.ybblab.jiumi.access.AccessMethod.WIRELESS -> checkGate.onResumeWireless()
             com.ybblab.jiumi.access.AccessMethod.ROOT -> {
@@ -970,21 +1032,22 @@ class MonitorController(
         if (power?.isInteractive == false) return
         val service = probe.service.value ?: return
         val started = System.currentTimeMillis()
-        val report = syncLock.withLock {
+        syncLock.withLock {
             if (!appVisible) {
+                configure(service)
                 val stored = runCatching { sync.sync(service) }.onFailure { android.util.Log.w(TAG, "sync failed", it) }.getOrDefault(0)
                 pendingLive += stored
             }
-            sessionReport(since)
+            val report = sessionReport(since)
+            val notices = local.value.notices
+            if (notices.summary) {
+                val summary = NoticeSummary.of(report)
+                MonitorNotificationService.update(context, since) { it.copy(summary = summary) }
+            }
+            if (notices.alerts) alert(since, report)
         }
         // A long session costs more to summarize; give the phone a breather in proportion.
         noticeIntervalMs = maxOf(NOTICE_INTERVAL_MS, (System.currentTimeMillis() - started) * 20)
-        val notices = local.value.notices
-        if (notices.summary) {
-            val summary = NoticeSummary.of(report)
-            MonitorNotificationService.update(context, since) { it.copy(summary = summary) }
-        }
-        if (notices.alerts) alert(since, report)
     }
 
     /** Alerts the apps newly raised in the session that began at [since], once each per item. */
@@ -1034,6 +1097,7 @@ class MonitorController(
         scope.launch(Dispatchers.IO) {
             syncLock.withLock {
                 probe.service.value?.let { service ->
+                    configure(service)
                     runCatching { sync.sync(service) }.onFailure { android.util.Log.w(TAG, "sync failed", it) }
                     refreshLocationProviders(service)
                 }
@@ -1052,6 +1116,7 @@ class MonitorController(
         val service = probe.service.value ?: return@withContext
         if (!syncLock.tryLock()) return@withContext
         try {
+            configure(service)
             val stored = runCatching { sync.sync(service) }.onFailure { android.util.Log.w(TAG, "sync failed", it) }.getOrDefault(0)
             refreshLocationProviders(service)
             pendingLive += stored
@@ -1088,8 +1153,17 @@ class MonitorController(
         scope.launch(Dispatchers.IO) { configure(service) }
     }
 
+    private fun probeConfiguration(): String = rules.monitorConfig(local.value.callTracing, local.value.spoolLimitMb,
+        monitoringExclusions.value.toJson())
+
+    @Synchronized
     private fun configure(service: com.ybblab.jiumi.probe.IProbeService) {
-        runCatching { service.configure(rules.monitorConfig(local.value.callTracing, local.value.spoolLimitMb)) }
+        val config = probeConfiguration()
+        if (configuredService === service && sentConfig == config) return
+        runCatching { service.configure(config) }.onSuccess {
+            configuredService = service
+            sentConfig = config
+        }.onFailure { android.util.Log.w(TAG, "probe configuration failed", it) }
     }
 
     fun setRange(range: Range) {

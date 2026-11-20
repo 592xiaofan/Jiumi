@@ -57,22 +57,29 @@ internal class ProbeService(
         enforceOwner()
         if (stopping) return
         val parsed = JSONObject(config)
-        configFile.writeText(parsed.toString())
+        val temp = File(configFile.parentFile, ".config.json")
+        temp.writeText(parsed.toString())
+        java.nio.file.Files.move(temp.toPath(), configFile.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
         apply(parsed)
     }
 
     /** The monitor keeps watching after restarts with the last configuration it was given. */
     fun restoreConfiguration() {
-        runCatching { apply(JSONObject(configFile.readText())) }
+        if (configFile.exists()) apply(JSONObject(configFile.readText()))
     }
 
     private fun apply(config: JSONObject) {
+        spool.exclusions = MonitoringExclusions.parse(config.optJSONArray("exclusions"))
         // 0 keeps everything until the app reads it, short of filling the phone.
         config.optJSONObject("spool")?.let { spool.limitBytes = it.optLong("limitMb", 256) * 1024 * 1024 }
         val ops = config.optJSONArray("ops") ?: JSONArray()
         val list = (0 until ops.length()).map { ops.getString(it) }
-        watchedOps = list.toSet()
-        accessWatcher.watch(list)
+        val selectedOps = list.toSet()
+        if (watchedOps != selectedOps) {
+            watchedOps = selectedOps
+            accessWatcher.watch(list)
+        }
         val calls = config.optJSONObject("calls")
         val methods = calls?.optJSONArray("methods") ?: JSONArray()
         val network = config.optJSONObject("network")
@@ -102,7 +109,7 @@ internal class ProbeService(
             val rows = if (offset == 0) {
                 discreteSnapshot = null
                 val dump = readAppOpsDump("Discrete accesses:", "--include-discrete", "0")
-                DiscreteHistory.parse(dump, watchedOps, fromTime)
+                DiscreteHistory.parse(dump, watchedOps, fromTime, spool.exclusions)
                     .also { discreteSnapshot = DiscreteSnapshot(fromTime, it) }
             } else {
                 checkNotNull(discreteSnapshot?.takeIf { it.from == fromTime }?.rows) { "Missing discrete AppOps snapshot" }
@@ -122,7 +129,7 @@ internal class ProbeService(
             val slots = if (skip == 0) {
                 historySnapshot = null
                 val dump = readAppOpsDump("History:", "--history")
-                AppOpsHistory.parse(dump, watchedOps, sinceTime, System.currentTimeMillis(), ::isMakerOp)
+                AppOpsHistory.parse(dump, watchedOps, sinceTime, System.currentTimeMillis(), spool.exclusions, ::isMakerOp)
                     .also { historySnapshot = HistorySnapshot(sinceTime, it) }
             } else {
                 checkNotNull(historySnapshot?.takeIf { it.since == sinceTime }?.slots) { "Missing AppOps snapshot" }

@@ -4,6 +4,11 @@
 package com.ybblab.jiumi
 
 import android.app.Application
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import androidx.core.content.ContextCompat
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -28,11 +33,12 @@ class JiumiApp : Application(), AdbPairingHost {
     override val pairingManager by lazy { AirModePairingManager(this, appScope, notifications, log) }
     val probeClient by lazy { ProbeClient(this) }
     val rules by lazy { AccessRules.load(this) }
-    val store by lazy { JiumiStore(this) }
+    val monitoring by lazy { com.ybblab.jiumi.data.MonitoringPreferences(this) }
+    val store by lazy { JiumiStore(this, monitoring.exclusions) }
     val preferences by lazy { AppPreferences(this) }
     val domains by lazy { com.ybblab.jiumi.dns.DomainCapture(this) }
     val access by lazy { com.ybblab.jiumi.access.Access(this) }
-    val controller by lazy { MonitorController(this, appScope, pairingManager, probeClient, rules, store, access) }
+    val controller by lazy { MonitorController(this, appScope, pairingManager, probeClient, rules, store, access, monitoring) }
 
     private val wifiNetworks = ConcurrentHashMap.newKeySet<Network>()
 
@@ -40,6 +46,13 @@ class JiumiApp : Application(), AdbPairingHost {
         super.onCreate()
         preferences.applyTheme()
         probeClient.register()
+        ContextCompat.registerReceiver(this, object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.data?.schemeSpecificPart in monitoring.exclusions.value.active) {
+                    controller.refreshMonitoringPackages()
+                }
+            }
+        }, IntentFilter(Intent.ACTION_PACKAGE_ADDED).apply { addDataScheme("package") }, ContextCompat.RECEIVER_EXPORTED)
         watchWifi()
         domains.resume()
     }

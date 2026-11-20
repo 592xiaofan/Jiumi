@@ -18,6 +18,7 @@ import java.io.RandomAccessFile
  */
 internal class EventSpool(private val directory: File, private val segmentBytes: Long = SEGMENT_BYTES) {
     @Volatile var limitBytes = DEFAULT_LIMIT_BYTES
+    @Volatile var exclusions = MonitoringExclusions()
 
     private var seq: Long
     private var current: File
@@ -48,6 +49,7 @@ internal class EventSpool(private val directory: File, private val segmentBytes:
 
     @Synchronized
     fun append(event: JSONObject) {
+        if (exclusions.blocksEvent(event)) return
         event.put("seq", ++seq)
         if (current.length() >= segmentBytes || rotateAfterWriteFailure) current = segmentFile(seq)
         rotateAfterWriteFailure = true

@@ -45,6 +45,7 @@ import java.util.concurrent.TimeUnit
 class DomainVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
     private var reader: Thread? = null
+    private var excludedPackages: Map<String, Int> = emptyMap()
     private var output: FileOutputStream? = null
     private var tcpEndpoint: DnsTcp? = null
     /**
@@ -102,14 +103,16 @@ class DomainVpnService : VpnService() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (tun == null && !establish()) {
+        val exclusions = (application as JiumiApp).monitoring.exclusions.value.active.mapValues { it.value.uid }
+        if (tun != null && excludedPackages != exclusions) shutdown()
+        if (tun == null && !establish(exclusions)) {
             stopSelf()
             return START_NOT_STICKY
         }
         return START_STICKY
     }
 
-    private fun establish(): Boolean {
+    private fun establish(exclusions: Map<String, Int>): Boolean {
         val fd = runCatching {
             Builder()
                 .setMtu(MTU)
@@ -118,10 +121,20 @@ class DomainVpnService : VpnService() {
                 .addDnsServer(DNS_ADDRESS)
                 .addRoute(DNS_ADDRESS, 32)
                 .addDisallowedApplication(packageName)
+                .apply {
+                    for (pkg in exclusions.keys) {
+                        try {
+                            addDisallowedApplication(pkg)
+                        } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+                            // The rule stays saved if the app is removed.
+                        }
+                    }
+                }
                 .setBlocking(true)
                 .setMetered(false)
                 .establish()
         }.getOrNull() ?: return false
+        excludedPackages = exclusions
         tun = fd
         output = FileOutputStream(fd.fileDescriptor)
         val input = FileInputStream(fd.fileDescriptor)
@@ -187,6 +200,7 @@ class DomainVpnService : VpnService() {
     }
 
     private fun record(t: Long, uid: Int, message: ByteArray, reply: ByteArray?) {
+        if ((application as JiumiApp).monitoring.exclusions.value.blocks(uid, null, t)) return
         val query = DnsPacket.readMessage(message) ?: return
         val name = query.name ?: return
         val result = reply?.let(DnsPacket::readMessage)
@@ -315,6 +329,10 @@ class DomainVpnService : VpnService() {
 
         fun start(context: Context) {
             runCatching { context.startService(Intent(context, DomainVpnService::class.java)) }
+        }
+
+        fun refresh(context: Context) {
+            if (_running.value) start(context)
         }
 
         fun stop(context: Context) {

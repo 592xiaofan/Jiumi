@@ -17,7 +17,7 @@ object ProbeLaunch {
      * a duplicate, or a changed APK, and ends the supervisor. It also ends when the APK is gone or
      * developer options are turned off, so the user's switch always wins.
      */
-    fun startCommand(apkPath: String, packageName: String): String {
+    fun startCommand(apkPath: String, packageName: String, config: String): String {
         require(packagePattern.matches(packageName)) { "invalid package" }
         val dir = ProbeProtocol.dataDirectory(packageName)
         val log = "$dir/probe.log"
@@ -32,7 +32,10 @@ object ProbeLaunch {
             "done"
         return buildString {
             append("export CLASSPATH=${quote(apkPath)}; ")
-            append("mkdir -p $dir && chmod 700 $dir; ")
+            append("umask 077; mkdir -p $dir && chmod 700 $dir || exit 1; ")
+            // The probe restores this before starting any watchers, including on a supervisor restart.
+            append("config_tmp=\$(mktemp $dir/.launch-config.XXXXXX) || exit 1; ")
+            append("printf '%s' ${quote(config)} > \"\$config_tmp\" && mv -f \"\$config_tmp\" $dir/config.json || exit 1; ")
             append("[ \"\$(wc -c <$log 2>/dev/null || echo 0)\" -gt $LOG_ROTATE_BYTES ] && mv -f $log $log.1; ")
             // setsid detaches from the one-shot ADB shell so closing ADB does not hang it up.
             append("(setsid sh -c ${quote(supervisor)} </dev/null >>$log 2>&1 &); ")

@@ -22,7 +22,7 @@ class NetworkUsage(context: Context) {
 
     private val manager = context.getSystemService(NetworkStatsManager::class.java)
 
-    fun byUid(from: Long, to: Long): Map<Int, Traffic> {
+    fun byUid(from: Long, to: Long, include: (Int) -> Boolean): Map<Int, Traffic> {
         val result = HashMap<Int, Traffic>()
         for (type in NETWORK_TYPES) {
             @Suppress("DEPRECATION")
@@ -31,7 +31,7 @@ class NetworkUsage(context: Context) {
                 val bucket = NetworkStats.Bucket()
                 while (it.getNextBucket(bucket)) {
                     val bytes = bucket.rxBytes + bucket.txBytes
-                    if (bytes == 0L) continue
+                    if (bytes == 0L || !include(bucket.uid)) continue
                     val background = if (bucket.state == NetworkStats.Bucket.STATE_FOREGROUND) 0L else bytes
                     result[bucket.uid] = (result[bucket.uid] ?: ZERO) + Traffic(bucket.rxBytes, bucket.txBytes, background)
                 }

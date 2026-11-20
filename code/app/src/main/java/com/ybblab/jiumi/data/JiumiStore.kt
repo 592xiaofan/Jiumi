@@ -7,6 +7,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.ybblab.jiumi.probe.MonitoringExclusions
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Local record of observed accesses and process starts. Nothing leaves the device.
@@ -15,7 +17,9 @@ import android.database.sqlite.SQLiteOpenHelper
  * "system", read from the system's own per-access record, which also covers time the monitor was not
  * running. ("history" marks rows of an earlier import, which reports leave out.)
  */
-class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null, VERSION) {
+class JiumiStore(context: Context, private val exclusionState: StateFlow<MonitoringExclusions>) :
+    SQLiteOpenHelper(context, "jiumi.db", null, VERSION) {
+    val exclusions: MonitoringExclusions get() = exclusionState.value
 
     data class Access(
         val t: Long, val end: Long, val op: String, val uid: Int, val pkg: String?, val attr: String?,
@@ -117,7 +121,14 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
         val db = writableDatabase
         db.beginTransaction()
         try {
-            db.delete("op_history", null, null)
+            val active = exclusions.active
+            if (active.isEmpty()) db.delete("op_history", null, null)
+            else {
+                // Keep already saved counts for excluded packages. Refresh the other packages as usual.
+                val user = android.os.Process.myUid() / 100_000
+                val placeholders = active.keys.joinToString(",") { "?" }
+                db.delete("op_history", "NOT (uid / 100000 = $user AND pkg IN ($placeholders))", active.keys.toTypedArray())
+            }
             for (c in counts) db.insertWithOnConflict("op_history", null, ContentValues().apply {
                 put("span_from", c.from); put("span_to", c.to); put("uid", c.uid); put("pkg", c.pkg); put("op", c.op)
                 put("fg", c.fg); put("bg", c.bg); put("fg_rejected", c.fgRejected); put("bg_rejected", c.bgRejected)
@@ -142,7 +153,7 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
             buildList {
                 while (c.moveToNext()) add(OpCount(c.getLong(0), c.getLong(1), c.getInt(2), c.getString(3), c.getString(4),
                     c.getLong(5), c.getLong(6), c.getLong(7), c.getLong(8), c.getLong(9)))
-            }
+            }.filterNot { exclusions.hides(it.uid, it.pkg) }
         }
     }
 
@@ -171,10 +182,14 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
         val db = writableDatabase
         db.beginTransaction()
         try {
-            for (l in lookups) db.insert("dns", null, ContentValues().apply {
-                put("t", l.t); put("end_t", l.end); put("uid", l.uid); put("domain", l.domain); put("qtype", l.type)
-                put("answers", l.answers.joinToString(",")); put("rcode", l.rcode); put("count", l.count)
-            })
+            val policy = exclusions
+            for (l in lookups) {
+                if (policy.blocks(l.uid, null, l.t, l.end)) continue
+                db.insert("dns", null, ContentValues().apply {
+                    put("t", l.t); put("end_t", l.end); put("uid", l.uid); put("domain", l.domain); put("qtype", l.type)
+                    put("answers", l.answers.joinToString(",")); put("rcode", l.rcode); put("count", l.count)
+                })
+            }
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -191,7 +206,7 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
                 c.getLong(0), c.getLong(1), c.getInt(2), c.getString(3), c.getInt(4),
                 c.getString(5).split(',').filter { it.isNotEmpty() }, c.getInt(6), c.getInt(7)
             ))
-        }
+        }.filterNot { exclusions.hides(it.uid) }
     }
 
     private fun createUserActionTable(db: SQLiteDatabase) {
@@ -322,7 +337,7 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
                     if (c.isNull(9)) null else c.getLong(9), if (c.isNull(10)) null else c.getLong(10),
                     if (c.isNull(11)) null else c.getLong(11)
                 ))
-            }
+            }.filterNot { exclusions.hides(it.uid) }
         }
     }
 
@@ -346,7 +361,8 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
             val seen = HashSet<String>()
             while (cursor.moveToNext()) {
                 val pkg = cursor.getString(0)
-                if (Management.isCatalogPackage(pkg) && seen.add(pkg)) add(AppKey(cursor.getInt(1), pkg))
+                val uid = cursor.getInt(1)
+                if (Management.isCatalogPackage(pkg) && !exclusions.hides(uid, pkg) && seen.add(pkg)) add(AppKey(uid, pkg))
             }
         }
     }
@@ -369,8 +385,8 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
         db.execSQL(
             """UPDATE access SET end_t = ? WHERE rowid = (
                 SELECT rowid FROM access WHERE source = 'active' AND op = ? AND uid = ? AND pkg IS ? AND attr IS ?
-                AND end_t = t AND t <= ? ORDER BY t DESC LIMIT 1)""",
-            arrayOf<Any?>(end, op, uid, pkg, attr, end)
+                AND end_t = t AND t BETWEEN ? AND ? ORDER BY t DESC LIMIT 1)""",
+            arrayOf<Any?>(end, op, uid, pkg, attr, exclusions.resumedAt(uid, pkg, end), end)
         )
     }
 
@@ -393,7 +409,7 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
                     c.getLong(0), c.getLong(1), c.getInt(2), c.getInt(3), c.getString(4), c.getString(5), c.getString(6),
                     c.getInt(7), c.getString(8), if (c.isNull(9)) null else c.getInt(9) == 1, c.getString(10)
                 ))
-            }
+            }.filterNot { exclusions.hidesProcess(it.uid, it.process) }
         }
     }
 
@@ -426,8 +442,9 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
                 ))
             }
         }
-        val monitor = read.filter { it.source != "system" && maxOf(it.t, it.end) >= lo }
-        return SystemRecord.withoutRepeats(read.filter { it.t in from..to }, monitor)
+        val allowed = read.filterNot { exclusions.hides(it.uid, it.pkg) }
+        val monitor = allowed.filter { it.source != "system" && maxOf(it.t, it.end) >= lo }
+        return SystemRecord.withoutRepeats(allowed.filter { it.t in from..to }, monitor)
     }
 
     /** Process starts in [from, to], of [uid] or of every uid. */
@@ -436,7 +453,13 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
             (if (uid == null) "" else " AND uid = ?") + " ORDER BY t",
         listOfNotNull(from.toString(), to.toString(), uid?.toString()).toTypedArray()
     ).use { c ->
-        buildList { while (c.moveToNext()) add(ProcessStart(c.getLong(0), c.getInt(1), c.getInt(2), c.getString(3), c.getString(4), c.getString(5))) }
+        buildList {
+            while (c.moveToNext()) {
+                if (!hidesProcessStart(c.getInt(2), c.getString(3), c.getString(5))) {
+                    add(ProcessStart(c.getLong(0), c.getInt(1), c.getInt(2), c.getString(3), c.getString(4), c.getString(5)))
+                }
+            }
+        }
     }
 
     fun processStartCounts(from: Long, to: Long): Map<AppKey, Int> = readableDatabase.rawQuery(
@@ -446,14 +469,21 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
         buildMap {
             while (c.moveToNext()) {
                 val uid = c.getInt(0)
-                val app = processStartKey(uid, c.getString(1), c.getString(2))
+                val component = c.getString(2)
+                val process = c.getString(1)
+                if (hidesProcessStart(uid, process, component)) continue
+                val app = processStartKey(uid, process, component)
                 val uidOnly = AppKey(uid, null)
                 val count = c.getInt(3)
                 put(app, (get(app) ?: 0) + count)
-                put(uidOnly, (get(uidOnly) ?: 0) + count)
+                if (!exclusions.hides(uid)) put(uidOnly, (get(uidOnly) ?: 0) + count)
             }
         }
     }
+
+    private fun hidesProcessStart(uid: Int, process: String, component: String): Boolean =
+        MonitoringExclusions.hostingPackage(component)?.let { exclusions.hides(uid, it) }
+            ?: exclusions.hidesProcess(uid, process)
 
     private companion object {
         const val VERSION = 10
@@ -462,11 +492,6 @@ class JiumiStore(context: Context) : SQLiteOpenHelper(context, "jiumi.db", null,
     }
 }
 
-private val componentPackageName = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*")
-
 /** A hosting component can identify a package even when it runs in a shared or custom process. */
-private fun processStartKey(uid: Int, process: String, component: String): AppKey {
-    val host = component.substringBefore('/', missingDelimiterValue = "").trimStart('{')
-    val pkg = host.takeIf(componentPackageName::matches) ?: process.substringBefore(':')
-    return AppKey(uid, pkg)
-}
+private fun processStartKey(uid: Int, process: String, component: String): AppKey =
+    AppKey(uid, MonitoringExclusions.hostingPackage(component) ?: process.substringBefore(':'))

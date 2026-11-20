@@ -100,12 +100,14 @@ internal class ConnectionWatcher(
      * Adds the bytes of one trace; called from the tracing thread. [toWallMs] converts trace time,
      * so each upload is matched with whether the app was in use when it happened.
      */
-    fun addTraffic(flows: Map<NetworkPackets.Flow, NetworkPackets.Bytes>, toWallMs: (Long) -> Long) {
+    fun addTraffic(flows: Map<NetworkPackets.Flow, NetworkPackets.Bytes>, traceStart: Long, toWallMs: (Long) -> Long) {
         if (flows.isEmpty()) return
         synchronized(lock) {
             val now = System.currentTimeMillis()
             for ((flow, bytes) in flows) {
                 if (bytes.sent == 0L && bytes.received == 0L) continue
+                // The trace has no per-packet receive times after aggregation.
+                if (spool.exclusions.blocks(flow.uid, null, traceStart, now)) continue
                 val owner = ports[portKey(flow.uid, flow.proto, flow.localPort)]
                 val contact = if (owner != null) {
                     contacts.getOrPut(owner.key) { Contact(JSONObject(owner.template.toString()), now, countingBytes) }
@@ -124,10 +126,13 @@ internal class ConnectionWatcher(
     }
 
     private fun poll(now: Long) {
+        val exclusions = spool.exclusions
+        contacts.values.removeAll { exclusions.blocks(it.event.getInt("uid"), null, it.first, now) }
         val stateCache = HashMap<Int, String>()
         for ((file, proto) in TABLES) {
             val text = runCatching { File(file).readText() }.getOrNull() ?: continue
             for (s in ProcNet.parse(text, proto)) {
+                if (exclusions.blocks(s.uid, null, now)) continue
                 stateCache.getOrPut(s.uid) { states.state(s.uid) }
                 val key = "${s.uid}|${s.proto}|${s.addr}|${s.port}"
                 val contact = contacts.getOrPut(key) {

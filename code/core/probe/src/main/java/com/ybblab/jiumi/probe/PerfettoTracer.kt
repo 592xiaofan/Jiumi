@@ -115,17 +115,18 @@ internal class PerfettoTracer(
         return incomplete
     }
 
-    private class Session(val process: Process, val file: File)
+    private class Session(val process: Process, val file: File, val startedAt: Long)
 
     private fun startSession(): Session? = runCatching {
         val file = File(TRACE_DIRECTORY, "$packageName-calls-${sessionCounter++ % 4}.pftrace")
         file.delete()
+        val startedAt = System.currentTimeMillis()
         val process = ProcessBuilder("perfetto", "--txt", "-c", "-", "-o", file.path)
             .redirectErrorStream(true).start()
         register(process)
         try {
             process.outputStream.use { it.write(config().toByteArray()) }
-            Session(process, file)
+            Session(process, file, startedAt)
         } catch (error: Exception) {
             process.destroy()
             unregister(process)
@@ -139,7 +140,7 @@ internal class PerfettoTracer(
             session.process.inputStream.use { it.readBytes() }
             check(session.process.waitFor() == 0) { "Perfetto did not finish successfully" }
             check(session.file.isFile && session.file.length() > 0L) { "Perfetto did not produce a trace" }
-            record(session.file.readBytes())
+            record(session.file.readBytes(), session.startedAt)
         } catch (error: Exception) {
             markIncomplete("trace read", error)
         } finally {
@@ -148,13 +149,13 @@ internal class PerfettoTracer(
         }
     }
 
-    private fun record(trace: ByteArray) {
+    private fun record(trace: ByteArray, startedAt: Long) {
         if (packetsOn) {
             val packets = NetworkPackets.parse(trace, packetWatermarkNs)
             packetWatermarkNs = packets.watermarkNs
             // Trace timestamps use the boot clock.
             val offset = System.currentTimeMillis() - SystemClock.elapsedRealtimeNanos() / 1_000_000
-            connections.addTraffic(packets.flows) { ns -> offset + ns / 1_000_000 }
+            connections.addTraffic(packets.flows, startedAt) { ns -> offset + ns / 1_000_000 }
         }
         if (!callsOn) return
         val hostNames = HashMap<Int, String?>()
@@ -177,6 +178,7 @@ internal class PerfettoTracer(
             if (client?.pid == android.os.Process.myPid()) continue
             val uid = client?.uid ?: -1
             val t = offsetMs + call.timestampNs / 1_000_000
+            if (spool.exclusions.blocksProcess(uid, client?.process, t)) continue
             val key = CallKey(uid, client?.pid, client?.process, client?.thread, call.iface, call.method)
             val observed = ObservationState(if (uid < 0) "unknown" else states.stateAt(uid, t), states.screenAt(t))
             val bucket = buckets[key]

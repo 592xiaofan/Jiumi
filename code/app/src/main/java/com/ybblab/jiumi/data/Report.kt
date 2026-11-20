@@ -288,7 +288,7 @@ class ReportBuilder(
             .thenByDescending { it.background }
             .thenByDescending { it.systemBackground }
             .thenByDescending { it.accesses + it.calls }.thenByDescending { it.traffic?.total ?: 0L })
-        store.userActions(from, to).mapTo(timeline) { LogEntry(AppKey(it.uid, it.pkg), TimelineItem.ActionItem(it)) }
+        store.userActions(from, to).filter(::showAction).mapTo(timeline) { LogEntry(AppKey(it.uid, it.pkg), TimelineItem.ActionItem(it)) }
         timeline.sortByDescending { it.item.t }
         return Report(from, groups, apps, attention(apps), timeline, categoryGroups(), rules.groups.associate { it.id to it.icon },
             attentionRules?.routineKinds.orEmpty())
@@ -305,7 +305,7 @@ class ReportBuilder(
         val starts = store.processStarts(from, to, key.uid)
             .filter { it.appKey == key }
         // Behaviors and network activity are told apart: a connection is not something the app read.
-        val actions = key.pkg?.let { store.userActions(from, to, it) }.orEmpty().map { TimelineItem.ActionItem(it) }
+        val actions = key.pkg?.let { store.userActions(from, to, it) }.orEmpty().filter(::showAction).map { TimelineItem.ActionItem(it) }
         val items = (items(accessRows, callRows, emptyList(), starts, data) + actions).sortedByDescending { it.t }
         val routine = kindOf(key).id in attentionRules?.routineKinds.orEmpty()
         // Network activity is one list: where it connected, each with the lookups of its domain, then
@@ -324,6 +324,10 @@ class ReportBuilder(
             domains.values.filter { it.domain !in reached }.sortedWith(compareByDescending<DomainSummary> { it.lookups }.thenByDescending { it.last }),
             systemCounts = key.pkg?.let { pkg -> systemCounts(store.opCounts(from, to, key.uid).filter { it.pkg == pkg }) }.orEmpty(),
             sharedUid = if (key.uid < 0) emptyList() else packagesOfUid(key.uid).sorted().takeIf { it.size > 1 }.orEmpty())
+    }
+
+    private fun showAction(action: JiumiStore.UserAction): Boolean = store.exclusions.let {
+        !it.hides(action.uid, action.pkg) && !it.blocks(action.uid, action.pkg, action.t)
     }
 
     /** The system's counts per kind of data, most first; operations outside every kind are left out. */

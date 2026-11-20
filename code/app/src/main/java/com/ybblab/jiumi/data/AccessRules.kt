@@ -47,11 +47,12 @@ class AccessRules(
         return candidates.filter { id -> categories.any { it.id == id && it.ops.isNotEmpty() } }.toSet()
     }
 
-    fun monitorConfig(callTracing: Boolean, spoolLimitMb: Int): String = JSONObject()
+    fun monitorConfig(callTracing: Boolean, spoolLimitMb: Int, exclusions: JSONArray): String = JSONObject()
         .put("ops", JSONArray(ops))
         .put("calls", JSONObject().put("enabled", callTracing).put("methods", JSONArray(calls))
             .put("providerOperations", JSONObject(providerOperations.mapKeys { it.key.toString() })))
         .put("network", JSONObject().put("enabled", true).put("intervalMs", CONNECTION_POLL_MS).put("packets", true))
+        .put("exclusions", exclusions)
         .put("spool", JSONObject().put("limitMb", spoolLimitMb))
         .toString()
 

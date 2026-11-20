@@ -39,7 +39,10 @@ internal object AppOpsHistory {
      * one a provider made for another app (a "d" flag, proxied) is that app's.
      * JSON array of {"from","to","ops":[{"uid","pkg","op","fg","bg","fgRejected","bgRejected","durationMs"}]}.
      */
-    fun parse(dump: String, ops: Set<String>, since: Long, now: Long, isMakerOp: (String) -> Boolean = { false }): JSONArray {
+    fun parse(
+        dump: String, ops: Set<String>, since: Long, now: Long,
+        exclusions: MonitoringExclusions = MonitoringExclusions(), isMakerOp: (String) -> Boolean = { false }
+    ): JSONArray {
         val makerOps = HashMap<String, String?>()
         fun named(op: String?): String? = when {
             op == null || op in ops || op.startsWith(DumpText.VENDOR_PREFIX) -> op
@@ -89,9 +92,10 @@ internal object AppOpsHistory {
                 line.startsWith("Attribution ") -> op = null
                 line.startsWith("[") -> {
                     val slot = current ?: continue
+                    val owner = pkg ?: continue
+                    if (exclusions.hides(uid, owner) || exclusions.blocks(uid, owner, slot.from, slot.to - 1)) continue
                     val m = counts.find(line) ?: continue
                     val name = named(op) ?: continue
-                    val owner = pkg ?: continue
                     if (uid < 0 || m.groupValues[2].endsWith("d")) continue
                     val totals = slot.ops.getOrPut(Triple(uid, owner, name)) { Totals() }
                     val background = DumpText.state(m.groupValues[1]) in UNATTENDED
