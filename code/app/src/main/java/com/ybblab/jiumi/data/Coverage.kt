@@ -15,9 +15,10 @@ object Coverage {
     /** Heartbeats come every five minutes; one and a half periods of silence is a gap. */
     const val MAX_GAP_MS = 7 * 60_000L + 30_000L
 
+    /** [spans]: the stretches the monitor ran, in order; [coveredMs] is their total. */
     data class Result(
         val coveredMs: Long, val interruptions: Int, val lostEvents: Long,
-        val lastSeen: Long?, val partialTrace: Boolean = false
+        val lastSeen: Long?, val partialTrace: Boolean = false, val spans: List<LongRange> = emptyList()
     )
 
     /** [events] may begin up to [MAX_GAP_MS] before [start]. */
@@ -29,6 +30,12 @@ object Coverage {
         var last: Long? = null
         var stopped = false
         var partialTrace = false
+        val spans = ArrayList<LongRange>()
+        fun run(from: Long, to: Long) {
+            covered += to - from
+            val joined = spans.lastOrNull()
+            if (joined != null && joined.last == from) spans[spans.lastIndex] = joined.first..to else spans += from..to
+        }
         for (e in events.sortedBy { it.t }) {
             if (e.t > until) continue
             // The monitor usually starts just before the session opens: it was running at the start.
@@ -39,10 +46,10 @@ object Coverage {
             if (e.state == "lost") { lost += e.reason?.toLongOrNull() ?: 0L; continue }
             val previous = last
             when {
-                previous == null -> if (e.t - start <= MAX_GAP_MS) covered += e.t - start
+                previous == null -> if (e.t - start <= MAX_GAP_MS) run(start, e.t)
                 e.state == "start" -> interruptions++
                 stopped -> interruptions++
-                e.t - previous <= MAX_GAP_MS -> covered += e.t - previous
+                e.t - previous <= MAX_GAP_MS -> run(previous, e.t)
                 else -> interruptions++
             }
             last = e.t
@@ -51,7 +58,7 @@ object Coverage {
         }
         // Still running: the time since the last note counts while it is recent.
         val tail = last
-        if (end == null && tail != null && !stopped && now - tail <= MAX_GAP_MS) covered += now - tail
-        return Result(covered, interruptions, lost, last, partialTrace)
+        if (end == null && tail != null && !stopped && now - tail <= MAX_GAP_MS) run(tail, now)
+        return Result(covered, interruptions, lost, last, partialTrace, spans)
     }
 }

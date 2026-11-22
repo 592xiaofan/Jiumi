@@ -72,6 +72,13 @@ data class SystemCount(val category: String, val fg: Long, val bg: Long, val rej
 /** [count] records of [category] between [from] and [to], all within 60 minutes. */
 data class Peak(val category: String, val count: Int, val from: Long, val to: Long)
 
+/**
+ * One of the system's own time slots, [from] to [to]: how often [key] used [category] in it by the
+ * system's long-term count ([count], refusals of what it asked for included), [background] of it
+ * while not in front. The system keeps these for weeks, also before monitoring began, but only per slot.
+ */
+data class SystemSlot(val from: Long, val to: Long, val key: AppKey, val category: String, val count: Long, val background: Long)
+
 /** One record or behavior segment of [key], as the cross-app timeline lists it. */
 data class LogEntry(val key: AppKey, val item: TimelineItem)
 
@@ -85,7 +92,9 @@ data class Report(
     val groupOf: Map<String, String> = emptyMap(),
     val groupIcons: Map<String, String> = emptyMap(),
     /** Kinds of caller whose records are routine system work, folded away unless asked for. */
-    val routineKinds: Set<String> = emptySet()
+    val routineKinds: Set<String> = emptySet(),
+    /** The system's long-term counts over the window, slot by slot, for kinds of data Jiumi can name. */
+    val systemSlots: List<SystemSlot> = emptyList()
 ) {
     fun isRoutine(key: AppKey): Boolean = apps.firstOrNull { it.key == key }?.kind?.id in routineKinds
 
@@ -118,8 +127,6 @@ data class AppDetail(
     val summaries: List<BehaviorSummary> = emptyList(),
     /** The app is a caller whose records are routine system work. */
     val routine: Boolean = false,
-    /** Every behavior over the window per time bucket, for the app's chart. */
-    val chart: Buckets? = null,
     /** Addresses contacted, latest first. */
     val destinations: List<Destination> = emptyList(),
     /** Bytes the system counted for the app over the window. */
@@ -290,8 +297,15 @@ class ReportBuilder(
             .thenByDescending { it.accesses + it.calls }.thenByDescending { it.traffic?.total ?: 0L })
         store.userActions(from, to).filter(::showAction).mapTo(timeline) { LogEntry(AppKey(it.uid, it.pkg), TimelineItem.ActionItem(it)) }
         timeline.sortByDescending { it.item.t }
+        val systemSlots = opCounts.flatMap { (key, rows) ->
+            rows.mapNotNull { r ->
+                val category = rules.categoryOf(r.op) ?: return@mapNotNull null
+                if (r.op in rules.activeOnlyOps || r.op in rules.callConfirmedOps) return@mapNotNull null
+                SystemSlot(r.from, r.to, key, category, r.fg + r.bg + rejected(r), r.bg).takeIf { it.count > 0 }
+            }
+        }
         return Report(from, groups, apps, attention(apps), timeline, categoryGroups(), rules.groups.associate { it.id to it.icon },
-            attentionRules?.routineKinds.orEmpty())
+            attentionRules?.routineKinds.orEmpty(), systemSlots)
     }
 
     fun detail(key: AppKey, from: Long, to: Long): AppDetail {
@@ -320,7 +334,7 @@ class ReportBuilder(
         val reached = destinations.map { it.label }.toSet()
         val traffic = if (ownsUidTraffic) traffic(from, to)[key.uid] else null
         return AppDetail(items, categoryGroups(), rules.groups.associate { it.id to it.icon },
-            Behavior.summaries(items, from, to, routine), routine, Behavior.chart(items, from, to, routine), destinations, traffic,
+            Behavior.summaries(items, routine), routine, destinations, traffic,
             domains.values.filter { it.domain !in reached }.sortedWith(compareByDescending<DomainSummary> { it.lookups }.thenByDescending { it.last }),
             systemCounts = key.pkg?.let { pkg -> systemCounts(store.opCounts(from, to, key.uid).filter { it.pkg == pkg }) }.orEmpty(),
             sharedUid = if (key.uid < 0) emptyList() else packagesOfUid(key.uid).sorted().takeIf { it.size > 1 }.orEmpty())

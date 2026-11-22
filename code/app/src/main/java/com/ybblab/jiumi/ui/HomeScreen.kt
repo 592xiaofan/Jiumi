@@ -123,6 +123,12 @@ fun HomeScreen(
         ledger?.timeline.orEmpty().filter { f.matches(it.item) }
     }
     val toggled = rememberToggledDays(state.range, filter)
+    val activity = state.activity
+    // The curve grows at its end while the monitor runs and the range reaches now.
+    // The range the report was built for: the picked one runs ahead while it is rebuilt.
+    val built = state.shownRange
+    val live = state.running && (built != Range.SESSION || state.sessionOpen)
+    var picked by remember(built, state.window.first) { mutableStateOf<Int?>(null) }
     val layout = remember(entries, shown, toggled.value) { timelineRows(entries, shown, toggled.value) { it.item.t } }
     LoadMoreOnScroll(list, more = view == HomeView.TIMELINE.name && layout.more) { shown += LOG_PAGE }
 
@@ -172,8 +178,16 @@ fun HomeScreen(
             return@LazyColumn
         }
 
+        if (activity != null) item {
+            Surface(shape = AppShapes.Card, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                ActivityCard(activity, built, live, picked, { picked = it })
+            }
+        }
+
         item { GroupTitle(stringResource(R.string.attention_title), Modifier.padding(top = 28.dp)) }
-        item { AttentionCard(ledger.attention, onOpenAttention) }
+        item {
+            AttentionCard(ledger.attention, onOpenAttention, activity)
+        }
 
         item {
             ViewTabs(
@@ -343,40 +357,13 @@ private fun RowScope.Figures(figures: List<Pair<String, String>>) {
             figures.forEachIndexed { i, (value, label) ->
                 if (i > 0) withStyle(androidx.compose.ui.text.SpanStyle(color = secondary.copy(alpha = 0.5f))) { append("  ·  ") }
                 withStyle(androidx.compose.ui.text.SpanStyle(color = secondary)) { append(label); append(' ') }
-                withStyle(androidx.compose.ui.text.SpanStyle(color = primary, fontWeight = FontWeight.Medium)) { append(value) }
+                withStyle(androidx.compose.ui.text.SpanStyle(color = primary, fontWeight = FontWeight.SemiBold)) { append(value) }
             }
         },
         style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"), maxLines = 1,
         overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
     )
 }
-
-/**
- * How busy the last hour was: records in each five minutes as a bar, the latest one in the state's
- * colour, so a burst of activity shows at a glance.
- */
-@Composable
-private fun ActivityBars(times: List<Long>, now: Long, tone: Color) {
-    val buckets = remember(times, now / BUCKET_MS) {
-        IntArray(BUCKETS).also { counts ->
-            val start = now - BUCKETS * BUCKET_MS
-            times.forEach { t -> if (t in start..now) counts[((t - start) / BUCKET_MS).toInt().coerceIn(0, BUCKETS - 1)]++ }
-        }
-    }
-    val top = (buckets.maxOrNull() ?: 0).coerceAtLeast(1)
-    val rest = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
-    Row(Modifier.fillMaxWidth().height(32.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom) {
-        buckets.forEachIndexed { i, count ->
-            val fraction by androidx.compose.animation.core.animateFloatAsState(
-                (count.toFloat() / top).coerceAtLeast(0.06f), label = "bar")
-            Box(Modifier.weight(1f).fillMaxHeight(fraction)
-                .background(if (i == buckets.lastIndex) tone else rest, RoundedCornerShape(2.dp)))
-        }
-    }
-}
-
-private const val BUCKETS = 12
-private const val BUCKET_MS = 5 * 60_000L
 
 /** The one step to take, as a small graphite capsule at the panel's right. */
 @Composable
@@ -421,22 +408,24 @@ private fun clock(ms: Long): String {
     return "%d:%02d:%02d".format(total / 3600, total / 60 % 60, total % 60)
 }
 
-/** Monitoring in progress: the running clock and stop, the last hour's activity, and what was seen so far. */
+/**
+ * Monitoring in progress: the running clock and stop, and what this session held so far: how many
+ * apps, how many reads and calls, and the monitor's own memory. Its curve is the session range's, below.
+ */
 @Composable
 private fun SessionStrip(state: MonitorController.UiState, controller: MonitorController) {
     val session = state.session ?: return
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(1000) } }
-    val ledger = state.ledger
-    val times = remember(ledger) { ledger?.timeline.orEmpty().map { it.item.t } }
+    val live = state.live
     val stopLabel = stringResource(R.string.action_stop_monitoring)
     val figures = listOfNotNull(
-        formatCount((ledger?.apps?.size ?: 0).toLong()) to stringResource(R.string.stat_apps),
-        formatCount((ledger?.timeline?.size ?: 0).toLong()) to stringResource(R.string.stat_records),
+        formatCount(state.liveApps.toLong()) + stringResource(R.string.chart_unit_apps) to stringResource(R.string.stat_apps),
+        formatCount((live?.total ?: 0).toLong()) + stringResource(R.string.chart_unit_times) to stringResource(R.string.stat_accesses),
         state.footprint?.let { "${(it.pssKb / 1024).toInt()} MB" to stringResource(R.string.stat_memory) }
     )
     MonitorCapsule(
-        tone = StatusSuccess, live = true,
+        tone = chartColor, live = true,
         title = stringResource(R.string.monitor_live),
         clock = clock(session.coverage.coveredMs + (now - session.measuredAt).coerceAtLeast(0L)),
         corner = {
@@ -445,13 +434,7 @@ private fun SessionStrip(state: MonitorController.UiState, controller: MonitorCo
             }
         },
         detail = {
-            ActivityBars(times, now, StatusSuccess)
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                Text(stringResource(R.string.monitor_last_hour), style = MaterialTheme.typography.labelMedium, color = Ink.tertiary)
-                Spacer(Modifier.weight(1f))
-                Text(stringResource(R.string.monitor_now), style = MaterialTheme.typography.labelMedium, color = Ink.tertiary)
-            }
-            Row(Modifier.fillMaxWidth().padding(top = 10.dp)) { Figures(figures) }
+            Row(Modifier.fillMaxWidth().padding(top = 2.dp)) { Figures(figures) }
         },
         message = if (state.busy == Busy.STOPPING) stringResource(R.string.monitor_saving) else statusMessage(state)
     )
@@ -479,7 +462,7 @@ private fun InterruptedCard(
             detail = { Row(verticalAlignment = Alignment.CenterVertically) {
                 Figures(listOf(
                     formatDuration(session.coverage.coveredMs) to stringResource(R.string.stat_covered),
-                    formatCount((state.ledger?.apps?.size ?: 0).toLong()) to stringResource(R.string.stat_apps)
+                    formatCount((state.ledger?.apps?.size ?: 0).toLong()) + stringResource(R.string.chart_unit_apps) to stringResource(R.string.stat_apps)
                 ))
                 Text(stringResource(R.string.action_end_short), style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Medium, color = Ink.secondary,
@@ -554,9 +537,14 @@ private fun ServiceCard(
 }
 
 @Composable
-private fun AttentionCard(items: List<Attention>, onOpen: (String) -> Unit) {
+private fun AttentionCard(items: List<Attention>, onOpen: (String) -> Unit, activity: com.ybblab.jiumi.data.Activity? = null) {
     val raised = items.filter { it.apps.isNotEmpty() }
     Card {
+        // When it was raised, over the range, then what was raised.
+        if (activity != null && raised.isNotEmpty() && activity.hits.any { it.total > 0 }) {
+            AttentionStrip(activity, Modifier.padding(horizontal = 16.dp, vertical = 14.dp))
+            InsetDivider(start = 16.dp)
+        }
         if (raised.isEmpty()) {
             Text(stringResource(R.string.attention_none), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))

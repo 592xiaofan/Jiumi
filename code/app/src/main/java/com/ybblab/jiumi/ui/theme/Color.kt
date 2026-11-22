@@ -76,3 +76,12 @@ val DarkContainerHighest = Color(0xFF3A3A3C)
 val DarkSeparator = Color(0xFF38383A)
 val DarkInk = Color(0xFFF5F5F7)
 val DarkInkSecondary = Color(0xFF98989F)
+
+// Charts
+// One accent for every chart: a misty purple, a step greyer than the system's indigo so it sits quietly on the
+// cool greys, and away from the blue of switches and selection. On the dark canvas it brightens to read.
+val ChartPurple = Color(0xFF6B5FD3)
+val ChartPurpleDark = Color(0xFFA79DFF)
+// The faintest step of the same purple: the low end of a cell's scale.
+val ChartPurpleFaint = Color(0xFFE4E1F6)
+val ChartPurpleFaintDark = Color(0xFF34305A)

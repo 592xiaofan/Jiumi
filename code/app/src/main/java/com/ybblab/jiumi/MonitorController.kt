@@ -38,6 +38,7 @@ import com.ybblab.jiumi.data.Report
 import com.ybblab.jiumi.data.ReportBuilder
 import com.ybblab.jiumi.data.AppDetail
 import com.ybblab.jiumi.data.Coverage
+import com.ybblab.jiumi.data.Activity
 import com.ybblab.jiumi.data.LogExport
 import com.ybblab.jiumi.data.NetworkUsage
 import com.ybblab.jiumi.data.AppKinds
@@ -118,6 +119,16 @@ class MonitorController(
         val spoolLimitMb: Int = DEFAULT_SPOOL_MB,
         /** The time the report covers. */
         val window: Pair<Long, Long> = 0L to 0L,
+        /** The stretches of [window] the monitor ran, over every session in it. */
+        val spans: List<LongRange> = emptyList(),
+        /** The open session slot by slot, whatever range is picked: the running monitor's card draws it. */
+        val live: Activity? = null,
+        /** How many apps the open session's records came from. */
+        val liveApps: Int = 0,
+        /** [ledger] slot by slot, for the overview's curve. */
+        val activity: Activity? = null,
+        /** The range [ledger] and [activity] were built for; [range] runs ahead of it while a rebuild is under way. */
+        val shownRange: Range = Range.SESSION,
         /** Preinstalled apps may be removed for this user, not only disabled. */
         val allowRemovePreinstalled: Boolean = false,
         /** Expert mode: most core system components may be changed too, each after a warning. */
@@ -160,6 +171,12 @@ class MonitorController(
         val session: SessionView? = null,
         val spoolLimitMb: Int = DEFAULT_SPOOL_MB,
         val window: Pair<Long, Long> = 0L to 0L,
+        val spans: List<LongRange> = emptyList(),
+        val live: Activity? = null,
+        val liveApps: Int = 0,
+        val activity: Activity? = null,
+        /** The range [ledger] and [activity] were built for; [range] runs ahead while a rebuild is under way. */
+        val shownRange: Range = Range.SESSION,
         val allowRemovePreinstalled: Boolean = false,
         val expertMode: Boolean = false,
         val autoRefreeze: Boolean = false,
@@ -328,6 +345,7 @@ class MonitorController(
     private fun saveMonitoringExclusions(next: com.ybblab.jiumi.probe.MonitoringExclusions): Boolean {
         if (next === monitoringExclusions.value) return true
         if (!monitoring.save(next)) return false
+        built.clear()
         local.update { it.copy(ledger = null) }
         MonitorNotice.cancelAlerts(context)
         probe.service.value?.let(::configure)
@@ -696,7 +714,7 @@ class MonitorController(
         }
         val problem = l.problem?.takeUnless { ready && it == Problem.SHIZUKU }
         UiState(pairingState, e.trust, failure, service != null, l.busy, problem, l.footprint, l.range,
-            l.ledger, l.callTracing, l.session, l.spoolLimitMb, l.window, l.allowRemovePreinstalled, l.expertMode,
+            l.ledger, l.callTracing, l.session, l.spoolLimitMb, l.window, l.spans, l.live, l.liveApps, l.activity, l.shownRange, l.allowRemovePreinstalled, l.expertMode,
             l.autoRefreeze, l.notices, e.method, ready, e.shizuku, e.root)
     }.stateIn(scope, SharingStarted.Eagerly, UiState())
 
@@ -1255,17 +1273,68 @@ class MonitorController(
         checkFreezes()
     }
 
+    /** One range's report and what is drawn from it, as built at [at]. */
+    private class Built(val report: Report, val window: Pair<Long, Long>, val spans: List<LongRange>, val activity: Activity, val at: Long)
+
+    /** The latest build of each range (the session one per picked session), so switching shows it at once. */
+    private val built = java.util.concurrent.ConcurrentHashMap<String, Built>()
+
+    private fun builtKey(range: Range, selected: Long?) = if (range == Range.SESSION) "$range:$selected" else range.name
+
+    private fun build(range: Range, session: SessionView?, now: Long): Built {
+        val window = window(session, now, range)
+        val report = builder.report(window.first, window.second)
+        val spans = store.sessions().filter { it.start < window.second && (it.end ?: now) > window.first }
+            .flatMap { coverage(it, now).spans }.sortedBy { it.first }
+        val activity = Activity.of(report.timeline, report.attention, report.apps, window.first, window.second, spans,
+            report.systemSlots, routineKinds = report.routineKinds)
+        return Built(report, window, spans, activity, now)
+    }
+
     private fun rebuild() {
         val now = System.currentTimeMillis()
         val session = chosenSession(now)
-        val window = window(session, now)
-        val report = builder.report(window.first, window.second)
-        local.update { it.copy(ledger = report, session = session, window = window) }
+        val range = local.value.range
+        val selected = local.value.selected
+        val current = build(range, session, now)
+        built[builtKey(range, selected)] = current
+        val window = current.window
+        // The open session, for the running monitor's card: the same curve as the session range shows.
+        val open = store.sessions().firstOrNull()?.takeIf { it.end == null }
+        val live = when {
+            open == null -> null
+            range == Range.SESSION && selected == null -> current
+            else -> build(Range.SESSION, SessionView(open, coverage(open, now), now, latest = true), now)
+                .also { built[builtKey(Range.SESSION, null)] = it }
+        }
+        local.update {
+            it.copy(ledger = current.report, session = session, window = window, spans = current.spans,
+                live = live?.activity, liveApps = live?.report?.apps?.count { a -> a.accesses + a.calls > 0 } ?: 0,
+                activity = current.activity, shownRange = range)
+        }
         rebuiltAt = System.currentTimeMillis()
         rebuildCostMs = rebuiltAt - now
         pendingLive = 0
         showIndicator()
+        // The other ranges, built ahead once they are a while old, so a switch to one shows at once.
+        for (other in Range.entries) {
+            if (other == range) continue
+            val key = builtKey(other, if (other == Range.SESSION) selected else null)
+            if ((built[key]?.at ?: 0L) > now - PREBUILT_FRESH_MS) continue
+            val ahead = build(other, session, System.currentTimeMillis())
+            built[key] = ahead
+            // Switched to it meanwhile: show it now rather than after the next rebuild.
+            if (local.value.range == other && local.value.shownRange != other) show(other, ahead)
+        }
     }
+
+    private fun show(range: Range, b: Built) = local.update {
+        if (it.range != range) it
+        else it.copy(ledger = b.report, window = b.window, spans = b.spans, activity = b.activity, shownRange = range)
+    }
+
+    /** How long a range built ahead stays fresh enough to skip rebuilding it. */
+    private val PREBUILT_FRESH_MS = 60_000L
 
     // Kept under syncLock.
     private var rebuiltAt = 0L
@@ -1295,6 +1364,8 @@ class MonitorController(
 
     fun setRange(range: Range) {
         local.update { it.copy(range = range, selected = if (range == Range.SESSION) it.selected else null) }
+        // Built ahead: shown at once, then brought up to date.
+        built[builtKey(range, local.value.selected)]?.let { show(range, it) }
         refresh()
     }
 

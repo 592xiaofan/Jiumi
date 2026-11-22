@@ -3,11 +3,8 @@
 
 package com.ybblab.jiumi.data
 
-/**
- * Occurrences per time bucket starting at [start], each [stepMs] long (an hour or a local day);
- * [flagged] counts those that happened while the app was not in use.
- */
-class Buckets(val start: Long, val stepMs: Long, val total: IntArray, val flagged: IntArray) {
+/** Occurrences per time bucket starting at [start], each [stepMs] long (minutes, an hour or a local day). */
+class Buckets(val start: Long, val stepMs: Long, val total: IntArray) {
     val size: Int get() = total.size
 }
 
@@ -20,8 +17,7 @@ data class BehaviorSummary(
     val count: Int,
     val unattended: Int,
     val denied: Int,
-    val last: Long,
-    val buckets: Buckets
+    val last: Long
 )
 
 object Behavior {
@@ -29,27 +25,24 @@ object Behavior {
                          val unattended: Boolean, val denied: Boolean)
 
     /**
-     * One summary per category in [items] over [from, to], most worrying first: unattended and
+     * One summary per category in [items], most worrying first: unattended and
      * refused reads before plain counts. [routine] callers have no meaningful app state, so none of
      * their reads count as unattended.
      */
-    fun summaries(items: List<TimelineItem>, from: Long, to: Long, routine: Boolean = false,
-                  offsetMs: (Long) -> Long = ::localOffset): List<BehaviorSummary> =
+    fun summaries(items: List<TimelineItem>, routine: Boolean = false): List<BehaviorSummary> =
         records(items, routine).groupBy { it.category }.map { (category, list) ->
             BehaviorSummary(
                 category = category,
                 count = list.sumOf { it.count },
                 unattended = list.filter { it.unattended }.sumOf { it.count },
                 denied = list.filter { it.denied }.sumOf { it.count },
-                last = list.maxOf { maxOf(it.t, it.end) },
-                buckets = buckets(list, from, to, offsetMs)
+                last = list.maxOf { maxOf(it.t, it.end) }
             )
         }.sortedWith(compareByDescending<BehaviorSummary> { it.unattended + it.denied }.thenByDescending { it.count })
 
-    /** Every behavior of the app over [from, to], per bucket. */
-    fun chart(items: List<TimelineItem>, from: Long, to: Long, routine: Boolean = false,
-              offsetMs: (Long) -> Long = ::localOffset): Buckets =
-        buckets(records(items, routine), from, to, offsetMs)
+    /** Every behavior in [items] over [from, to], per bucket. */
+    fun chart(items: List<TimelineItem>, from: Long, to: Long, offsetMs: (Long) -> Long = ::localOffset): Buckets =
+        buckets(records(items, false), from, to, offsetMs)
 
     private fun flat(items: List<TimelineItem>) = items.flatMap { (it as? TimelineItem.Segment)?.members ?: listOf(it) }
 
@@ -69,16 +62,25 @@ object Behavior {
     fun unattended(state: String?, screen: Boolean?): Boolean = ReportBuilder.isUnattended(state, screen)
 
     /**
-     * Hours for a window of up to a day, local days beyond. A window starting at local midnight and
-     * no longer than a day shows all 24 hours, the ones still to come empty, as a clock face would.
+     * Local days for a window longer than a day. Up to a day, the finest of [STEPS] that keeps it within
+     * [MAX_SHORT] buckets, so a short session is told in minutes and a long one in hours; a window
+     * starting at local midnight shows all 24 hours, the ones still to come empty, as a clock face would.
      */
     fun buckets(from: Long, to: Long, offsetMs: (Long) -> Long = ::localOffset): Buckets {
-        val step = if (to - from <= DAY) HOUR else DAY
         val offset = offsetMs(from)
+        val wholeDay = to - from <= DAY && Math.floorMod(from + offset, DAY) == 0L
+        val step = when {
+            to - from > DAY -> DAY
+            wholeDay -> HOUR
+            else -> STEPS.firstOrNull { step -> count(from, to, step, offset) <= MAX_SHORT } ?: HOUR
+        }
+        val bars = if (wholeDay) 24 else count(from, to, step, offset).coerceIn(1, MAX_BARS)
+        return Buckets(Math.floorDiv(from + offset, step) * step - offset, step, IntArray(bars))
+    }
+
+    private fun count(from: Long, to: Long, step: Long, offset: Long): Int {
         val start = Math.floorDiv(from + offset, step) * step - offset
-        val wholeDay = step == HOUR && Math.floorMod(from + offset, DAY) == 0L
-        val bars = if (wholeDay) 24 else ((to - start + step - 1) / step).toInt().coerceIn(1, MAX_BARS)
-        return Buckets(start, step, IntArray(bars), IntArray(bars))
+        return ((to - start + step - 1) / step).toInt()
     }
 
     private fun buckets(records: List<Record>, from: Long, to: Long, offsetMs: (Long) -> Long): Buckets {
@@ -87,20 +89,29 @@ object Behavior {
             val i = index(b, r.t, offsetMs)
             if (i !in 0 until b.size) return@forEach
             b.total[i] += r.count
-            if (r.unattended) b.flagged[i] += r.count
         }
         return b
     }
 
-    /** Days are counted on the local calendar, so a daylight-saving change does not shift them. */
-    private fun index(b: Buckets, t: Long, offsetMs: (Long) -> Long): Int =
-        if (b.stepMs == HOUR) Math.floorDiv(t - b.start, HOUR).toInt()
+    /** The bucket [t] falls in. Days are counted on the local calendar, so a daylight-saving change does not shift them. */
+    fun index(b: Buckets, t: Long, offsetMs: (Long) -> Long = ::localOffset): Int =
+        if (b.stepMs < DAY) Math.floorDiv(t - b.start, b.stepMs).toInt()
         else (Math.floorDiv(t + offsetMs(t), DAY) - Math.floorDiv(b.start + offsetMs(b.start), DAY)).toInt()
 
-    private fun localOffset(t: Long): Long = java.util.TimeZone.getDefault().getOffset(t).toLong()
+    /** Where bucket [i] begins: local midnight for days, so a daylight-saving day is 23 or 25 hours. */
+    fun startOf(b: Buckets, i: Int, offsetMs: (Long) -> Long = ::localOffset): Long {
+        if (b.stepMs < DAY) return b.start + i * b.stepMs
+        val guess = b.start + i * DAY
+        return Math.floorDiv(guess + offsetMs(guess) + HOUR * 12, DAY) * DAY - offsetMs(guess)
+    }
+
+    fun localOffset(t: Long): Long = java.util.TimeZone.getDefault().getOffset(t).toLong()
 
     /** A month of days at most; longer windows are not offered. */
     const val MAX_BARS = 31
+    /** Most buckets a window of under a day is cut into. */
+    const val MAX_SHORT = 24
+    private val STEPS = listOf(5 * 60_000L, 15 * 60_000L, 30 * 60_000L, 60 * 60_000L, 2 * 60 * 60_000L)
     const val HOUR = 3_600_000L
     const val DAY = 24 * HOUR
 }

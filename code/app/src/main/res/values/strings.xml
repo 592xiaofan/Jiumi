@@ -594,8 +594,8 @@
     <string name="risk_core">This core component is bound deeply into the system. Changing it may break related features, or at worst stop the phone from starting, leaving only a factory reset. Jiumi does not promise it can be undone; the risk is yours.</string>
     <string name="refusal_platform_expert">Core system component, left alone by default; turn on expert mode in Settings › Advanced to change it.</string>
     <string name="stat_apps">Apps</string>
-    <string name="stat_records">Records</string>
-    <string name="stat_memory">Memory</string>
+    <string name="stat_accesses">Reads</string>
+    <string name="stat_memory">Mem</string>
     <string name="stat_covered">Monitored</string>
     <string name="action_stop_monitoring">Stop monitoring</string>
     <string name="source_store">From app stores</string>
@@ -657,7 +657,6 @@
     <string name="service_stopping">Stopping…</string>
     <string name="service_failed">Did not start</string>
     <string name="monitor_live">Monitoring</string>
-    <string name="monitor_last_hour">1 hour ago</string>
     <string name="monitor_now">Now</string>
     <string name="monitor_last">Last time %1$s, monitored %2$s</string>
     <string name="action_resume_short">Resume</string>
@@ -792,4 +791,22 @@
     <string name="network_adb_manual_hint">Enter the port number already open on this phone.</string>
     <string name="network_adb_after_reboot">After a restart, Jiumi can reconnect only if the phone opens an ADB port again.</string>
     <string name="connection_current_method">Current method</string>
+    <!-- Activity chart: short labels set in small capitals -->
+    <string name="chart_total">TOTAL</string>
+    <string name="chart_avg">AVG</string>
+    <string name="chart_peak">PEAK</string>
+    <string name="chart_per_day">/d</string>
+    <string name="chart_per_hour">/h</string>
+    <string name="chart_per_hours">/%1$dh</string>
+    <string name="chart_per_minutes">/%1$dm</string>
+    <string name="chart_unit_times">""</string>
+    <string name="chart_unit_apps">""</string>
+    <string name="chart_attention_when">When</string>
+    <string name="chart_less">Less</string>
+    <string name="chart_more">More</string>
+    <string name="chart_background">BACKGROUND</string>
+    <string name="chart_unrecorded">No records</string>
+    <string name="chart_not_monitored">Not monitored</string>
+    <string name="attention_slot_none">Nothing raised</string>
+    <string name="attention_slot_apps">%1$d apps</string>
 </resources>

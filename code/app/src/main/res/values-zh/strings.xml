@@ -585,7 +585,7 @@
     <string name="risk_core">这是和系统深度绑定的核心组件。改动后相关功能可能失效，严重时手机无法开机，只能恢复出厂设置。揪咪不保证能恢复，风险由你自行承担。</string>
     <string name="refusal_platform_expert">系统核心组件，默认无法停用或卸载，可在「设置 › 高级」开启专家模式后改动。</string>
     <string name="stat_apps">应用</string>
-    <string name="stat_records">记录</string>
+    <string name="stat_accesses">访问</string>
     <string name="stat_memory">内存</string>
     <string name="stat_covered">实际监测</string>
     <string name="action_stop_monitoring">停止监测</string>
@@ -648,7 +648,6 @@
     <string name="service_stopping">停止中…</string>
     <string name="service_failed">未能启动</string>
     <string name="monitor_live">监测中</string>
-    <string name="monitor_last_hour">1 小时前</string>
     <string name="monitor_now">现在</string>
     <string name="monitor_last">上次 %1$s，实际监测 %2$s</string>
     <string name="action_resume_short">恢复</string>
@@ -782,4 +781,22 @@
     <string name="network_adb_manual_hint">填入手机上已经开启的端口号。</string>
     <string name="network_adb_after_reboot">重启后，只有手机重新开启了 ADB 端口，揪咪才能连上。</string>
     <string name="connection_current_method">当前连接方式</string>
+    <!-- 活动图：简短标签 -->
+    <string name="chart_total">总计</string>
+    <string name="chart_avg">均值</string>
+    <string name="chart_peak">峰值</string>
+    <string name="chart_per_day">/天</string>
+    <string name="chart_per_hour">/时</string>
+    <string name="chart_per_hours">/%1$d 时</string>
+    <string name="chart_per_minutes">/%1$d 分</string>
+    <string name="chart_unit_times">" 次"</string>
+    <string name="chart_unit_apps">" 个"</string>
+    <string name="chart_attention_when">关注时段</string>
+    <string name="chart_less">少</string>
+    <string name="chart_more">多</string>
+    <string name="chart_background">后台</string>
+    <string name="chart_unrecorded">无记录</string>
+    <string name="chart_not_monitored">未监测</string>
+    <string name="attention_slot_none">没有需要关注的行为</string>
+    <string name="attention_slot_apps">%1$d 个应用</string>
 </resources>

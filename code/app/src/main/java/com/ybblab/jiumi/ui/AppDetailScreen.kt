@@ -110,6 +110,19 @@ fun AppDetailScreen(
     var shown by rememberSaveable(key) { mutableStateOf(LOG_PAGE) }
     var allDestinations by rememberSaveable(key) { mutableStateOf(false) }
     val list = rememberLazyListState()
+    val ledger = state.ledger
+    // Worked out away from the main thread: a month of records takes a moment.
+    val activity by produceState<com.ybblab.jiumi.data.Activity?>(null, ledger, state.spans, key, category) {
+        value = ledger?.let { l ->
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                com.ybblab.jiumi.data.Activity.of(l.timeline.filter { it.key == key }, l.attention, l.apps,
+                    state.window.first, state.window.second, state.spans, l.systemSlots.filter { it.key == key }, category,
+                    routineKinds = l.routineKinds)
+            }
+        }
+    }
+    val live = state.running && (state.shownRange != Range.SESSION || state.sessionOpen)
+    var picked by remember(key, state.shownRange, category, state.window.first) { mutableStateOf<Int?>(null) }
 
     val all = detail?.items.orEmpty()
     val shownItems = all.filter { category == null || categoryOf(it) == category }
@@ -198,15 +211,14 @@ fun AppDetailScreen(
             )
         }
 
-        // Behaviors: a chart of how often (of the chosen kind, when one is chosen), then one row per kind.
+        // Behaviors: a curve of how often (of the chosen kind, when one is chosen), then one row per kind.
         val summaries = detail?.summaries.orEmpty()
-        val chart = summaries.firstOrNull { it.category == category }?.buckets ?: detail?.chart
         if (summaries.isNotEmpty()) {
             item { GroupTitle(stringResource(R.string.section_did), Modifier.padding(top = 24.dp)) }
             item {
                 Card {
-                    if (chart != null) {
-                        BehaviorChart(chart, routine)
+                    activity?.let {
+                        ActivityCard(it, state.shownRange, live, picked, { picked = it })
                         InsetDivider(start = 16.dp)
                     }
                     summaries.forEachIndexed { index, s ->
