@@ -506,15 +506,21 @@ class MonitorController(
      * apps the user added (which the shell may always do), the monitor makes the change as the shell.
      * The answer has the monitor's shape: {"ok","output","failure"?,"running"?}.
      */
-    private fun changePackage(service: com.ybblab.jiumi.probe.IProbeService, pkg: String, action: ManageAction): org.json.JSONObject? =
-        changeAsRoot(service, pkg, action)
-            ?: runCatching { org.json.JSONObject(service.managePackage(action.id, pkg)) }.getOrNull()
+    private fun changePackage(service: com.ybblab.jiumi.probe.IProbeService, pkg: String, action: ManageAction): JSONObject? {
+        val result = changeAsRoot(service, pkg, action)
+            ?: runCatching { JSONObject(service.managePackage(action.id, pkg)) }.getOrNull()
+        if (result != null) return result
+        // A disconnected probe may have already sent the change. Do not start another attempt.
+        return if (action == ManageAction.DISABLE || action == ManageAction.ENABLE) {
+            JSONObject().put("ok", false).put("failure", PackageChangeFailure.UNVERIFIED.name)
+        } else null
+    }
 
     /**
      * pm disable as root sets the system's own DISABLED state, which the shell cannot set and some
      * phones refuse the shell's DISABLED_USER for; some phones refuse the shell removing their
      * preinstalled apps too. The same commands as the shell's run as root, for this user only, and the
-     * monitor then reads the result back. Null when root cannot be had, so the shell way is tried instead.
+     * monitor then reads the result back. Freeze and enable keep verifying after an uncertain Root response.
      */
     private fun changeAsRoot(service: com.ybblab.jiumi.probe.IProbeService, pkg: String, action: ManageAction): org.json.JSONObject? {
         if (!Management.isPackageName(pkg)) return null
@@ -527,9 +533,13 @@ class MonitorController(
             else -> return null
         }
         val checkRunning = action == ManageAction.DISABLE || action == ManageAction.REMOVE
-        val output = access.asRoot(command, ROOT_COMMAND_MS) ?: return null
-        val result = org.json.JSONObject().put("output", output.take(MAX_COMMAND_OUTPUT)).put("root", true)
-        PackageChangeFailure.fromCommandOutput(output)?.let { return result.put("ok", false).put("failure", it.name) }
+        val method = access.method.value
+        val rootSelected = method == AccessMethod.ROOT || (method == AccessMethod.SHIZUKU && access.shizuku.refresh().root)
+        if (!rootSelected) return null
+        val output = access.asRoot(command, ROOT_COMMAND_MS)
+        if (output == null && action != ManageAction.DISABLE && action != ManageAction.ENABLE) return null
+        val result = JSONObject().put("output", output.orEmpty().take(MAX_COMMAND_OUTPUT)).put("root", true)
+        output?.let(PackageChangeFailure::fromCommandOutput)?.let { return result.put("ok", false).put("failure", it.name) }
         val state = runCatching { org.json.JSONObject(service.packageState(pkg, checkRunning)) }.getOrNull()
             ?.takeIf { it.has("enabled") }
             ?: return result.put("ok", false).put("failure", PackageChangeFailure.UNVERIFIED.name)
@@ -541,7 +551,8 @@ class MonitorController(
             ManageAction.REMOVE -> !installed
             else -> installed
         }
-        if (!applied) return result.put("ok", false).put("failure", PackageChangeFailure.NOT_APPLIED.name)
+        if (!applied) return result.put("ok", false).put("failure",
+            if (output == null) PackageChangeFailure.UNVERIFIED.name else PackageChangeFailure.NOT_APPLIED.name)
         return result.put("ok", true).apply { (state.opt("running") as? Boolean)?.let { put("running", it) } }
     }
 

@@ -5,7 +5,7 @@ package com.ybblab.jiumi.probe
 
 /** Contract shared by the app and the shell-identity monitor started from the same APK. */
 object ProbeProtocol {
-    const val VERSION = 20
+    const val VERSION = 21
     const val STOP_PARTIAL_TRACE = "partial_trace"
     const val SHELL_UID = 2000
     const val MAIN_CLASS = "com.ybblab.jiumi.probe.ProbeMain"
@@ -27,7 +27,10 @@ enum class PackageChangeFailure {
     PERMISSION_DENIED, NOT_APPLIED, UNVERIFIED;
 
     companion object {
-        private val permissionDenial = Regex("""^(?:Error:\s*)?(?:(?:java\.lang\.)?SecurityException|Permission Denial)(?::|$)""")
+        private val permissionDenial = Regex(
+            """^(?:Error:\s*)?(?:(?:java\.lang\.)?Security\s*Exception|Permission Denial|Permission denied)(?::|\.|$)""",
+            RegexOption.IGNORE_CASE
+        )
 
         fun fromCommandOutput(output: String): PackageChangeFailure? = PERMISSION_DENIED.takeIf {
             output.lineSequence().any { line -> permissionDenial.containsMatchIn(line.trimStart()) }

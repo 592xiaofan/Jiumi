@@ -8,12 +8,17 @@ import java.util.concurrent.TimeUnit
 /** Runs a short platform command as the shell user, with a deadline and bounded output. */
 internal object Shell {
     class Result(val exitCode: Int, val output: String, val truncated: Boolean)
+    class StartFailed(cause: java.io.IOException) : java.io.IOException(cause)
 
     private const val MAX_OUTPUT_CHARS = 8_000_000
 
     /** [stdinFile] is streamed to the command, for input too large to hold in memory. */
     fun run(command: List<String>, stdin: String? = null, timeoutMs: Long = 10_000, stdinFile: java.io.File? = null): Result {
-        val process = ProcessBuilder(command).redirectErrorStream(true).start()
+        val process = try {
+            ProcessBuilder(command).redirectErrorStream(true).start()
+        } catch (error: java.io.IOException) {
+            throw StartFailed(error)
+        }
         // Fed from its own thread, so a command that writes while it reads cannot stall on a full pipe.
         val feeder = Thread {
             runCatching {

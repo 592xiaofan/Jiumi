@@ -239,12 +239,10 @@ internal class ProbeService(
         val user = Binder.getCallingUid() / PER_USER_RANGE
         val target = listOf("--user", "$user", packageName)
         return when (action) {
-            "disable" -> changePackageState(listOf("pm", "disable-user") + target, user, packageName, checkRunning = true) {
-                it.disabledByUser
-            }
-            "enable" -> changePackageState(listOf("pm", "enable") + target, user, packageName) {
-                it.installed && it.enabled == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-            }
+            "disable" -> changeEnabled(listOf("pm", "disable-user") + target, user, packageName,
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER)
+            "enable" -> changeEnabled(listOf("pm", "enable") + target, user, packageName,
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED)
             "unsuspend" -> changePackageState(listOf("pm", "unsuspend") + target, user, packageName) {
                 it.installed && it.suspended == false
             }
@@ -259,11 +257,47 @@ internal class ProbeService(
         }
     }
 
-    private fun manageResult(ok: Boolean, output: String, failure: PackageChangeFailure? = null, running: Boolean? = null) =
+    private fun manageResult(
+        ok: Boolean, output: String, failure: PackageChangeFailure? = null, running: Boolean? = null, path: String? = null
+    ) =
         JSONObject().put("ok", ok).put("output", output.take(MAX_OUTPUT)).apply {
             if (!ok) (failure ?: PackageChangeFailure.fromCommandOutput(output))?.let { put("failure", it.name) }
             if (running != null) put("running", running)
+            if (path != null) put("path", path)
         }.toString()
+
+    private fun changeEnabled(command: List<String>, user: Int, pkg: String, target: Int): String {
+        val token = Binder.clearCallingIdentity()
+        val result = try {
+            changeEnabledSetting(target, { readEnabled(pkg, user) }, { runEnabledCommand(command) }) {
+                PackageEnabledBinder.write(pkg, user, target)
+            }
+        } finally {
+            Binder.restoreCallingIdentity(token)
+        }
+        if (result.failure != null || result.path == "pm,binder") ProbeMain.log("Package enable state $target: ${result.attempts}")
+        val running = if (result.failure == null && target == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER)
+            packageProcessRunning(pkg, user) else null
+        return manageResult(result.failure == null, result.output, result.failure, running, result.path)
+    }
+
+    private fun readEnabled(pkg: String, user: Int): Int? = PackageEnabledBinder.read(pkg, user)
+        ?: runCatching { readPackageDump(pkg, user)?.userStates?.get(pkg)?.takeIf { it.installed }?.enabled }.getOrNull()
+
+    private fun runEnabledCommand(command: List<String>): PackageCommand = try {
+        val result = Shell.run(command, timeoutMs = 60_000)
+        val output = result.output.trim()
+        val outcome = when {
+            PackageChangeFailure.fromCommandOutput(output) == PackageChangeFailure.PERMISSION_DENIED -> PackageCommandOutcome.DENIED
+            result.truncated -> PackageCommandOutcome.UNKNOWN
+            else -> PackageCommandOutcome.FINISHED
+        }
+        PackageCommand(outcome, output)
+    } catch (error: Shell.StartFailed) {
+        PackageCommand(PackageCommandOutcome.UNAVAILABLE, error.toString())
+    } catch (error: Exception) {
+        PackageCommand(PackageCommandOutcome.UNKNOWN, error.toString())
+    }
 
     /** Runs a package command; pm prints "Success" or the new state, and a failure exits non-zero or names it. */
     private fun runPm(command: List<String>): Pair<Boolean, String> {

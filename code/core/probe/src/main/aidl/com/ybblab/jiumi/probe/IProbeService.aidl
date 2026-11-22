@@ -40,6 +40,7 @@ interface IProbeService {
      * "failure", when known, is "PERMISSION_DENIED", "NOT_APPLIED" (the observed state differs from
      * the requested state), or "UNVERIFIED" (the state could not be read after the command).
      * "running", when available after a verified disable or removal, reports the observed process state.
+     * For disable and enable, "path" lists the attempted shell command and, when used, framework Binder.
      */
     String managePackage(String action, String packageName);
     /**
