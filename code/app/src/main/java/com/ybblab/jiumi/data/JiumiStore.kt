@@ -381,13 +381,12 @@ class JiumiStore(context: Context, private val exclusionState: StateFlow<Monitor
             SQLiteDatabase.CONFLICT_REPLACE)
     }
 
-    fun insertAccess(db: SQLiteDatabase, a: Access) {
+    fun insertAccess(db: SQLiteDatabase, a: Access): Boolean =
         db.insertWithOnConflict("access", null, ContentValues().apply {
             put("t", a.t); put("end_t", a.end); put("op", a.op); put("uid", a.uid); put("pkg", a.pkg); put("attr", a.attr)
             put("count", a.count); put("state", a.state); put("screen", a.screen?.let { if (it) 1 else 0 })
             put("result", a.result); put("proxied", if (a.proxied) 1 else 0); put("source", a.source)
-        }, SQLiteDatabase.CONFLICT_IGNORE)
-    }
+        }, SQLiteDatabase.CONFLICT_IGNORE) != -1L
 
     /** Closes the newest open session of the same operation and caller. */
     fun closeSession(db: SQLiteDatabase, op: String, uid: Int, pkg: String?, attr: String?, end: Long) {

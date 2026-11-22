@@ -86,7 +86,7 @@ data class LogEntry(val key: AppKey, val item: TimelineItem)
  * [timeline]: every app's records over the window, newest first. [groupOf] maps each category to its
  * first-level kind and [groupIcons] names each kind's symbol.
  */
-data class Report(
+class Report(
     val from: Long, val groups: List<GroupSummary>, val apps: List<AppSummary>, val attention: List<Attention> = emptyList(),
     val timeline: List<LogEntry> = emptyList(),
     val groupOf: Map<String, String> = emptyMap(),
@@ -96,6 +96,10 @@ data class Report(
     /** The system's long-term counts over the window, slot by slot, for kinds of data Jiumi can name. */
     val systemSlots: List<SystemSlot> = emptyList()
 ) {
+    internal val timelineSource = TimelineSource(timeline, LogEntry::item)
+    internal val latestNetwork = timeline.firstOrNull { it.item is TimelineItem.NetItem ||
+        (it.item as? TimelineItem.Segment)?.head is TimelineItem.NetItem }?.item?.t
+
     fun isRoutine(key: AppKey): Boolean = apps.firstOrNull { it.key == key }?.kind?.id in routineKinds
 
     val networkApps: List<AppSummary> get() = apps.filter { it.traffic != null || it.destinations > 0 }
@@ -118,7 +122,7 @@ data class Destination(
  * [items]: the app's behaviors, network conversations aside; [groupOf] maps each category to its
  * first-level kind, for filtering. [destinations] and [traffic] tell its network activity.
  */
-data class AppDetail(
+class AppDetail(
     val items: List<TimelineItem>,
     val groupOf: Map<String, String> = emptyMap(),
     /** Symbol of each first-level kind, by kind id. */
@@ -141,7 +145,9 @@ data class AppDetail(
     val systemCounts: List<SystemCount> = emptyList(),
     /** Every package that runs under the app's uid, when more than one does: records by uid alone cannot tell them apart. */
     val sharedUid: List<String> = emptyList()
-)
+) {
+    internal val timelineSource = TimelineSource(items) { it }
+}
 
 sealed interface TimelineItem {
     val t: Long
@@ -165,8 +171,15 @@ sealed interface TimelineItem {
     /** Repeated records of one behavior, newest first; [head] stands for them in lists. */
     data class Segment(val members: List<TimelineItem>) : TimelineItem {
         val head: TimelineItem get() = members.first()
-        val first: Long get() = members.minOf { it.t }
-        override val t get() = members.maxOf { it.t }
+        val first: Long = members.minOf { it.t }
+        override val t: Long = members.maxOf { it.t }
+        val count: Int = members.sumOf(Segments::count)
+        internal val actionSamples = members.distinctBy(TimelineItem::actionKey)
+        internal val destinations = members.mapNotNull { (it as? NetItem)?.label }.distinct()
+        internal val network = (head as? NetItem)?.let { summarizeNetwork(members.filterIsInstance<NetItem>()) }
+        internal val sameActionCalls = members.filterIsInstance<AccessItem>().asSequence().flatMap { it.calls.asSequence() }
+            .groupingBy { "${it.iface}.${it.method}" }.fold(0) { total, call -> total + call.count }
+        internal val pages by lazy { TimelinePages.from(members) { it } }
     }
 
     /** Something the user did to the app from here: disabled, enabled, uninstalled, removed or restored it. */
@@ -184,6 +197,35 @@ sealed interface TimelineItem {
     ) : TimelineItem {
         override val t get() = connection.t
     }
+}
+
+internal fun TimelineItem.actionKey(): List<String> = when (this) {
+    is TimelineItem.AccessItem -> listOf("access", access.op)
+    is TimelineItem.CallItem -> listOf("call", call.iface, call.method)
+    is TimelineItem.ActionItem -> listOf("action", action.action)
+    else -> emptyList()
+}
+
+private fun summarizeNetwork(nets: List<TimelineItem.NetItem>): TimelineItem.NetItem {
+    if (nets.size == 1) return nets.single()
+    var sent: Long? = null
+    var received: Long? = null
+    var sentUnattended: Long? = null
+    var count = 0
+    var flagged = false
+    var unattended: TimelineItem.NetItem? = null
+    for (net in nets) {
+        val connection = net.connection
+        connection.sent?.let { sent = (sent ?: 0L) + it }
+        connection.received?.let { received = (received ?: 0L) + it }
+        connection.sentUnattended?.let { sentUnattended = (sentUnattended ?: 0L) + it }
+        count += connection.count
+        flagged = flagged || net.sentInBackground
+        if (unattended == null && ReportBuilder.isUnattended(connection.state, connection.screen)) unattended = net
+    }
+    val base = unattended ?: nets.first()
+    return base.copy(connection = base.connection.copy(count = count, sent = sent, received = received,
+        sentUnattended = sentUnattended), sentInBackground = flagged)
 }
 
 /**
@@ -205,6 +247,11 @@ class ReportBuilder(
     /** Whether [pkg] is bound by the system as one of its location providers. */
     private val locationProviderOf: (pkg: String?) -> Boolean = { false }
 ) {
+    private data class GroupedRecords(val inputs: List<TimelineItem>, val records: List<TimelineItem>)
+    private val groupedByWindow = LinkedHashMap<Long, Map<AppKey, GroupedRecords>>()
+
+    internal fun clearGroupCache() = synchronized(groupedByWindow) { groupedByWindow.clear() }
+
     /** One sensitive access or call, for summaries. */
     private class Event(
         val category: String, val key: AppKey, val count: Int, val t: Long, val end: Long, val unattended: Boolean,
@@ -218,7 +265,11 @@ class ReportBuilder(
         val absorbed: Map<JiumiStore.Access, List<JiumiStore.Call>> = emptyMap()
     )
 
-    fun report(from: Long, to: Long): Report {
+    fun report(from: Long, to: Long, reuseGroups: Boolean = false): Report {
+        // Interactive ranges may overlap. Two snapshots cover the selected range and the running session.
+        // Exports and notification-only reports do not need to retain their raw grouping inputs.
+        val previous = if (reuseGroups) synchronized(groupedByWindow) { groupedByWindow[from] }.orEmpty() else emptyMap()
+        val next = if (reuseGroups) HashMap<AppKey, GroupedRecords>() else null
         val data = classify(store.accesses(from, to), store.calls(from, to))
         val starts = store.processStartCounts(from, to)
         val keyedAccesses = data.accesses.map { AppKey(it.first.uid, it.first.pkg) to it }
@@ -260,8 +311,11 @@ class ReportBuilder(
             val accesses = accessesByKey[key].orEmpty()
             val calls = callsByKey[key].orEmpty()
             val nets = conversations(contacts, names)
-            items(accesses, calls, nets, emptyList(), data)
-                .mapTo(timeline) { LogEntry(key, it) }
+            val inputs = records(accesses, calls, nets, emptyList(), data)
+            val group = previous[key]?.takeIf { it.inputs == inputs }
+                ?: GroupedRecords(inputs, Segments.merge(inputs))
+            next?.put(key, group)
+            group.records.mapTo(timeline) { LogEntry(key, it) }
             val categoryWeights = (accesses.map { it.second to it.first.count } + calls.map { it.second to it.first.count })
                 .groupBy({ it.first }, { it.second }).mapValues { it.value.sum() }
             AppSummary(
@@ -297,6 +351,11 @@ class ReportBuilder(
             .thenByDescending { it.accesses + it.calls }.thenByDescending { it.traffic?.total ?: 0L })
         store.userActions(from, to).filter(::showAction).mapTo(timeline) { LogEntry(AppKey(it.uid, it.pkg), TimelineItem.ActionItem(it)) }
         timeline.sortByDescending { it.item.t }
+        if (next != null) synchronized(groupedByWindow) {
+            groupedByWindow.remove(from)
+            groupedByWindow[from] = next
+            if (groupedByWindow.size > 2) groupedByWindow.remove(groupedByWindow.keys.first())
+        }
         val systemSlots = opCounts.flatMap { (key, rows) ->
             rows.mapNotNull { r ->
                 val category = rules.categoryOf(r.op) ?: return@mapNotNull null
@@ -320,7 +379,7 @@ class ReportBuilder(
             .filter { it.appKey == key }
         // Behaviors and network activity are told apart: a connection is not something the app read.
         val actions = key.pkg?.let { store.userActions(from, to, it) }.orEmpty().filter(::showAction).map { TimelineItem.ActionItem(it) }
-        val items = (items(accessRows, callRows, emptyList(), starts, data) + actions).sortedByDescending { it.t }
+        val items = (Segments.merge(records(accessRows, callRows, emptyList(), starts, data)) + actions).sortedByDescending { it.t }
         val routine = kindOf(key).id in attentionRules?.routineKinds.orEmpty()
         // Network activity is one list: where it connected, each with the lookups of its domain, then
         // what it only looked up.
@@ -369,8 +428,8 @@ class ReportBuilder(
 
     private fun sumOrNull(values: List<Long?>): Long? = values.filterNotNull().takeIf { it.isNotEmpty() }?.sum()
 
-    /** One app's records as behavior segments, with its network conversations [nets]. */
-    private fun items(
+    /** One application's classified records before segment grouping. */
+    private fun records(
         accessRows: List<Pair<JiumiStore.Access, String>>,
         callRows: List<Pair<JiumiStore.Call, String>>,
         nets: List<TimelineItem.NetItem>,
@@ -379,7 +438,7 @@ class ReportBuilder(
     ): List<TimelineItem> {
         val accesses = accessRows.map { TimelineItem.AccessItem(it.first, it.second, data.absorbed[it.first].orEmpty()) }
         val calls = callRows.map { TimelineItem.CallItem(it.first, it.second) }
-        return Segments.merge(accesses + calls + starts.map { TimelineItem.ProcessItem(it) } + nets)
+        return accesses + calls + starts.map { TimelineItem.ProcessItem(it) } + nets
     }
 
     private fun categoryGroups(): Map<String, String> =

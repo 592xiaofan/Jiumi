@@ -15,9 +15,17 @@ object Segments {
     fun merge(items: List<TimelineItem>): List<TimelineItem> =
         items.groupBy(::key).values.flatMap { same ->
             val runs = ArrayList<MutableList<TimelineItem>>()
+            var runEnd = Long.MIN_VALUE
             for (item in same.sortedBy { it.t }) {
                 val run = runs.lastOrNull()
-                if (run != null && item.t - run.maxOf { end(it) } <= GAP_MS) run += item else runs += mutableListOf(item)
+                val end = end(item)
+                if (run != null && item.t - runEnd <= GAP_MS) {
+                    run += item
+                    runEnd = maxOf(runEnd, end)
+                } else {
+                    runs += mutableListOf(item)
+                    runEnd = end
+                }
             }
             runs.map { run -> run.singleOrNull() ?: TimelineItem.Segment(run.sortedByDescending { it.t }) }
         }.sortedByDescending { it.t }
@@ -50,6 +58,6 @@ object Segments {
         is TimelineItem.NetItem -> 1
         is TimelineItem.ProcessItem -> 1
         is TimelineItem.ActionItem -> 1
-        is TimelineItem.Segment -> item.members.sumOf(::count)
+        is TimelineItem.Segment -> item.count
     }
 }

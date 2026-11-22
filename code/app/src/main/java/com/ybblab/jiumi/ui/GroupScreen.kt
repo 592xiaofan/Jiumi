@@ -52,19 +52,17 @@ fun GroupScreen(
     val state by controller.state.collectAsStateWithLifecycle()
     val ledger = state.ledger
     val title = if (groupId == NETWORK_GROUP) stringResource(R.string.section_network) else groupName(groupId)
-    var shown by rememberSaveable(groupId) { mutableStateOf(LOG_PAGE) }
-    val entries = remember(ledger, groupId) {
-        ledger?.timeline.orEmpty().filter { e ->
-            if (groupId == NETWORK_GROUP) headOf(e.item) is TimelineItem.NetItem
-            else categoryOf(e.item)?.let { ledger?.groupOf?.get(it) } == groupId
-        }
-    }
     val routineKinds = ledger?.routineKinds.orEmpty()
     val routineKeys = remember(ledger) { ledger?.apps.orEmpty().filter { it.kind.id in routineKinds }.map { it.key }.toSet() }
     val list = rememberLazyListState()
     val toggled = rememberToggledDays(groupId, state.range)
-    val layout = remember(entries, shown, toggled.value) { timelineRows(entries, shown, toggled.value) { it.item.t } }
-    LoadMoreOnScroll(list, more = layout.more) { shown += LOG_PAGE }
+    val timeline = if ((network && byApp) || ledger == null) null else {
+        rememberTimeline(controller, ledger.timelineSource, state.shownRange to groupId, list) {
+            if (network) headOf(it.item) is TimelineItem.NetItem
+            else categoryOf(it.item)?.let(ledger.groupOf::get) == groupId
+        }
+    }
+    val days = rememberTimelineDays(timeline?.days.orEmpty(), toggled.value)
 
     SubScreen(title, onBack) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -77,7 +75,7 @@ fun GroupScreen(
                 Segmented(
                     Range.entries.map { rangeLabel(it, state.session) },
                     selected = state.range.ordinal,
-                    onSelect = { controller.setRange(Range.entries[it]); shown = LOG_PAGE },
+                    onSelect = { controller.setRange(Range.entries[it]) },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -99,13 +97,13 @@ fun GroupScreen(
                 return@LazyColumn
             }
             // Each row names the app and what it did; the app's own page holds its summary.
-            if (entries.isEmpty()) item { Column(Modifier.padding(top = 24.dp)) { EmptyCard(stringResource(R.string.record_empty_running)) } }
-            timelineItems(layout.rows, "group", { it.item }, toggled::toggle) { entry, first, last ->
+            if (timeline?.days?.isEmpty() == true) item { Column(Modifier.padding(top = 24.dp)) { EmptyCard(stringResource(R.string.record_empty_running)) } }
+            timelineItems(days, timeline?.records, "group", toggled::toggle) { entry, first, last ->
                 LogRow(entry.item, entry.key in routineKeys, recordIcon(entry.item, ledger?.groupOf.orEmpty(), ledger?.groupIcons.orEmpty()),
                     app = entry.key to labels, first = first, last = last, onClick = { onOpenLog(entry) })
             }
         }
-        if (!(network && byApp)) TimelineScrubber(list, layout.rows, Modifier.align(Alignment.CenterEnd).padding(vertical = 16.dp))
+        if (!(network && byApp)) TimelineScrubber(list, days, Modifier.align(Alignment.CenterEnd).padding(vertical = 16.dp))
         }
     }
 }

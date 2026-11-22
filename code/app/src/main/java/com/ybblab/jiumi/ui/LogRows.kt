@@ -47,7 +47,6 @@ import androidx.compose.ui.unit.dp
 import com.ybblab.jiumi.ui.theme.Ink
 import com.ybblab.jiumi.R
 import com.ybblab.jiumi.data.AppKey
-import com.ybblab.jiumi.data.JiumiStore
 import com.ybblab.jiumi.data.LogEntry
 import com.ybblab.jiumi.data.ReportBuilder
 import com.ybblab.jiumi.data.Segments
@@ -73,23 +72,17 @@ object OpenedLogs {
 fun headOf(item: TimelineItem): TimelineItem = (item as? TimelineItem.Segment)?.head ?: item
 
 /** The destinations a record reached, newest first; a run of network activity can reach several. */
-fun destinationsOf(item: TimelineItem): List<String> =
-    ((item as? TimelineItem.Segment)?.members ?: listOf(item)).mapNotNull { (it as? TimelineItem.NetItem)?.label }.distinct()
+fun destinationsOf(item: TimelineItem): List<String> = when (item) {
+    is TimelineItem.Segment -> item.destinations
+    is TimelineItem.NetItem -> listOf(item.label)
+    else -> emptyList()
+}
 
-/**
- * A run of network conversations told as one: bytes added up, in the background if any part was,
- * marked if any part sent the threshold in the background. Null for anything but network records.
- */
-fun netView(item: TimelineItem): TimelineItem.NetItem? {
-    val nets = ((item as? TimelineItem.Segment)?.members ?: listOf(item)).filterIsInstance<TimelineItem.NetItem>()
-    if (nets.size <= 1) return nets.firstOrNull()
-    fun sum(of: (JiumiStore.Connection) -> Long?) = nets.mapNotNull { of(it.connection) }.takeIf { it.isNotEmpty() }?.sum()
-    val base = nets.firstOrNull { ReportBuilder.isUnattended(it.connection.state, it.connection.screen) } ?: nets.first()
-    return base.copy(
-        connection = base.connection.copy(count = nets.sumOf { it.connection.count }, sent = sum { it.sent },
-            received = sum { it.received }, sentUnattended = sum { it.sentUnattended }),
-        sentInBackground = nets.any { it.sentInBackground }
-    )
+/** Network activity summarized when the segment was produced. */
+fun netView(item: TimelineItem): TimelineItem.NetItem? = when (item) {
+    is TimelineItem.Segment -> item.network
+    is TimelineItem.NetItem -> item
+    else -> null
 }
 
 fun categoryOf(item: TimelineItem): String? = when (val head = headOf(item)) {
@@ -136,7 +129,7 @@ fun recordIcon(item: TimelineItem, groupOf: Map<String, String>, groupIcons: Map
  */
 @Composable
 fun rowAction(item: TimelineItem): String {
-    val members = (item as? TimelineItem.Segment)?.members ?: listOf(item)
+    val members = (item as? TimelineItem.Segment)?.actionSamples ?: listOf(item)
     val actions = members.map { actionName(it) }.distinct()
     return actions.singleOrNull() ?: recordTitle(item)
 }
@@ -283,33 +276,9 @@ fun DayTitle(day: Long, count: Int, modifier: Modifier = Modifier) {
 val BACKGROUND_STATES = setOf("fgsvc", "bg", "cch", "gone")
 const val PROVIDER_PREFIX = "ContentProvider@"
 
-fun dayStart(t: Long): Long = java.util.Calendar.getInstance().apply {
-    timeInMillis = t
-    set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
-    set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
-}.timeInMillis
-
 @Composable
 fun dayLabel(day: Long): String {
     val context = LocalContext.current
     return if (DateUtils.isToday(day)) stringResource(R.string.range_today)
     else DateUtils.formatDateTime(context, day, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_ABBREV_ALL)
 }
-
-/** Lists of records show this many at first and this many more on each request. */
-const val LOG_PAGE = 150
-
-/** Calls [onMore] whenever the list's end comes within a few rows while [more] records wait. */
-@Composable
-fun LoadMoreOnScroll(state: androidx.compose.foundation.lazy.LazyListState, more: Boolean, onMore: () -> Unit) {
-    val latestMore by androidx.compose.runtime.rememberUpdatedState(more)
-    val latestOnMore by androidx.compose.runtime.rememberUpdatedState(onMore)
-    androidx.compose.runtime.LaunchedEffect(state) {
-        androidx.compose.runtime.snapshotFlow {
-            val info = state.layoutInfo
-            (info.visibleItemsInfo.lastOrNull()?.index ?: 0) to info.totalItemsCount
-        }.collect { (last, total) -> if (latestMore && last >= total - LOAD_AHEAD) latestOnMore() }
-    }
-}
-
-private const val LOAD_AHEAD = 10

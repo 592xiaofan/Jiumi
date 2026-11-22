@@ -109,7 +109,6 @@ fun AppDetailScreen(
         ?: key.pkg?.takeIf { key.uid < 0 } ?: labels.label(key)
     val routine = detail?.routine ?: false
     var category by rememberSaveable(key) { mutableStateOf<String?>(null) }
-    var shown by rememberSaveable(key) { mutableStateOf(LOG_PAGE) }
     var allDestinations by rememberSaveable(key) { mutableStateOf(false) }
     val list = rememberLazyListState()
     val ledger = state.ledger
@@ -126,11 +125,14 @@ fun AppDetailScreen(
     val live = state.running && (state.shownRange != Range.SESSION || state.sessionOpen)
     var picked by remember(key, state.shownRange, category, state.window.first, activity?.buckets?.stepMs) { mutableStateOf<Int?>(null) }
 
-    val all = detail?.items.orEmpty()
-    val shownItems = all.filter { category == null || categoryOf(it) == category }
     val toggled = rememberToggledDays(key, state.range, category)
-    val layout = remember(shownItems, shown, toggled.value) { timelineRows(shownItems, shown, toggled.value) { it.t } }
-    LoadMoreOnScroll(list, more = layout.more) { shown += LOG_PAGE }
+    val selectedCategory = category
+    val timeline = detail?.let { current ->
+        rememberTimeline(controller, current.timelineSource, Triple(key, state.shownRange, selectedCategory), list) {
+            selectedCategory == null || categoryOf(it) == selectedCategory
+        }
+    }
+    val days = rememberTimelineDays(timeline?.days.orEmpty(), toggled.value)
 
     Box(Modifier.fillMaxSize()) {
     LazyColumn(
@@ -208,7 +210,7 @@ fun AppDetailScreen(
             Segmented(
                 Range.entries.map { rangeLabel(it, state.session) },
                 selected = state.range.ordinal,
-                onSelect = { controller.setRange(Range.entries[it]); shown = LOG_PAGE },
+                onSelect = { controller.setRange(Range.entries[it]) },
                 modifier = Modifier.fillMaxWidth().padding(top = 20.dp)
             )
         }
@@ -228,7 +230,6 @@ fun AppDetailScreen(
                         SummaryRow(s, groupIcon(detail?.groupOf?.get(s.category)?.let { detail?.groupIcons?.get(it) }.orEmpty()),
                             routine, selected = category == s.category) {
                             category = if (category == s.category) null else s.category
-                            shown = LOG_PAGE
                         }
                     }
                 }
@@ -316,17 +317,17 @@ fun AppDetailScreen(
                 }
             }
         }
-        if (detail != null && shownItems.isEmpty()) {
+        if (detail != null && timeline?.days?.isEmpty() == true) {
             item { EmptyCard(stringResource(R.string.timeline_empty)) }
         }
         val groupOf = detail?.groupOf.orEmpty()
         val groupIcons = detail?.groupIcons.orEmpty()
-        timelineItems(layout.rows, "app-$category", { it }, toggled::toggle) { item, first, last ->
+        timelineItems(days, timeline?.records, "app-$category", toggled::toggle) { item, first, last ->
             LogRow(item, routine, recordIcon(item, groupOf, groupIcons), app = null, first = first, last = last,
                 onClick = { onOpenLog(LogEntry(key, item)) })
         }
     }
-    TimelineScrubber(list, layout.rows, Modifier.align(Alignment.CenterEnd).windowInsetsPadding(WindowInsets.safeDrawing)
+    TimelineScrubber(list, days, Modifier.align(Alignment.CenterEnd).windowInsetsPadding(WindowInsets.safeDrawing)
         .padding(vertical = 24.dp))
     }
 }

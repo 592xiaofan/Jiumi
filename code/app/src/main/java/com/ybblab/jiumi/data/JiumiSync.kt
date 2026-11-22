@@ -14,33 +14,36 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
     private var countsRetryAfter = 0L
 
     /**
-     * Returns how many new events it stored. Now and then it also reads the system's own records,
+     * Reports whether local records changed. Now and then it also reads the system's own records,
      * which reach back before monitoring began: the per-access record (about a week, a few kinds of
      * data, with times) and the long-term counts (every kind of data, per day).
      */
-    fun sync(service: IProbeService, now: Long = System.currentTimeMillis()): Int {
-        val stored = pullEvents(service)
+    fun sync(service: IProbeService, now: Long = System.currentTimeMillis()): Boolean {
+        var changed = pullEvents(service) > 0
         val elapsed = android.os.SystemClock.elapsedRealtime()
         if (elapsed >= discreteRetryAfter && now - store.meta(KEY_DISCRETE_READ_AT) >= DISCRETE_EVERY_MS) {
             discreteRetryAfter = elapsed + HISTORY_RETRY_MS
-            runCatching { pullDiscrete(service) }
+            val discrete = runCatching { pullDiscrete(service) }
                 .onSuccess { store.setMeta(store.writableDatabase, KEY_DISCRETE_READ_AT, now) }
                 .onFailure { android.util.Log.w(TAG, "system access record not read", it) }
+            changed = changed || discrete.getOrDefault(false)
         }
         if (elapsed >= countsRetryAfter && now - store.meta(KEY_COUNTS_READ_AT) >= COUNTS_EVERY_MS) {
             countsRetryAfter = elapsed + HISTORY_RETRY_MS
-            runCatching { pullCounts(service, now) }
+            val counts = runCatching { pullCounts(service, now) }
                 .onSuccess { store.setMeta(store.writableDatabase, KEY_COUNTS_READ_AT, now) }
                 .onFailure { android.util.Log.w(TAG, "system access counts not read", it) }
+            changed = changed || counts.getOrDefault(false)
         }
-        return stored
+        return changed
     }
 
     /** Each refresh pages through one snapshot. Commit the time cursor only after its last page. */
-    private fun pullDiscrete(service: IProbeService) {
+    private fun pullDiscrete(service: IProbeService): Boolean {
         val from = store.meta(KEY_DISCRETE_FROM)
         val exclusions = store.exclusions
         var offset = 0
+        var changed = false
         while (true) {
             val page = JSONObject(service.readDiscreteHistory(from, offset, PAGE_HISTORY))
             val events = page.getJSONArray("events")
@@ -57,11 +60,12 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
                     val pkg = e.str("pkg")
                     if (exclusions.hides(uid, pkg) || exclusions.blocks(uid, pkg, e.getLong("t"), e.getLong("end"))) continue
                     if (rules.categoryOf(e.getString("op")) == null) continue
-                    store.insertAccess(db, JiumiStore.Access(
+                    val inserted = store.insertAccess(db, JiumiStore.Access(
                         t = e.getLong("t"), end = e.getLong("end"), op = e.getString("op"), uid = uid,
                         pkg = pkg, attr = e.str("attr"), count = 1, state = e.str("state"), screen = null,
                         result = 0, proxied = e.optString("via").endsWith("d"), source = "system"
                     ))
+                    changed = changed || inserted
                 }
                 if (!more) store.setMeta(db, KEY_DISCRETE_FROM, events.getJSONObject(events.length() - 1).getLong("t"))
                 db.setTransactionSuccessful()
@@ -71,13 +75,14 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
             if (!more) break
             offset = next
         }
+        return changed
     }
 
     /**
      * The system's long-term counts for the last [COUNT_DAYS] days. Its slots are merged into coarser
      * ones as they age, so the whole stretch is read again and replaces what was read before.
      */
-    private fun pullCounts(service: IProbeService, now: Long) {
+    private fun pullCounts(service: IProbeService, now: Long): Boolean {
         val since = now - COUNT_DAYS * DAY_MS
         val exclusions = store.exclusions
         val counts = ArrayList<JiumiStore.OpCount>()
@@ -109,6 +114,7 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
             skip += page.length()
         }
         if (counts.isNotEmpty()) store.replaceOpCounts(counts, since, slots)
+        return counts.isNotEmpty()
     }
 
     fun pullEvents(service: IProbeService): Int {

@@ -17,12 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,6 +43,9 @@ import com.ybblab.jiumi.data.AppKind
 import com.ybblab.jiumi.data.LogEntry
 import com.ybblab.jiumi.data.Segments
 import com.ybblab.jiumi.data.TimelineItem
+import com.ybblab.jiumi.data.TimelinePages
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.ybblab.jiumi.ui.icons.JiumiIcons
 import com.ybblab.jiumi.ui.theme.AppIconSize
 import com.ybblab.jiumi.ui.theme.AppShapes
@@ -71,10 +76,15 @@ fun LogDetailScreen(
     val head = netView(item) ?: headOf(item)
     val destinations = destinationsOf(item)
     val segment = item as? TimelineItem.Segment
-    val color = nodeColor(item, routine)
+    val list = rememberLazyListState()
+    if (segment != null) ObserveTimelineScroll(controller, list)
+    val members by produceState<TimelinePages<TimelineItem>?>(null, entry) {
+        value = withContext(Dispatchers.Default) { segment?.pages }
+    }
 
     SubScreen(recordTitle(item), onBack) { padding ->
         LazyColumn(
+            state = list,
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp)
         ) {
@@ -115,9 +125,9 @@ fun LogDetailScreen(
             fieldSection(R.string.log_section_behavior) { behaviorFields(head, ledger?.groupOf.orEmpty(), destinations.size) }
             // Method calls the system noted as this same access, counted with it rather than again.
             fieldSection(R.string.log_section_same_action) {
-                ((item as? TimelineItem.Segment)?.members ?: listOf(item)).filterIsInstance<TimelineItem.AccessItem>()
-                    .flatMap { it.calls }.groupBy { "${it.iface}.${it.method}" }
-                    .map { (name, calls) -> Field(name, "×${formatCount(calls.sumOf { it.count }.toLong())}", code = true) }
+                val counts = segment?.sameActionCalls ?: (item as? TimelineItem.AccessItem)?.calls.orEmpty()
+                    .groupingBy { "${it.iface}.${it.method}" }.fold(0) { total, call -> total + call.count }
+                counts.map { (name, count) -> Field(name, "×${formatCount(count.toLong())}", code = true) }
             }
 
             if (segment != null) {
@@ -129,13 +139,10 @@ fun LogDetailScreen(
                 // api.example.com"); where the app was and the counts are on each record's own page.
                 val groupOf = ledger?.groupOf.orEmpty()
                 val groupIcons = ledger?.groupIcons.orEmpty()
-                segment.members.sortedByDescending { it.t }.let { members ->
-                    members.forEachIndexed { index, member ->
-                        item(key = "member-$index") {
-                            LogRow(member, routine, recordIcon(member, groupOf, groupIcons), app = null,
-                                first = index == 0, last = index == members.lastIndex,
-                                onClick = { onOpenLog(LogEntry(entry.key, member)) })
-                        }
+                members?.let {
+                    recordPageItems(it, 0, it.size, "member") { member, first, last ->
+                        LogRow(member, routine, recordIcon(member, groupOf, groupIcons), app = null,
+                            first = first, last = last, onClick = { onOpenLog(LogEntry(entry.key, member)) })
                     }
                 }
             }

@@ -349,7 +349,7 @@ class MonitorController(
     private fun saveMonitoringExclusions(next: com.ybblab.jiumi.probe.MonitoringExclusions): Boolean {
         if (next === monitoringExclusions.value) return true
         if (!monitoring.save(next)) return false
-        built.clear()
+        builder.clearGroupCache()
         local.update { it.copy(ledger = null) }
         MonitorNotice.cancelAlerts(context)
         probe.service.value?.let(::configure)
@@ -1209,8 +1209,7 @@ class MonitorController(
         syncLock.withLock {
             if (!appVisible) {
                 configure(service)
-                val stored = runCatching { sync.sync(service) }.onFailure { android.util.Log.w(TAG, "sync failed", it) }.getOrDefault(0)
-                pendingLive += stored
+                pendingLive = pullLiveChanges(service) || pendingLive
             }
             val report = sessionReport(since)
             val notices = local.value.notices
@@ -1291,42 +1290,45 @@ class MonitorController(
         if (!syncLock.tryLock()) return@withContext
         try {
             configure(service)
-            val stored = runCatching { sync.sync(service) }.onFailure { android.util.Log.w(TAG, "sync failed", it) }.getOrDefault(0)
+            pendingLive = pullLiveChanges(service) || pendingLive
             refreshLocationProviders(service)
-            pendingLive += stored
             // A long range costs more to rebuild; give the phone a breather in proportion.
-            if (pendingLive > 0 && System.currentTimeMillis() - rebuiltAt >= rebuildCostMs * 4) rebuild()
+            if (pendingLive && scrollingTimelines.isEmpty() && System.currentTimeMillis() - rebuiltAt >= rebuildCostMs * 4) rebuild()
         } finally {
             syncLock.unlock()
         }
         checkFreezes()
     }
 
-    /** One range's report and what is drawn from it, as built at [at]. */
-    private class Built(val report: Report, val window: Pair<Long, Long>, val spans: List<LongRange>, val activity: Activity, val at: Long)
+    private fun pullLiveChanges(service: com.ybblab.jiumi.probe.IProbeService): Boolean =
+        runCatching { sync.sync(service) }.onFailure { android.util.Log.w(TAG, "sync failed", it) }.getOrDefault(false)
 
-    /** The latest build of each range (the session one per picked session), so switching shows it at once. */
-    private val built = java.util.concurrent.ConcurrentHashMap<String, Built>()
+    private val scrollingTimelines = java.util.concurrent.ConcurrentHashMap.newKeySet<Any>()
 
-    private fun builtKey(range: Range, selected: Long?) = if (range == Range.SESSION) "$range:$selected" else range.name
+    /** Collecting and storing keep running while the UI is busy moving through older records. */
+    internal fun timelineScrolling(owner: Any, scrolling: Boolean) {
+        if (scrolling) scrollingTimelines.add(owner) else scrollingTimelines.remove(owner)
+    }
+
+    private class Built(val report: Report, val window: Pair<Long, Long>, val spans: List<LongRange>, val activity: Activity)
 
     private fun build(range: Range, session: SessionView?, now: Long): Built {
         val window = window(session, now, range)
-        val report = builder.report(window.first, window.second)
+        val report = builder.report(window.first, window.second, reuseGroups = true)
         val spans = store.sessions().filter { it.start < window.second && (it.end ?: now) > window.first }
             .flatMap { coverage(it, now).spans }.sortedBy { it.first }
         val activity = Activity.of(report.timeline, report.attention, report.apps, window.first, window.second, spans,
             report.systemSlots, routineKinds = report.routineKinds)
-        return Built(report, window, spans, activity, now)
+        return Built(report, window, spans, activity)
     }
 
     private fun rebuild() {
         val now = System.currentTimeMillis()
-        val session = chosenSession(now)
-        val range = local.value.range
-        val selected = local.value.selected
+        val requested = local.value
+        val range = requested.range
+        val selected = requested.selected
+        val session = chosenSession(now, selected)
         val current = build(range, session, now)
-        built[builtKey(range, selected)] = current
         val window = current.window
         // The open session, for the running monitor's card: the same curve as the session range shows.
         val open = store.sessions().firstOrNull()?.takeIf { it.end == null }
@@ -1334,41 +1336,22 @@ class MonitorController(
             open == null -> null
             range == Range.SESSION && selected == null -> current
             else -> build(Range.SESSION, SessionView(open, coverage(open, now), now, latest = true), now)
-                .also { built[builtKey(Range.SESSION, null)] = it }
         }
         local.update {
-            it.copy(ledger = current.report, session = session, window = window, spans = current.spans,
+            if (it.range != range || it.selected != selected) it else it.copy(ledger = current.report, session = session, window = window, spans = current.spans,
                 live = live?.activity, liveApps = live?.report?.apps?.count { a -> a.accesses + a.calls > 0 } ?: 0,
                 activity = current.activity, shownRange = range)
         }
         rebuiltAt = System.currentTimeMillis()
         rebuildCostMs = rebuiltAt - now
-        pendingLive = 0
+        pendingLive = false
         showIndicator()
-        // The other ranges, built ahead once they are a while old, so a switch to one shows at once.
-        for (other in Range.entries) {
-            if (other == range) continue
-            val key = builtKey(other, if (other == Range.SESSION) selected else null)
-            if ((built[key]?.at ?: 0L) > now - PREBUILT_FRESH_MS) continue
-            val ahead = build(other, session, System.currentTimeMillis())
-            built[key] = ahead
-            // Switched to it meanwhile: show it now rather than after the next rebuild.
-            if (local.value.range == other && local.value.shownRange != other) show(other, ahead)
-        }
     }
-
-    private fun show(range: Range, b: Built) = local.update {
-        if (it.range != range) it
-        else it.copy(ledger = b.report, window = b.window, spans = b.spans, activity = b.activity, shownRange = range)
-    }
-
-    /** How long a range built ahead stays fresh enough to skip rebuilding it. */
-    private val PREBUILT_FRESH_MS = 60_000L
 
     // Kept under syncLock.
     private var rebuiltAt = 0L
     private var rebuildCostMs = 0L
-    private var pendingLive = 0
+    private var pendingLive = false
 
     /** Most space the monitor's spool may use while the app is not opened; 0 means no limit. */
     fun setSpoolLimit(mb: Int) {
@@ -1393,8 +1376,6 @@ class MonitorController(
 
     fun setRange(range: Range) {
         local.update { it.copy(range = range, selected = if (range == Range.SESSION) it.selected else null) }
-        // Built ahead: shown at once, then brought up to date.
-        built[builtKey(range, local.value.selected)]?.let { show(range, it) }
         refresh()
     }
 
@@ -1405,9 +1386,9 @@ class MonitorController(
     }
 
     /** The picked session, or else the latest; null before the first session. */
-    private fun chosenSession(now: Long): SessionView? {
+    private fun chosenSession(now: Long, selected: Long? = local.value.selected): SessionView? {
         val all = store.sessions()
-        val picked = local.value.selected?.let { id -> all.firstOrNull { it.id == id } } ?: all.firstOrNull() ?: return null
+        val picked = selected?.let { id -> all.firstOrNull { it.id == id } } ?: all.firstOrNull() ?: return null
         return SessionView(picked, coverage(picked, now), now, latest = picked.id == all.first().id)
     }
 

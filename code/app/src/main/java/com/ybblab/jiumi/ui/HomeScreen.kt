@@ -112,7 +112,6 @@ fun HomeScreen(
     val paired = state.ready
     val ledger = state.ledger
     var view by rememberSaveable { mutableStateOf(HomeView.TIMELINE.name) }
-    var shown by rememberSaveable { mutableStateOf(LOG_PAGE) }
     val list = rememberLazyListState()
     // Routine system work is listed like everything else; it is only never marked as needing a look.
     val routineKeys = remember(ledger) {
@@ -123,10 +122,12 @@ fun HomeScreen(
     val rank = AppRank.entries.firstOrNull { it.name == rankName } ?: AppRank.ALL
     var rankAll by rememberSaveable { mutableStateOf(false) }
     var routineOpen by rememberSaveable { mutableStateOf(false) }
-    val entries = remember(ledger, filter) {
-        val f = (TimelineFilter.entries.firstOrNull { it.name == filter } ?: TimelineFilter.ALL)
-        ledger?.timeline.orEmpty().filter { f.matches(it.item) }
-    }
+    val selectedFilter = TimelineFilter.entries.firstOrNull { it.name == filter } ?: TimelineFilter.ALL
+    val timeline = if (view == HomeView.TIMELINE.name && ledger != null) {
+        rememberTimeline(controller, ledger.timelineSource, state.shownRange to selectedFilter, list) {
+            selectedFilter.matches(it.item)
+        }
+    } else null
     val toggled = rememberToggledDays(state.range, filter)
     val activity = state.activity
     // The curve grows at its end while the monitor runs and the range reaches now.
@@ -134,8 +135,7 @@ fun HomeScreen(
     val built = state.shownRange
     val live = state.running && (built != Range.SESSION || state.sessionOpen)
     var picked by remember(built, state.window.first, activity?.buckets?.stepMs) { mutableStateOf<Int?>(null) }
-    val layout = remember(entries, shown, toggled.value) { timelineRows(entries, shown, toggled.value) { it.item.t } }
-    LoadMoreOnScroll(list, more = view == HomeView.TIMELINE.name && layout.more) { shown += LOG_PAGE }
+    val days = rememberTimelineDays(timeline?.days.orEmpty(), toggled.value)
 
     val scrolled by remember { androidx.compose.runtime.derivedStateOf { list.canScrollBackward } }
     HidingTopBar(stringResource(R.string.tab_monitor), scrolled) { top ->
@@ -168,7 +168,7 @@ fun HomeScreen(
             Segmented(
                 Range.entries.map { rangeLabel(it, session) },
                 selected = state.range.ordinal,
-                onSelect = { controller.setRange(Range.entries[it]); shown = LOG_PAGE },
+                onSelect = { controller.setRange(Range.entries[it]) },
                 modifier = Modifier.fillMaxWidth().padding(top = 20.dp)
             )
         }
@@ -205,11 +205,11 @@ fun HomeScreen(
         when (HomeView.valueOf(view)) {
             HomeView.TIMELINE -> {
                 item {
-                    FilterChips(TimelineFilter.entries.map { stringResource(it.label) }, (TimelineFilter.entries.firstOrNull { it.name == filter } ?: TimelineFilter.ALL).ordinal,
-                        Modifier.padding(top = 4.dp)) { filter = TimelineFilter.entries[it].name; shown = LOG_PAGE }
+                    FilterChips(TimelineFilter.entries.map { stringResource(it.label) }, selectedFilter.ordinal,
+                        Modifier.padding(top = 4.dp)) { filter = TimelineFilter.entries[it].name }
                 }
-                if (entries.isEmpty()) item { Column(Modifier.padding(top = 12.dp)) { EmptyCard(stringResource(R.string.record_empty_running)) } }
-                timelineItems(layout.rows, "log", { it.item }, toggled::toggle) { entry, first, last ->
+                if (timeline?.days?.isEmpty() == true) item { Column(Modifier.padding(top = 12.dp)) { EmptyCard(stringResource(R.string.record_empty_running)) } }
+                timelineItems(days, timeline?.records, "log", toggled::toggle) { entry, first, last ->
                     LogRow(
                         entry.item, routine = entry.key in routineKeys,
                         icon = recordIcon(entry.item, ledger.groupOf, ledger.groupIcons),
@@ -268,7 +268,7 @@ fun HomeScreen(
                     // Kinds of data and the network, the one used last first.
                     val top = ledger.groups.maxOfOrNull { it.count } ?: 1
                     val network = ledger.networkApps
-                    val networkLast = ledger.timeline.firstOrNull { headOf(it.item) is TimelineItem.NetItem }?.item?.t
+                    val networkLast = ledger.latestNetwork
                         ?: network.maxOfOrNull { it.last } ?: 0L
                     val rows: List<Pair<Long, @Composable () -> Unit>> = ledger.groups.map { group ->
                         group.last to @Composable { GroupRow(group, top, onClick = { onOpenGroup(group.id) }) }
@@ -299,7 +299,7 @@ fun HomeScreen(
         }
     }
     if (view == HomeView.TIMELINE.name) {
-        TimelineScrubber(list, layout.rows, Modifier.align(Alignment.CenterEnd).windowInsetsPadding(WindowInsets.safeDrawing)
+        TimelineScrubber(list, days, Modifier.align(Alignment.CenterEnd).windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(top = top + 8.dp, bottom = 16.dp + LocalTabBarInset.current))
     }
     }
