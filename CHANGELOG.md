@@ -6,6 +6,12 @@ Versions follow [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-23
+
+- Improved freeze and unfreeze compatibility. Jiumi tries an alternate method after verifying that the primary method left the app state unchanged.
+- Timeline and record details now load in pages. List updates wait until scrolling stops.
+- Speeded up grouping repeated events, reducing the time it takes to build large timelines.
+
 ## [0.4.0] - 2026-11-22
 
 - **Add activity charts and app rankings.** See access trends, attention heatmaps and per-app charts. Rank apps by all or background accesses.
