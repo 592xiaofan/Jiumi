@@ -33,6 +33,8 @@ internal class UidStates(context: Context) {
     /** The history is kept current; without it, events fall back to the state when they are handled. */
     @Volatile private var live = false
     private val listeners = ArrayList<Any>()
+    /** Told of every importance change the listeners report, as the uid and the state it moved to. */
+    @Volatile var onChange: ((uid: Int, state: String) -> Unit)? = null
 
     val screenOn: Boolean get() = power.isInteractive
 
@@ -82,7 +84,12 @@ internal class UidStates(context: Context) {
         val type = Class.forName("android.app.ActivityManager\$OnUidImportanceListener")
         val listener = Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { proxy, method, args ->
             when (method.name) {
-                "onUidImportance" -> history.record(args[0] as Int, System.currentTimeMillis(), name(args[1] as Int))
+                "onUidImportance" -> {
+                    val uid = args[0] as Int
+                    val state = name(args[1] as Int)
+                    history.record(uid, System.currentTimeMillis(), state)
+                    onChange?.invoke(uid, state)
+                }
                 "hashCode" -> System.identityHashCode(proxy)
                 "equals" -> proxy === args?.get(0)
                 "toString" -> "UidImportanceListener($cutpoint)"

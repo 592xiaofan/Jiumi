@@ -101,6 +101,7 @@ fun ActivityCurve(
     peakLabel: String? = null,
     unrecorded: List<Boolean> = emptyList(),
     unrecordedLabel: String = "",
+    pendingLabel: String? = null,
     selected: Int? = null,
     onSelect: ((Int?) -> Unit)? = null
 ) {
@@ -125,6 +126,19 @@ fun ActivityCurve(
         if (n == 0) return@Canvas
         val top = if (references) 16.dp.toPx() else 4.dp.toPx()
         val bottom = size.height - 1f
+        // Nothing to draw yet: the baseline, a dashed line where the curve will run, and when it will.
+        if (pendingLabel != null) {
+            drawLine(ink.copy(alpha = 0.08f), Offset(0f, bottom), Offset(size.width, bottom), 1f)
+            val mid = (top + bottom) / 2
+            drawLine(color.copy(alpha = 0.35f), Offset(0f, mid), Offset(size.width, mid), 1.2.dp.toPx(),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 8f)))
+            val text = measurer.measure(pendingLabel, blankStyle)
+            val pad = 8.dp.toPx()
+            drawRect(surface, Offset((size.width - text.size.width) / 2 - pad, mid - text.size.height / 2),
+                androidx.compose.ui.geometry.Size(text.size.width + 2 * pad, text.size.height.toFloat()))
+            drawText(text, topLeft = Offset((size.width - text.size.width) / 2, mid - text.size.height / 2))
+            return@Canvas
+        }
         val known = values.filterNotNull()
         val max = ((known.maxOrNull() ?: 0) * 1.12f).coerceAtLeast(1f)
         fun x(i: Int) = if (n == 1) size.width / 2 else i * size.width / (n - 1)
@@ -188,6 +202,11 @@ fun ActivityCurve(
             val left = (p.x - text.size.width / 2).coerceIn(0f, size.width - text.size.width)
             drawText(text, topLeft = Offset(left, p.y - text.size.height - 4.dp.toPx()))
         }
+        // The slot under way, not drawn yet: a faint dashed run from the last point to now.
+        if (live) segments.lastOrNull()?.last()?.let { p ->
+            if (p.x < size.width - 1f) drawLine(color.copy(alpha = 0.35f), p, Offset(size.width, p.y), 1.2.dp.toPx(),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f)))
+        }
         if (live) segments.lastOrNull()?.last()?.let { p ->
             drawCircle(color.copy(alpha = 0.18f), 6.dp.toPx(), p)
             drawCircle(color, 2.8.dp.toPx(), p)
@@ -222,7 +241,7 @@ private fun smooth(p: List<Offset>): Path = Path().apply {
 
 /**
  * A range told as one card: the total (or the picked slot) above, the curve, the time, then a line of
- * figures in even columns: the average, the busiest slot, and how much of it was in the background. [apps]: how many apps the range's records came from, when the
+ * figures in even columns: the average, the busiest slot, and how many were in the background. [apps]: how many apps the range's records came from, when the
  * card covers every app.
  */
 @Composable
@@ -262,10 +281,22 @@ fun ActivityCard(
             }
         }
         Spacer(Modifier.height(12.dp))
-        val peak = known.maxByOrNull { it.value!! }?.index
-        ActivityCurve(values, height = 72.dp, live = live, peakLabel = peak?.let { whenLabel(activity, range, it) },
+        // While the range is still growing, its last slot is not over yet: drawn, it would always dip.
+        // The line ends at the last whole slot; the totals above and below still count it.
+        val step = activity.buckets.stepMs
+        val plotted = values.mapIndexed { i, v -> v?.takeIf { !live || activity.startOf(i) + step <= activity.until } }
+        val drawn = plotted.count { it != null }
+        val peak = plotted.withIndex().filter { it.value != null }.maxByOrNull { it.value!! }?.index
+        // Too few whole slots for a line yet: say when one will be there.
+        val pending = if (live && drawn < 2) {
+            val ready = activity.startOf(minOf(1, activity.size - 1)) + 2 * step
+            val minutes = ((ready - activity.until + 59_999) / 60_000).coerceAtLeast(1)
+            stringResource(R.string.chart_collecting, minutes.toInt())
+        } else null
+        ActivityCurve(if (pending != null) List(values.size) { null } else plotted, height = 72.dp, live = live,
+            peakLabel = peak?.let { whenLabel(activity, range, it) },
             unrecorded = List(activity.size) { activity.unrecorded(it) }, unrecordedLabel = stringResource(R.string.chart_unrecorded),
-            selected = selected, onSelect = onSelect)
+            pendingLabel = pending, selected = selected, onSelect = onSelect)
         AxisLabels(axis(activity, range, live))
         Spacer(Modifier.height(14.dp))
         // The figures sit apart from the chart, each on a quiet tile of the same size, centred.
@@ -370,7 +401,7 @@ private fun whenLabel(activity: Activity, range: Range, i: Int): String = when {
 
 /**
  * The figures, all amounts: the average per slot, the busiest slot's count (the curve marks when),
- * and the share made while the app was not in front of the user, which the rest of the page does not show.
+ * and how many were made while the app was not in front of the user, which the rest of the page does not show.
  */
 @Composable
 private fun figures(activity: Activity): List<Triple<String, String, String>> {
@@ -383,12 +414,10 @@ private fun figures(activity: Activity): List<Triple<String, String, String>> {
         step > Behavior.HOUR -> stringResource(R.string.chart_per_hours, (step / Behavior.HOUR).toInt())
         else -> stringResource(R.string.chart_per_minutes, (step / 60_000).toInt())
     }
-    val total = activity.total
-    val share = if (total == 0) 0 else (activity.backgroundTotal * 100.0 / total).roundToInt()
     return listOf(
         Triple(stringResource(R.string.chart_avg), formatCount((known.sum().toDouble() / known.size).roundToInt().toLong()), unit),
         Triple(stringResource(R.string.chart_peak), formatCount(known.max().toLong()), stringResource(R.string.chart_unit_times)),
-        Triple(stringResource(R.string.chart_background), "$share", "%")
+        Triple(stringResource(R.string.chart_background), formatCount(activity.backgroundTotal.toLong()), stringResource(R.string.chart_unit_times))
     )
 }
 

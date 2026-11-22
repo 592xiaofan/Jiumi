@@ -101,6 +101,7 @@ fun HomeScreen(
     onOpenGroup: (String) -> Unit,
     onOpenAttention: (String) -> Unit,
     onOpenLog: (LogEntry) -> Unit,
+    onOpenApp: (AppKey) -> Unit,
     onOpenPairing: () -> Unit,
     onOpenNetwork: () -> Unit
 ) {
@@ -118,6 +119,10 @@ fun HomeScreen(
         ledger?.apps.orEmpty().filter { it.kind.id in ledger?.routineKinds.orEmpty() }.map { it.key }.toSet()
     }
     var filter by rememberSaveable { mutableStateOf(TimelineFilter.ALL.name) }
+    var rankName by rememberSaveable { mutableStateOf(AppRank.ALL.name) }
+    val rank = AppRank.entries.firstOrNull { it.name == rankName } ?: AppRank.ALL
+    var rankAll by rememberSaveable { mutableStateOf(false) }
+    var routineOpen by rememberSaveable { mutableStateOf(false) }
     val entries = remember(ledger, filter) {
         val f = (TimelineFilter.entries.firstOrNull { it.name == filter } ?: TimelineFilter.ALL)
         ledger?.timeline.orEmpty().filter { f.matches(it.item) }
@@ -214,6 +219,50 @@ fun HomeScreen(
                     )
                 }
             }
+            HomeView.APPS -> {
+                item {
+                    FilterChips(AppRank.entries.map { stringResource(it.label) }, rank.ordinal, Modifier.padding(top = 4.dp)) {
+                        rankName = AppRank.entries[it].name; rankAll = false
+                    }
+                }
+                item {
+                    // Ranked by what was measured; routine system work is kept apart, below, folded.
+                    val ranked = rank.rank(ledger.apps.filter { it.key !in routineKeys })
+                    val routine = rank.rank(ledger.apps.filter { it.key in routineKeys })
+                    Column(Modifier.padding(top = 12.dp)) {
+                        if (ranked.isEmpty()) EmptyCard(stringResource(rank.empty))
+                        else Card {
+                            val top = ranked.first().second
+                            ranked.take(if (rankAll) ranked.size else RANK_PAGE).forEachIndexed { index, (app, value) ->
+                                if (index > 0) InsetDivider(start = RANK_DIVIDER_START)
+                                RankRow(app, index + 1, value, top, labels, routine = false) { onOpenApp(app.key) }
+                            }
+                            if (!rankAll && ranked.size > RANK_PAGE) {
+                                InsetDivider(start = 0.dp)
+                                Text(stringResource(R.string.rank_show_all, formatCount(ranked.size.toLong())),
+                                    style = MaterialTheme.typography.bodySmall, color = Ink.secondary, textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth().clickable { rankAll = true }.padding(vertical = 12.dp))
+                            }
+                        }
+                        if (routine.isNotEmpty()) {
+                            Row(Modifier.fillMaxWidth().clip(AppShapes.Small).clickable { routineOpen = !routineOpen }
+                                .padding(horizontal = 4.dp, vertical = 12.dp)) {
+                                Text(stringResource(R.string.rank_routine, formatCount(routine.size.toLong())),
+                                    style = MaterialTheme.typography.bodySmall, color = Ink.secondary, modifier = Modifier.weight(1f))
+                                Text(stringResource(if (routineOpen) R.string.rank_routine_hide else R.string.rank_routine_show),
+                                    style = MaterialTheme.typography.bodySmall, color = Ink.secondary)
+                            }
+                            if (routineOpen) Card {
+                                val top = routine.first().second
+                                routine.forEachIndexed { index, (app, value) ->
+                                    if (index > 0) InsetDivider(start = RANK_DIVIDER_START)
+                                    RankRow(app, null, value, top, labels, routine = true) { onOpenApp(app.key) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             HomeView.TYPES -> {
                 item { Spacer(Modifier.height(12.dp)) }
                 item {
@@ -259,7 +308,7 @@ fun HomeScreen(
 }
 
 private enum class HomeView(val label: Int) {
-    TIMELINE(R.string.view_timeline), TYPES(R.string.view_by_type)
+    TIMELINE(R.string.view_timeline), APPS(R.string.view_by_app), TYPES(R.string.view_by_type)
 }
 
 /**
@@ -447,11 +496,12 @@ private fun InterruptedCard(
     onOpenNetwork: () -> Unit
 ) {
     val network = state.method == com.ybblab.jiumi.access.AccessMethod.NETWORK
-    val recovering = state.busy == Busy.STARTING || state.pairingState == PairingState.CONNECTING
+    // Looking for a monitor that may still run, starting one, or connecting to start one.
+    val recovering = state.awaitingMonitor || state.busy == Busy.STARTING || state.pairingState == PairingState.CONNECTING
     Column {
         MonitorCapsule(
             tone = StatusWarning, live = false,
-            title = stringResource(if (network && recovering) R.string.network_adb_recovering else R.string.monitoring_interrupted),
+            title = stringResource(if (recovering) R.string.monitor_recovering else R.string.monitoring_interrupted),
             corner = {
                 CornerButton(stringResource(R.string.action_resume_short),
                     busy = recovering, onClick = {
@@ -612,20 +662,73 @@ fun groupIcon(name: String): ImageVector = when (name) {
 }
 
 /**
+ * What the by-app list ranks by, named as the timeline's filters: every record (accesses and calls),
+ * or the reads while not in use. Apps with none of it are left out; ties go to the one active last.
+ */
+private enum class AppRank(val label: Int, val empty: Int, val measure: (AppSummary) -> Long) {
+    ALL(R.string.filter_all, R.string.rank_empty_all, { (it.accesses + it.calls).toLong() }),
+    BACKGROUND(R.string.filter_background, R.string.rank_empty_background, { it.background.toLong() });
+
+    fun rank(apps: List<AppSummary>): List<Pair<AppSummary, Long>> = apps.map { it to measure(it) }
+        .filter { it.second > 0 }
+        .sortedWith(compareByDescending<Pair<AppSummary, Long>> { it.second }.thenByDescending { it.first.last })
+}
+
+/** How many ranked apps show before "Show all". */
+private const val RANK_PAGE = 10
+private val RANK_WIDTH = 20.dp
+/** Past the rank, the icon and their gaps, as the other lists' dividers start past the icon. */
+private val RANK_DIVIDER_START = RANK_WIDTH + 8.dp + 60.dp
+
+/** One ranked app: its place, what it touched, its share of the first one's amount, and the badges. */
+@Composable
+private fun RankRow(
+    app: AppSummary, place: Int?, value: Long, top: Long, labels: AppLabels,
+    routine: Boolean, onClick: () -> Unit
+) {
+    ListRow(
+        title = labels.label(app.key),
+        subtitle = appSummaryText(app),
+        leading = {
+            Text(place?.toString().orEmpty(), style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (place != null && place <= 3) FontWeight.Medium else FontWeight.Normal,
+                color = if (place != null && place <= 3) Ink.primary else Ink.secondary,
+                textAlign = TextAlign.Center, modifier = Modifier.width(RANK_WIDTH))
+            Spacer(Modifier.width(8.dp))
+            AppIcon(labels, app.key.pkg, LEADING_SIZE)
+        },
+        extra = {
+            ShareBar(value.toFloat() / top.coerceAtLeast(1), Modifier.padding(top = 8.dp))
+            AppBadges(app, routine)
+        },
+        onClick = onClick
+    ) {
+        TrailingValue(formatCount(value) + stringResource(R.string.chart_unit_times))
+        Chevron()
+    }
+}
+
+/** The kinds of information an app touched, most used first; for an app that only used the network, its traffic. */
+@Composable
+private fun appSummaryText(app: AppSummary): String {
+    val kinds = app.groups.map { groupName(it) }
+    return when {
+        kinds.isNotEmpty() -> kinds.joinToString(stringResource(R.string.list_separator))
+        app.traffic != null -> stringResource(R.string.traffic_total, formatBytes(app.traffic.total))
+        else -> ""
+    }
+}
+
+/**
  * One app in a list: what kinds of information it touched and when, and badges for what needs a
  * look. [value] replaces the time on the right, for lists measured by something else.
  */
 @Composable
 fun AppRow(app: AppSummary, labels: AppLabels, value: String? = null, routine: Boolean = false, onClick: () -> Unit) {
     // What it did, every kind of data it reached, most used first; the time leads the row.
-    val kinds = app.groups.map { groupName(it) }
-    val summary = buildList {
-        if (kinds.isNotEmpty()) add(kinds.joinToString(stringResource(R.string.list_separator)))
-        if (kinds.isEmpty() && app.traffic != null) add(stringResource(R.string.traffic_total, formatBytes(app.traffic.total)))
-    }
     ListRow(
         title = labels.label(app.key),
-        subtitle = summary.joinToString(" · "),
+        subtitle = appSummaryText(app),
         leading = { TimeColumn(app.last); AppIcon(labels, app.key.pkg, LEADING_SIZE) },
         onClick = onClick,
         extra = { AppBadges(app, routine) }

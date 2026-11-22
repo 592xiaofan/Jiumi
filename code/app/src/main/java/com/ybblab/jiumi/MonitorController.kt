@@ -109,6 +109,8 @@ class MonitorController(
         val pairingFailure: AirPairingFailure? = null,
         val running: Boolean = false,
         val busy: Busy? = null,
+        /** An open session's monitor is being looked for: it may still run and offer itself again. */
+        val awaitingMonitor: Boolean = false,
         val problem: Problem? = null,
         val footprint: Footprint? = null,
         val range: Range = Range.SESSION,
@@ -162,6 +164,8 @@ class MonitorController(
 
     private data class Local(
         val busy: Busy? = null,
+        /** Resumes waiting for the monitor to offer itself; several triggers may arrive together. */
+        val awaiting: Int = 0,
         val problem: Problem? = null,
         val footprint: Footprint? = null,
         val range: Range = Range.SESSION,
@@ -713,7 +717,7 @@ class MonitorController(
             com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> e.shizuku.ready
         }
         val problem = l.problem?.takeUnless { ready && it == Problem.SHIZUKU }
-        UiState(pairingState, e.trust, failure, service != null, l.busy, problem, l.footprint, l.range,
+        UiState(pairingState, e.trust, failure, service != null, l.busy, l.awaiting > 0 && service == null, problem, l.footprint, l.range,
             l.ledger, l.callTracing, l.session, l.spoolLimitMb, l.window, l.spans, l.live, l.liveApps, l.activity, l.shownRange, l.allowRemovePreinstalled, l.expertMode,
             l.autoRefreeze, l.notices, e.method, ready, e.shizuku, e.root)
     }.stateIn(scope, SharingStarted.Eagerly, UiState())
@@ -781,11 +785,23 @@ class MonitorController(
      * does not silently end monitoring. A monitor that only lost touch with the app offers itself
      * again within seconds, so this waits a moment first. Only a channel that needs nobody is used:
      * Wireless debugging is not turned on unasked, and a root or Shizuku prompt is not opened.
+     * [launched] is given by a receiver holding its broadcast open, and runs once that may be let go.
      */
-    fun resumeInterrupted(trigger: String, launched: () -> Unit = {}): kotlinx.coroutines.Job = scope.launch(Dispatchers.IO) {
+    fun resumeInterrupted(trigger: String, launched: (() -> Unit)? = null): kotlinx.coroutines.Job = scope.launch(Dispatchers.IO) {
+        // Shown as under way from the first moment, not only once a start goes out.
+        var waiting = probe.service.value == null && local.value.busy == null && store.sessions().any { it.end == null }
+        if (waiting) local.update { it.copy(awaiting = it.awaiting + 1) }
+        val stopWaiting = {
+            if (waiting) {
+                waiting = false
+                local.update { it.copy(awaiting = it.awaiting - 1) }
+            }
+        }
         try {
-            // A monitor restarted by its supervisor, or still offering itself, gets there first.
-            kotlinx.coroutines.delay(RESUME_DELAY_MS)
+            // A monitor restarted by its supervisor, or still offering itself, gets there first. Not while
+            // a broadcast is held ([launched]): until it is let go no offer reaches this process, so the
+            // start goes out at once and lets it go.
+            if (launched == null) withTimeoutOrNull(RESUME_DELAY_MS) { probe.service.first { it != null } }
             val skip = when {
                 probe.service.value != null -> "monitor running"
                 local.value.busy != null -> "busy ${local.value.busy}"
@@ -795,11 +811,14 @@ class MonitorController(
             }
             android.util.Log.i(TAG, "resume ($trigger): ${skip ?: "starting"}")
             if (skip != null) return@launch
-            startMonitor(restoreWirelessDebugging = false, launched = launched)
+            startMonitor(restoreWirelessDebugging = false, launched = launched ?: {})
+            // The start shows itself from here on.
+            stopWaiting()
             // Held until the start is settled, so the process is not let go halfway.
             withTimeoutOrNull(CONNECT_TIMEOUT_MS + START_TIMEOUT_MS) { local.first { it.busy == null } }
         } finally {
-            launched()
+            stopWaiting()
+            launched?.invoke()
         }
     }
 
@@ -845,7 +864,8 @@ class MonitorController(
     private suspend fun startOverWireless(restoreWirelessDebugging: Boolean, launched: () -> Unit): Problem? {
         try {
             if (!pairing.isShellReady) {
-                pairing.reconnect(restoreWirelessDebugging = restoreWirelessDebugging)
+                // Not set off (Wi-Fi gone, pairing under way): nothing will connect, so do not wait for it.
+                if (!pairing.reconnect(restoreWirelessDebugging = restoreWirelessDebugging)) return Problem.CONNECT
                 withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
                     pairing.state.first { it == PairingState.CONNECTED || pairing.failure.value != null }
                 }
@@ -978,11 +998,7 @@ class MonitorController(
         appVisible = true
         refreshMonitoringPackages()
         when (access.method.value) {
-            com.ybblab.jiumi.access.AccessMethod.WIRELESS -> checkGate.onResumeWireless()
-            AccessMethod.NETWORK -> {
-                checkGate.onResumeWireless()
-                resumeInterrupted("app returned")
-            }
+            com.ybblab.jiumi.access.AccessMethod.WIRELESS, AccessMethod.NETWORK -> checkGate.onResumeWireless()
             com.ybblab.jiumi.access.AccessMethod.ROOT -> {
                 if (checkGate.onResumeRoot(access.root.ready)) authorizeRoot()
             }
@@ -996,6 +1012,8 @@ class MonitorController(
                 }
             }
         }
+        // An open session whose monitor was lost while the app was away is picked up on return.
+        resumeInterrupted("app returned")
     }
 
     /** Ends the session; the monitor stops if it runs (after an interruption it may not). */
@@ -1123,7 +1141,7 @@ class MonitorController(
 
     /** The summary for the notification of the session that began at [since], when the user wants one. */
     private fun noticeSummary(since: Long): NoticeSummary? =
-        if (local.value.notices.summary) NoticeSummary.of(sessionReport(since)) else null
+        if (local.value.notices.summary) NoticeSummary.of(sessionReport(since), System.currentTimeMillis()) else null
 
     /** The chronometer uses elapsed realtime, seeded with the same covered duration as the session UI. */
     private fun noticeChronometerBase(session: JiumiStore.Session): Long {
@@ -1186,7 +1204,7 @@ class MonitorController(
             val report = sessionReport(since)
             val notices = local.value.notices
             if (notices.summary) {
-                val summary = NoticeSummary.of(report)
+                val summary = NoticeSummary.of(report, System.currentTimeMillis())
                 MonitorNotificationService.update(context, since) { it.copy(summary = summary) }
             }
             if (notices.alerts) alert(since, report)

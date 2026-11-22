@@ -156,6 +156,7 @@ class MainActivity : AppCompatActivity() {
                                 onOpenGroup = { push("group:$it") },
                                 onOpenAttention = { push("attention:$it") },
                                 onOpenLog = openLog,
+                                onOpenApp = openApp,
                                 onOpenPairing = { push("pairing") },
                                 onOpenNetwork = { push("network-adb") }
                             )

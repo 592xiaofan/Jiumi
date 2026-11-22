@@ -32,6 +32,15 @@ object ProbeMain {
     private const val REOFFER_FILE = "reoffer"
     @Volatile private var spool: EventSpool? = null
     private val offerDelaysMs = longArrayOf(0, 700, 2_000, 5_000, 10_000)
+    /**
+     * After the first offers, how often an unanswered monitor offers itself again: an app that was
+     * killed or frozen through the first ones still finds it when it comes back, without a new start.
+     */
+    private const val OFFER_REPEAT_MS = 30_000L
+    /** The app's states in which it is in use, so an offer it missed is sent again at once. */
+    private val appInUse = setOf("top", "fgsvc", "fg")
+    /** Kept referenced: a collected observer stops watching. */
+    @Volatile private var reofferWatch: android.os.FileObserver? = null
 
     @Volatile private var lock: FileLock? = null
     /** Child processes are not ended by exitProcess; they are destroyed explicitly. */
@@ -72,6 +81,16 @@ object ProbeMain {
                 handler.post { if (!service.isAttached) offer.offerUntilAttached() }
             }.also { it.start() }
             service.finishEventLog = eventLog::finishRecording
+            // The app coming into use is when it needs the monitor; offer then rather than wait for a round.
+            states.onChange = { uid, state ->
+                if (uid == identity.uid && state in appInUse) handler.post { if (!service.isAttached) offer.offerUntilAttached() }
+            }
+            watchReoffer(dataDirectory, handler) {
+                if (!service.isAttached) {
+                    log("asked to offer again")
+                    offer.offerUntilAttached()
+                }
+            }
             offer.offerUntilAttached()
             handler.postDelayed(object : Runnable {
                 override fun run() {
@@ -86,14 +105,6 @@ object ProbeMain {
                         recordState("stop", "apk_changed")
                         exit(0, "APK changed or removed")
                     }
-                    val reoffer = File(dataDirectory, REOFFER_FILE)
-                    if (reoffer.exists()) {
-                        reoffer.delete()
-                        if (!service.isAttached) {
-                            log("asked to offer again")
-                            offer.offerUntilAttached()
-                        }
-                    }
                     handler.postDelayed(this, PACKAGE_CHECK_INTERVAL_MS)
                 }
             }, PACKAGE_CHECK_INTERVAL_MS)
@@ -104,6 +115,24 @@ object ProbeMain {
             error.printStackTrace()
             exit(1, "crash")
         }
+    }
+
+    /**
+     * A second start that finds this monitor running leaves [REOFFER_FILE]; answer it as soon as it
+     * appears, while that start (and the app waiting on it) still waits.
+     */
+    private fun watchReoffer(dataDirectory: File, handler: Handler, onAsked: () -> Unit) {
+        val reoffer = File(dataDirectory, REOFFER_FILE)
+        fun answer() {
+            if (reoffer.delete()) onAsked()
+        }
+        reofferWatch = object : android.os.FileObserver(dataDirectory, CREATE or MOVED_TO) {
+            override fun onEvent(event: Int, path: String?) {
+                if (path == REOFFER_FILE) handler.post(::answer)
+            }
+        }.also { it.startWatching() }
+        // One left before this monitor started watching.
+        handler.post(::answer)
     }
 
     /** start, alive or stop; the app derives monitored time and interruptions from these. */
@@ -174,17 +203,26 @@ object ProbeMain {
     ) {
         private var round = 0
 
+        /** Offers at once, a few times more over the next seconds, then every [OFFER_REPEAT_MS] until attached. */
         fun offerUntilAttached() {
             val current = ++round
             offerDelaysMs.forEach { delay ->
                 handler.postDelayed({ if (current == round && !service().isAttached) send() }, delay)
             }
+            handler.postDelayed(object : Runnable {
+                override fun run() {
+                    if (current != round || service().isAttached) return
+                    send()
+                    handler.postDelayed(this, OFFER_REPEAT_MS)
+                }
+            }, offerDelaysMs.last() + OFFER_REPEAT_MS)
         }
 
         private fun send() {
             val intent = Intent(ProbeProtocol.ACTION_READY)
                 .setPackage(packageName)
-                .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY)
+                // An app frozen in the background holds one pending offer, not one per round.
+                .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY or Intent.FLAG_RECEIVER_REPLACE_PENDING)
                 .putExtras(Bundle().apply {
                     putBinder(ProbeProtocol.EXTRA_BINDER, service())
                     putInt(ProbeProtocol.EXTRA_UID, Process.myUid())

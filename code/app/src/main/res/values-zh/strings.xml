@@ -161,11 +161,17 @@
     <string name="kind_system_app">系统应用</string>
     <string name="badge_frequent_denied">%1$s 被系统拒绝 %2$s 次</string>
     <string name="view_by_type">按类型</string>
+    <string name="rank_show_all">显示全部 %1$s 个应用</string>
+    <string name="rank_routine">系统例行工作 %1$s 个</string>
+    <string name="rank_routine_show">展开</string>
+    <string name="rank_routine_hide">收起</string>
+    <string name="rank_empty_all">这段时间没有应用访问数据。</string>
+    <string name="rank_empty_background">这段时间没有应用在后台读取数据。</string>
     <string name="kind_third_party">应用</string>
     <string name="kind_preinstalled">预装应用</string>
     <string name="kind_system">系统服务</string>
     <string name="badge_background">在后台进行 %1$s 次</string>
-    <string name="badge_sent_in_background">后台上传 %1$s 次</string>
+    <string name="badge_sent_in_background">在后台上传 %1$s 次</string>
     <string name="badge_frequent">%1$s %2$s 次</string>
     <string name="recent_at">最近 %1$s</string>
     <plurals name="times_count">
@@ -184,6 +190,7 @@
     <string name="reason_system">系统启动</string>
     <string name="action_start_short">开始监测</string>
     <string name="monitoring_interrupted">监测已中断</string>
+    <string name="monitor_recovering">正在恢复监测…</string>
     <string name="session_coverage">实际监测 %1$s</string>
     <string name="range_session">本次</string>
     <string name="settings_sessions">监测记录</string>
@@ -235,7 +242,7 @@
     <string name="key_connections">连接数</string>
     <string name="key_sent">上传</string>
     <string name="key_received">接收</string>
-    <string name="key_sent_unattended">后台上传</string>
+    <string name="key_sent_unattended">在后台上传</string>
     <string name="key_reason">启动原因</string>
     <string name="key_component">组件</string>
     <plurals name="records_count">
@@ -243,7 +250,7 @@
     </plurals>
     <string name="badge_not_in_use">在后台进行</string>
     <string name="badge_locked">熄屏时进行</string>
-    <string name="sent_unattended_badge">后台上传 %1$s</string>
+    <string name="sent_unattended_badge">在后台上传 %1$s</string>
     <string name="summary_unattended">在后台进行 %1$s 次</string>
     <string name="summary_denied">%1$s 次被系统拒绝</string>
     <string name="section_did">行为</string>
@@ -251,14 +258,11 @@
     <string name="notification_channel_monitoring">监测状态</string>
     <string name="notification_interrupted_text">打开揪咪恢复监测，或结束这次监测。</string>
     <string name="notification_apps_more">%1$s 等 %2$s 个应用</string>
-    <plurals name="notification_records">
-        <item quantity="other">%1$s 条记录</item>
-    </plurals>
     <string name="section_notifications">通知</string>
     <string name="settings_notice_persistent">常驻通知</string>
     <string name="settings_notice_summary">显示监测摘要</string>
     <string name="settings_notice_alerts">需要关注提醒</string>
-    <string name="settings_notice_desc">监测时在通知栏显示已监测的时长和停止按钮。摘要会加上这次监测的应用数和记录数；提醒会在有应用新出现需要关注的行为时通知你，同一次监测里，同一个应用的同一项只提醒一次。两者在亮屏时大约每分钟同步一次记录，会多用一点电。锁屏上不显示应用名。</string>
+    <string name="settings_notice_desc">监测时在通知栏显示已监测的时长和停止按钮。摘要会加上这次监测的访问次数和后台次数；提醒会在有应用新出现需要关注的行为时通知你，同一次监测里，同一个应用的同一项只提醒一次。两者在亮屏时大约每分钟同步一次记录，会多用一点电。锁屏上不显示应用名。</string>
     <string name="settings_notice_off_desc">关闭后监测照常进行，状态只在揪咪里显示。</string>
     <string name="settings_notice_blocked">揪咪的通知已关闭，点按打开系统设置。</string>
     <string name="catd_location_precise">使用精确位置权限获取所在位置，可精确到几米，能看出你在哪栋楼、哪个门店。</string>
@@ -772,7 +776,6 @@
     <string name="network_adb_unusable">端口不可用</string>
     <string name="network_adb_saved_port">端口 %1$d</string>
     <string name="network_adb_not_configured">未配置</string>
-    <string name="network_adb_recovering">正在恢复监测…</string>
     <string name="network_adb_connection_settings">连接设置</string>
     <string name="connection_wireless_short">无线调试</string>
     <string name="connection_network_short">网络调试</string>
@@ -796,7 +799,9 @@
     <string name="chart_more">多</string>
     <string name="chart_background">后台</string>
     <string name="chart_unrecorded">无记录</string>
+    <string name="chart_collecting">正在采集 · 约 %1$d 分钟后显示曲线</string>
     <string name="chart_not_monitored">未监测</string>
     <string name="attention_slot_none">没有需要关注的行为</string>
     <string name="attention_slot_apps">%1$d 个应用</string>
+    <string name="notification_started">%1$s 开始</string>
 </resources>

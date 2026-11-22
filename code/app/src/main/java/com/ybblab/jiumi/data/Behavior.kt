@@ -111,7 +111,7 @@ object Behavior {
     const val MAX_BARS = 31
     /** Most buckets a window of under a day is cut into. */
     const val MAX_SHORT = 24
-    private val STEPS = listOf(5 * 60_000L, 15 * 60_000L, 30 * 60_000L, 60 * 60_000L, 2 * 60 * 60_000L)
+    private val STEPS = listOf(60_000L, 5 * 60_000L, 15 * 60_000L, 30 * 60_000L, 60 * 60_000L, 2 * 60 * 60_000L)
     const val HOUR = 3_600_000L
     const val DAY = 24 * HOUR
 }

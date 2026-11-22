@@ -4,12 +4,16 @@
 package com.ybblab.jiumi.data
 
 /**
- * What the persistent notification says about an open session: the same figures the Monitor tab
- * shows for it, apps and records. Items raised for attention are left to their own alerts.
+ * What the persistent notification says about an open session: the figures the Monitor tab leads
+ * with for it, its reads and calls and how many of them were in the background. No app is named.
  */
-data class NoticeSummary(val apps: Int, val records: Int) {
+data class NoticeSummary(val accesses: Int, val background: Int) {
     companion object {
-        fun of(report: Report) = NoticeSummary(report.apps.size, report.timeline.size)
+        fun of(report: Report, to: Long): NoticeSummary {
+            val activity = Activity.of(report.timeline, report.attention, report.apps, report.from, to, emptyList(),
+                report.systemSlots, routineKinds = report.routineKinds)
+            return NoticeSummary(activity.total, activity.backgroundTotal)
+        }
     }
 }
 

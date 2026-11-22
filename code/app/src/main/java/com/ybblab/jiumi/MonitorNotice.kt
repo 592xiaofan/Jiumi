@@ -11,7 +11,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.view.View
 import android.widget.RemoteViews
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
@@ -55,16 +54,17 @@ object MonitorNotice {
         val stop = PendingIntent.getService(context, 1, Intent(context, MonitorNotificationService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE)
         val title = text.getString(R.string.notification_monitoring)
-        val line = running.summary?.let { summaryLine(text, it) }
+        val summary = running.summary
+        // One level only: the status and running time, then the session's two figures (or when it
+        // began, without a summary), short enough to show whole.
+        val line = summary?.let { summaryLine(text, it) }
+            ?: text.getString(R.string.notification_started, android.text.format.DateFormat.getTimeFormat(text).format(running.since))
         val content = RemoteViews(context.packageName, R.layout.notification_monitoring).apply {
             setTextViewText(R.id.notification_title, title)
             setChronometer(R.id.notification_elapsed, running.chronometerBase, null, true)
-            if (line != null) {
-                setTextViewText(R.id.notification_text, line)
-                setViewVisibility(R.id.notification_text, View.VISIBLE)
-            }
             setOnClickPendingIntent(R.id.notification_stop, stop)
             setContentDescription(R.id.notification_stop, text.getString(R.string.action_stop_monitoring))
+            setTextViewText(R.id.notification_text, line)
         }
         return NotificationCompat.Builder(context, CHANNEL_MONITORING)
             .setSmallIcon(R.drawable.ic_stat_monitoring)
@@ -72,6 +72,8 @@ object MonitorNotice {
             .setContentText(line)
             .setStyle(NotificationCompat.DecoratedCustomViewStyle())
             .setCustomContentView(content)
+            // The same view unfolded, so pulling it down shows everything at once and there is nothing more to open.
+            .setCustomBigContentView(content)
             .setWhen(running.since)
             .setShowWhen(false)
             .setOngoing(true)
@@ -149,10 +151,11 @@ object MonitorNotice {
         return runCatching { NotificationManagerCompat.from(context).notify(tag, id, notification) }.isSuccess
     }
 
+    /** "Reads 1,692 · Background 220": the two figures the Monitor tab leads with, short enough for one line. */
     private fun summaryLine(text: Context, summary: NoticeSummary): String = listOf(
-        text.resources.getQuantityString(R.plurals.apps_count, summary.apps, formatCount(summary.apps.toLong())),
-        text.resources.getQuantityString(R.plurals.notification_records, summary.records, formatCount(summary.records.toLong())),
-    ).joinToString(" · ")
+        text.getString(R.string.stat_accesses) + " " + formatCount(summary.accesses.toLong()) + text.getString(R.string.chart_unit_times),
+        text.getString(R.string.chart_background) + " " + formatCount(summary.background.toLong()) + text.getString(R.string.chart_unit_times),
+    ).joinToString("  ·  ")
 
     private fun appList(text: Context, labels: AppLabels, apps: List<AppKey>): String {
         val separator = text.getString(R.string.list_separator)

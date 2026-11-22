@@ -162,11 +162,17 @@
     <string name="kind_system_app">System apps</string>
     <string name="badge_frequent_denied">%1$s refused by Android ×%2$s</string>
     <string name="view_by_type">By type</string>
+    <string name="rank_show_all">Show all %1$s apps</string>
+    <string name="rank_routine">Routine system work (%1$s)</string>
+    <string name="rank_routine_show">Show</string>
+    <string name="rank_routine_hide">Hide</string>
+    <string name="rank_empty_all">No app reached data in this period.</string>
+    <string name="rank_empty_background">No app read data in the background in this period.</string>
     <string name="kind_third_party">Apps</string>
     <string name="kind_preinstalled">Preinstalled apps</string>
     <string name="kind_system">System services</string>
     <string name="badge_background">Done in the background ×%1$s</string>
-    <string name="badge_sent_in_background">Sent in background ×%1$s</string>
+    <string name="badge_sent_in_background">Sent in the background ×%1$s</string>
     <string name="badge_frequent">%1$s ×%2$s</string>
     <string name="recent_at">Latest %1$s</string>
     <plurals name="times_count">
@@ -186,6 +192,7 @@
     <string name="reason_system">Started by the system</string>
     <string name="action_start_short">Start</string>
     <string name="monitoring_interrupted">Monitoring interrupted</string>
+    <string name="monitor_recovering">Restoring monitoring…</string>
     <string name="session_coverage">%1$s monitored</string>
     <string name="range_session">Session</string>
     <string name="settings_sessions">Monitoring record</string>
@@ -239,7 +246,7 @@
     <string name="key_connections">Connections</string>
     <string name="key_sent">Sent</string>
     <string name="key_received">Received</string>
-    <string name="key_sent_unattended">Sent in background</string>
+    <string name="key_sent_unattended">Sent in the background</string>
     <string name="key_reason">Start reason</string>
     <string name="key_component">Component</string>
     <plurals name="records_count">
@@ -248,7 +255,7 @@
     </plurals>
     <string name="badge_not_in_use">Done in the background</string>
     <string name="badge_locked">Done with the screen off</string>
-    <string name="sent_unattended_badge">Sent %1$s in background</string>
+    <string name="sent_unattended_badge">Sent %1$s in the background</string>
     <string name="summary_unattended">Done in the background ×%1$s</string>
     <string name="summary_denied">%1$s refused by Android</string>
     <string name="section_did">Behaviors</string>
@@ -256,15 +263,11 @@
     <string name="notification_channel_monitoring">Monitoring</string>
     <string name="notification_interrupted_text">Open Jiumi to resume monitoring or end the session.</string>
     <string name="notification_apps_more">%2$s apps, including %1$s</string>
-    <plurals name="notification_records">
-        <item quantity="one">%1$s record</item>
-        <item quantity="other">%1$s records</item>
-    </plurals>
     <string name="section_notifications">Notifications</string>
     <string name="settings_notice_persistent">Persistent notification</string>
     <string name="settings_notice_summary">Show summary</string>
     <string name="settings_notice_alerts">Attention alerts</string>
-    <string name="settings_notice_desc">While monitoring, the notification shows how long it has run and a button to stop. The summary adds how many apps and records this session has; alerts tell you when an app is newly raised for attention, once per app and item in each session. Both keep the record up to date about once a minute while the screen is on, which uses a little more battery. The lock screen shows no app names.</string>
+    <string name="settings_notice_desc">While monitoring, the notification shows how long it has run and a button to stop. The summary adds this session\'s reads and how many were in the background; alerts tell you when an app is newly raised for attention, once per app and item in each session. Both keep the record up to date about once a minute while the screen is on, which uses a little more battery. The lock screen shows no app names.</string>
     <string name="settings_notice_off_desc">Monitoring goes on without the notification; its status shows only in Jiumi.</string>
     <string name="settings_notice_blocked">Notifications from Jiumi are turned off. Tap to open the system settings.</string>
     <string name="catd_location_precise">Gets your location through the precise location permission, down to a few metres: which building or shop you are in.</string>
@@ -782,7 +785,6 @@
     <string name="network_adb_unusable">Unavailable</string>
     <string name="network_adb_saved_port">Port %1$d</string>
     <string name="network_adb_not_configured">Not configured</string>
-    <string name="network_adb_recovering">Restoring monitoring…</string>
     <string name="network_adb_connection_settings">Connection settings</string>
     <string name="connection_wireless_short">Wireless</string>
     <string name="connection_network_short">Network</string>
@@ -806,7 +808,9 @@
     <string name="chart_more">More</string>
     <string name="chart_background">BACKGROUND</string>
     <string name="chart_unrecorded">No records</string>
+    <string name="chart_collecting">Collecting · the curve shows in about %1$d min</string>
     <string name="chart_not_monitored">Not monitored</string>
     <string name="attention_slot_none">Nothing raised</string>
     <string name="attention_slot_apps">%1$d apps</string>
+    <string name="notification_started">Started %1$s</string>
 </resources>
