@@ -20,6 +20,7 @@ import com.ybblab.jiumi.access.ShizukuState
 @Composable
 fun accessName(method: AccessMethod): String = stringResource(when (method) {
     AccessMethod.WIRELESS -> R.string.access_wireless
+    AccessMethod.NETWORK -> R.string.access_network_debugging
     AccessMethod.ROOT -> R.string.access_root
     AccessMethod.SHIZUKU -> R.string.access_shizuku
 })
@@ -27,6 +28,7 @@ fun accessName(method: AccessMethod): String = stringResource(when (method) {
 @Composable
 fun accessDescription(method: AccessMethod): String = stringResource(when (method) {
     AccessMethod.WIRELESS -> R.string.access_wireless_desc
+    AccessMethod.NETWORK -> R.string.access_network_desc
     AccessMethod.ROOT -> R.string.access_root_desc
     AccessMethod.SHIZUKU -> R.string.access_shizuku_desc
 })

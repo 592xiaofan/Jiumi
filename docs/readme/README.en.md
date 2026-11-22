@@ -71,7 +71,7 @@ Android provides permission access records, connection tables, system traces and
 | System traces (Perfetto) | Identifiable system service calls and per-connection traffic where the system supports it. |
 | Event logs | When a process started and the reason Android recorded. |
 
-**Choose wireless debugging, Shizuku or root.** The monitor runs as the shell user with all three. Wireless debugging pairs on the phone itself. Shizuku can be started over ADB or with root, and needs permission granted to Jiumi. The root option switches to the shell user to start the monitor; in addition, disabling and enabling apps and uninstalling and restoring preinstalled apps run directly as root, so Jiumi can change apps Android does not let the shell change. The same goes for Shizuku started with root.
+**Choose wireless debugging, network debugging, Shizuku, or root.** The monitor runs as the shell user with any of these methods. Wireless debugging pairs on the phone itself. Network debugging connects to an ADB port already open on the phone. Android may ask for permission on the first connection, and no pairing code is required. Shizuku can be started over ADB or with root, and needs permission granted to Jiumi. The root option switches to the shell user to start the monitor; in addition, disabling and enabling apps and uninstalling and restoring preinstalled apps run directly as root, so Jiumi can change apps Android does not let the shell change. The same goes for Shizuku started with root.
 
 **Optional domain recording** uses a local VPN to receive DNS queries and forward them unchanged to the current network's DNS servers. Other traffic goes directly to its destination. Domain recording occupies the system VPN slot, and queries using an app's own encrypted DNS or a named Private DNS provider may bypass it.
 
@@ -82,6 +82,8 @@ Android provides permission access records, connection tables, system traces and
 3. Tap Start monitoring on the Monitor page. A persistent notification appears while monitoring is running. You can stop monitoring from the notification or the app.
 
 After a phone restart, a Jiumi update, or an interruption to the debugging service, Jiumi automatically resumes the same session when the selected connection is available. If the card shows Monitoring interrupted, restore the selected connection and tap Resume. Interrupted time does not count toward monitored time.
+
+If the monitor stops when using network debugging, Jiumi tries to rediscover a local ADB port and resume the session. If Android leaves the port closed after a reboot, Jiumi prompts you to restore the connection.
 
 When using Wireless debugging, turning on USB debugging as well helps keep a running monitor alive if Android turns Wireless debugging off when Wi-Fi disconnects. ADB persistence is off by default and reuses a port only when the device already provides a verified loopback listener. See the [setup guide](https://jiumi.ybblab.com/en/download/) for details.
 

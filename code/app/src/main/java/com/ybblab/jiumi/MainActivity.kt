@@ -42,6 +42,7 @@ import com.ybblab.jiumi.ui.SystemModuleScreen
 import com.ybblab.jiumi.ui.AboutScreen
 import com.ybblab.jiumi.ui.LicensesScreen
 import com.ybblab.jiumi.ui.PairingScreen
+import com.ybblab.jiumi.ui.NetworkAdbScreen
 import com.ybblab.jiumi.ui.SetupScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -63,12 +64,16 @@ class MainActivity : AppCompatActivity() {
         beginPairing()
     }
 
+    private val monitorNotificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        if (it) controller.reshowIndicator()
+    }
+
     /** A page a notification asked to open, until it is shown. */
     private val requestedRoute = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
-    /** Only attention pages are opened from outside, from the alerts this app posts. */
+    /** The monitor and attention pages can be opened by Jiumi notifications. */
     private fun requestRoute(intent: Intent?) {
-        intent?.getStringExtra(MonitorNotice.EXTRA_ROUTE)?.takeIf { it.startsWith(MonitorNotice.ROUTE_ATTENTION) }
+        intent?.getStringExtra(MonitorNotice.EXTRA_ROUTE)?.takeIf { it == MonitorNotice.ROUTE_MONITOR || it.startsWith(MonitorNotice.ROUTE_ATTENTION) }
             ?.let { requestedRoute.value = it }
     }
 
@@ -114,7 +119,7 @@ class MainActivity : AppCompatActivity() {
                     if (!setupDone) return@LaunchedEffect
                     (1..stack.size).forEach { pages.removeState(pageKey(it)) }
                     tab = Tab.MONITOR
-                    stack = listOf(r)
+                    stack = if (r == MonitorNotice.ROUTE_MONITOR) emptyList() else listOf(r)
                     requestedRoute.value = null
                 }
                 // On opening, a check for a newer release when one is due; a release found is offered once
@@ -134,7 +139,14 @@ class MainActivity : AppCompatActivity() {
                 if (top != null) BackHandler(onBack = pop)
                 pages.SaveableStateProvider(pageKey(stack.size)) { when {
                     top == null && !setupDone -> SetupScreen(controller, onPair = ::pair,
-                        onOpenWirelessDebugging = ::openWirelessDebugging, onDone = preferences::finishSetup)
+                        onOpenWirelessDebugging = ::openWirelessDebugging, onOpenNetwork = { push("network-adb") },
+                        onDone = {
+                            preferences.finishSetup()
+                            if (Build.VERSION.SDK_INT >= 33 && !MonitorNotice.allowed(this@MainActivity) &&
+                                controller.access.method.value == com.ybblab.jiumi.access.AccessMethod.NETWORK) {
+                                monitorNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        })
                     top == null -> TabScaffold(tab, onSelect = { tab = it }) { selected ->
                         // Each tab keeps its own scroll and choices while another is shown.
                         pages.SaveableStateProvider("tab|${selected.name}") { when (selected) {
@@ -144,7 +156,8 @@ class MainActivity : AppCompatActivity() {
                                 onOpenGroup = { push("group:$it") },
                                 onOpenAttention = { push("attention:$it") },
                                 onOpenLog = openLog,
-                                onOpenPairing = { push("pairing") }
+                                onOpenPairing = { push("pairing") },
+                                onOpenNetwork = { push("network-adb") }
                             )
                             Tab.APPS -> AppsScreen(controller, labels, onOpenApp = openApp,
                                 onOpenModule = { push("apex:$it") })
@@ -187,6 +200,7 @@ class MainActivity : AppCompatActivity() {
                             section, controller, onBack = pop,
                             onOpenSpool = { push("spool") }, onOpenSessions = { push("sessions") }, onOpenExport = { push("export") },
                             onOpenPairing = { push("pairing") },
+                            onOpenNetwork = { push("network-adb") },
                             onOpenMonitoringExclusions = { push("monitoring-exclusions") },
                             onOpenMonitor = {
                                 (1..stack.size).forEach { pages.removeState(pageKey(it)) }
@@ -195,6 +209,7 @@ class MainActivity : AppCompatActivity() {
                             }
                         )
                     }
+                    top == "network-adb" -> NetworkAdbScreen(controller, onBack = pop)
                     top == "pairing" -> PairingScreen(controller, onBack = pop, onPair = ::pair,
                         onOpenWirelessDebugging = ::openWirelessDebugging)
                     top == "spool" -> SpoolScreen(controller, onBack = pop)

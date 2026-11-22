@@ -106,6 +106,7 @@ class AirAdbKey private constructor(
         private const val PUBLIC_KEY_STRUCT_SIZE = 524
         private val base64MimeEncoder = Base64.getMimeEncoder(64, "\n".toByteArray(Charsets.UTF_8))
 
+        @Synchronized
         fun loadOrCreate(privateKeyFile: File, publicKeyFile: File): AirAdbKey {
             if (!privateKeyFile.exists()) {
                 generate(privateKeyFile, publicKeyFile)

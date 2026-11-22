@@ -14,12 +14,13 @@ import kotlinx.coroutines.flow.asStateFlow
  * A way that holds root also changes packages as root, which the shell may not do (see [Access.asRoot]).
  * Listed in the order offered: no root first.
  * - [WIRELESS]: Wireless debugging, paired once from this phone. No root, no other app.
+ * - [NETWORK]: an existing classic ADB listener on this phone.
  * - [SHIZUKU]: the Shizuku app, running as the shell or as root, starts it on request.
  * - [ROOT]: the phone's root manager (Magisk, KernelSU, APatch) drops to the shell identity.
  */
-enum class AccessMethod { WIRELESS, SHIZUKU, ROOT }
+enum class AccessMethod { WIRELESS, NETWORK, SHIZUKU, ROOT }
 
-/** The chosen [AccessMethod], kept across restarts, and the two ways besides Wireless debugging. */
+/** The chosen [AccessMethod], kept across restarts, and the privileged launchers. */
 class Access(context: Context) {
     private val prefs = context.getSharedPreferences("jiumi_settings", Context.MODE_PRIVATE)
     private val _method = MutableStateFlow(
@@ -36,7 +37,7 @@ class Access(context: Context) {
     fun asRoot(command: String, timeoutMs: Long): String? = when (_method.value) {
         AccessMethod.ROOT -> root.asRoot(command, timeoutMs)
         AccessMethod.SHIZUKU -> shizuku.asRoot(command, timeoutMs)
-        AccessMethod.WIRELESS -> null
+        AccessMethod.WIRELESS, AccessMethod.NETWORK -> null
     }
 
     fun select(method: AccessMethod) {

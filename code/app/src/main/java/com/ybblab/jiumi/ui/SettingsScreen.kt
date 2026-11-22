@@ -25,6 +25,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -46,6 +47,7 @@ import com.ybblab.jiumi.R
 import com.ybblab.jiumi.ThemeMode
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingState
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingTrustState
+import com.ybblab.jiumi.adb.NetworkAdb
 import com.ybblab.jiumi.adb.messageRes
 import com.ybblab.jiumi.ui.icons.JiumiIcons
 import com.ybblab.jiumi.ui.theme.StatusWarning
@@ -143,10 +145,12 @@ internal fun SettingsSectionScreen(
     onOpenSessions: () -> Unit,
     onOpenExport: () -> Unit,
     onOpenPairing: () -> Unit,
+    onOpenNetwork: () -> Unit,
     onOpenMonitoringExclusions: () -> Unit,
     onOpenMonitor: () -> Unit
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
+    val selectedMethod = state.method
     SubScreen(stringResource(section.title), onBack) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
@@ -157,17 +161,51 @@ internal fun SettingsSectionScreen(
                     val pairingFlow = state.pairingState in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE, PairingState.PAIRING)
                     val paired = state.trust == PairingTrustState.PAIRED
                     item {
-                        // The three ways to start the monitor; what each needs follows beneath.
+                        // The requirements of the selected way follow beneath.
                         Segmented(
-                            com.ybblab.jiumi.access.AccessMethod.entries.map { accessName(it) },
-                            selected = state.method.ordinal,
+                            com.ybblab.jiumi.access.AccessMethod.entries.map { method ->
+                                when (method) {
+                                    com.ybblab.jiumi.access.AccessMethod.WIRELESS -> stringResource(R.string.connection_wireless_short)
+                                    com.ybblab.jiumi.access.AccessMethod.NETWORK -> stringResource(R.string.connection_network_short)
+                                    else -> accessName(method)
+                                }
+                            },
+                            selected = selectedMethod.ordinal,
                             onSelect = { controller.selectAccess(com.ybblab.jiumi.access.AccessMethod.entries[it]) },
-                            modifier = Modifier.fillMaxWidth(1f)
+                            modifier = Modifier.fillMaxWidth(1f),
+                            activeOption = state.method.ordinal
                         )
                         GroupFooter(stringResource(R.string.access_pick_one))
                         Spacer(Modifier.height(12.dp))
                     }
-                    if (state.method == com.ybblab.jiumi.access.AccessMethod.ROOT) item {
+                    if (selectedMethod == com.ybblab.jiumi.access.AccessMethod.NETWORK) item {
+                        val check by controller.networkCheck.collectAsStateWithLifecycle()
+                        LaunchedEffect(Unit) { controller.ensureNetworkAdbChecked() }
+                        val result = check.result
+                        val problem = networkAdbProblem(result)
+                        val status = when (result) {
+                            is NetworkAdb.Result.Ready -> stringResource(R.string.network_adb_saved_port, result.port)
+                            is NetworkAdb.Result.NeedsAuthorization -> stringResource(R.string.network_adb_needs_authorization)
+                            NetworkAdb.Result.Unavailable -> stringResource(R.string.network_adb_not_found)
+                            NetworkAdb.Result.WrongIdentity -> stringResource(R.string.network_adb_unusable)
+                            null -> stringResource(R.string.network_adb_searching)
+                        }
+                        Card {
+                            ListRow(stringResource(R.string.access_network_debugging),
+                                leading = { IconTile(JiumiIcons.Network) }, onClick = {
+                                    if (result is NetworkAdb.Result.NeedsAuthorization) {
+                                        controller.checkNetworkAdb(result.port, authorize = true)
+                                    } else onOpenNetwork()
+                                }) {
+                                TrailingValue(status,
+                                    color = if (problem == null) MaterialTheme.colorScheme.onSurfaceVariant else StatusWarning)
+                                Chevron()
+                            }
+                        }
+                        problem?.let { GroupFooter(stringResource(it), warning = true) }
+                        GroupFooter(stringResource(R.string.access_network_desc))
+                    }
+                    if (selectedMethod == com.ybblab.jiumi.access.AccessMethod.ROOT) item {
                         Card {
                             ListRow(stringResource(R.string.access_root), leading = { IconTile(JiumiIcons.Shield) },
                                 onClick = controller::authorizeRoot) {
@@ -180,7 +218,7 @@ internal fun SettingsSectionScreen(
                         rootError(state.root)?.let { GroupFooter(stringResource(it), warning = true) }
                         GroupFooter(accessDescription(state.method))
                     }
-                    if (state.method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU) item {
+                    if (selectedMethod == com.ybblab.jiumi.access.AccessMethod.SHIZUKU) item {
                         // Shizuku may have been started or stopped while away; read it again when shown.
                         androidx.compose.runtime.LaunchedEffect(Unit) { controller.access.shizuku.refresh() }
                         Card {
@@ -194,7 +232,7 @@ internal fun SettingsSectionScreen(
                         if (state.problem == MonitorController.Problem.SHIZUKU) GroupFooter(stringResource(R.string.error_shizuku), warning = true)
                         GroupFooter(accessDescription(state.method))
                     }
-                    if (state.method == com.ybblab.jiumi.access.AccessMethod.WIRELESS) item {
+                    if (selectedMethod == com.ybblab.jiumi.access.AccessMethod.WIRELESS) item {
                         val persistence by controller.adbPersistence.collectAsStateWithLifecycle()
                         val usbOn = remember(persistence, state.pairingState) { controller.usbDebuggingEnabled() }
                         val needsUsb = persistence && usbOn == false
@@ -217,8 +255,8 @@ internal fun SettingsSectionScreen(
                         }
                         // Without USB debugging, adbd stops when the system turns Wireless debugging off (as it does
                         // on leaving Wi-Fi), and the monitor it started ends with it.
+                        GroupFooter(stringResource(R.string.access_wireless_desc))
                         if (usbOn == false) GroupFooter(stringResource(R.string.settings_usb_debugging_off), warning = true)
-                        else GroupFooter(stringResource(R.string.settings_pairing_desc))
                         Spacer(Modifier.height(16.dp))
                         GroupTitle(stringResource(R.string.settings_adb_options))
                         Card {

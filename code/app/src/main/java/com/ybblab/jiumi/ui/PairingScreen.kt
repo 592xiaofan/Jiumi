@@ -76,7 +76,7 @@ fun PairingScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp)
         ) {
             item {
-                Text(stringResource(R.string.pairing_intro), style = MaterialTheme.typography.bodySmall, color = Ink.secondary,
+                Text(stringResource(R.string.access_wireless_desc), style = MaterialTheme.typography.bodySmall, color = Ink.secondary,
                     modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 14.dp))
             }
             item {

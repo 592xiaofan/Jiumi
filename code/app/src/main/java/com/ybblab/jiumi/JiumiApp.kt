@@ -17,6 +17,7 @@ import com.ybblab.jiumi.adb.AdbPairingHost
 import com.ybblab.jiumi.adb.AirModeNotificationController
 import com.ybblab.jiumi.adb.AirModePairingManager
 import com.ybblab.jiumi.adb.PairingLog
+import com.ybblab.jiumi.adb.NetworkAdb
 import com.ybblab.jiumi.data.AccessRules
 import com.ybblab.jiumi.data.JiumiStore
 import com.ybblab.jiumi.probe.ProbeClient
@@ -31,6 +32,7 @@ class JiumiApp : Application(), AdbPairingHost {
     private val log by lazy { PairingLog(File(filesDir, "logs/adb.log")) }
     val notifications by lazy { AirModeNotificationController(this, log) }
     override val pairingManager by lazy { AirModePairingManager(this, appScope, notifications, log) }
+    private val networkAdb by lazy { NetworkAdb(this, appScope, log) }
     val probeClient by lazy { ProbeClient(this) }
     val rules by lazy { AccessRules.load(this) }
     val monitoring by lazy { com.ybblab.jiumi.data.MonitoringPreferences(this) }
@@ -38,7 +40,7 @@ class JiumiApp : Application(), AdbPairingHost {
     val preferences by lazy { AppPreferences(this) }
     val domains by lazy { com.ybblab.jiumi.dns.DomainCapture(this) }
     val access by lazy { com.ybblab.jiumi.access.Access(this) }
-    val controller by lazy { MonitorController(this, appScope, pairingManager, probeClient, rules, store, access, monitoring) }
+    val controller by lazy { MonitorController(this, appScope, pairingManager, networkAdb, probeClient, rules, store, access, monitoring) }
 
     private val wifiNetworks = ConcurrentHashMap.newKeySet<Network>()
 

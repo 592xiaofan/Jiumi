@@ -49,6 +49,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +72,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ybblab.jiumi.MonitorController
 import com.ybblab.jiumi.access.RootShell
 import com.ybblab.jiumi.R
+import com.ybblab.jiumi.adb.NetworkAdb
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingState
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingTrustState
 import com.ybblab.jiumi.adb.messageRes
@@ -90,14 +92,18 @@ fun SetupScreen(
     controller: MonitorController,
     onPair: () -> Unit,
     onOpenWirelessDebugging: () -> Unit,
+    onOpenNetwork: () -> Unit,
     onDone: () -> Unit
 ) {
     val context = LocalContext.current
     val state by controller.state.collectAsStateWithLifecycle()
     val method = state.method
     val checkingRoot = method == com.ybblab.jiumi.access.AccessMethod.ROOT && state.root == RootShell.State.CHECKING
-    // Ready by the chosen way: paired, root granted, or Shizuku allowed.
-    val paired = state.ready
+    val networkCheck by controller.networkCheck.collectAsStateWithLifecycle()
+    val network = method == com.ybblab.jiumi.access.AccessMethod.NETWORK
+    val checkingNetwork = network && networkCheck.result == null
+    if (network) LaunchedEffect(Unit) { controller.ensureNetworkAdbChecked() }
+    val paired = if (network) networkCheck.result is NetworkAdb.Result.Ready else state.ready
     val inFlow = method == com.ybblab.jiumi.access.AccessMethod.WIRELESS && state.pairingState in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE, PairingState.PAIRING,
         PairingState.CONNECTING)
     // Read again whenever the user comes back from the system's pages.
@@ -123,6 +129,20 @@ fun SetupScreen(
 
     val shizuku = state.shizuku
     val steps = when (method) {
+        com.ybblab.jiumi.access.AccessMethod.NETWORK -> {
+            val result = networkCheck.result
+            val auth = result as? NetworkAdb.Result.NeedsAuthorization
+            val action = when {
+                checkingNetwork -> R.string.network_adb_searching
+                auth != null -> R.string.action_authorize
+                else -> R.string.network_adb_connection_settings
+            }
+            listOf(Step(R.string.network_adb_setup_step, networkAdbProblem(result) ?: R.string.access_network_desc,
+                action, done = paired) {
+                if (auth != null) controller.checkNetworkAdb(auth.port, authorize = true)
+                else onOpenNetwork()
+            })
+        }
         com.ybblab.jiumi.access.AccessMethod.ROOT -> listOf(
             Step(R.string.setup_step_root_title, R.string.setup_step_root_desc,
                 rootAction(state.root), done = paired) { controller.authorizeRoot() }
@@ -176,7 +196,7 @@ fun SetupScreen(
                     Text(stringResource(R.string.setup_privacy), style = MaterialTheme.typography.labelMedium, color = Ink.tertiary)
                 }
                 if (current < 0) BottomAction(stringResource(R.string.setup_start), onClick = onDone)
-                else BottomAction(stringResource(steps[current].action), enabled = !checkingRoot) {
+                else BottomAction(stringResource(steps[current].action), enabled = !checkingRoot && !checkingNetwork) {
                     opened = null; steps[current].run()
                 }
             }
@@ -198,7 +218,10 @@ fun SetupScreen(
                     modifier = Modifier.padding(top = 2.dp))
                 Column(Modifier.padding(top = 16.dp).selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     com.ybblab.jiumi.access.AccessMethod.entries.forEach { m ->
-                        MethodCard(m, selected = m == method) { opened = null; controller.selectAccess(m) }
+                        MethodCard(m, selected = m == method) {
+                            opened = null
+                            controller.selectAccess(m)
+                        }
                     }
                 }
             }
@@ -287,11 +310,13 @@ private fun Brand() {
 private fun MethodCard(method: com.ybblab.jiumi.access.AccessMethod, selected: Boolean, onSelect: () -> Unit) {
     val icon = when (method) {
         com.ybblab.jiumi.access.AccessMethod.WIRELESS -> JiumiIcons.Wifi
+        com.ybblab.jiumi.access.AccessMethod.NETWORK -> JiumiIcons.Network
         com.ybblab.jiumi.access.AccessMethod.ROOT -> JiumiIcons.Shield
         com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> JiumiIcons.Smartphone
     }
     val hint = when (method) {
         com.ybblab.jiumi.access.AccessMethod.WIRELESS -> R.string.access_wireless_hint
+        com.ybblab.jiumi.access.AccessMethod.NETWORK -> R.string.access_network_hint
         com.ybblab.jiumi.access.AccessMethod.ROOT -> R.string.access_root_hint
         com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> R.string.access_shizuku_hint
     }
@@ -310,6 +335,10 @@ private fun MethodCard(method: com.ybblab.jiumi.access.AccessMethod, selected: B
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (selected) {
+                        SelectionDot()
+                        Spacer(Modifier.width(6.dp))
+                    }
                     Text(accessName(method), style = MaterialTheme.typography.titleMedium, color = Ink.primary)
                     // Wireless debugging needs nothing else installed, so it is the one to suggest.
                     if (method == com.ybblab.jiumi.access.AccessMethod.WIRELESS) Text(
@@ -319,7 +348,6 @@ private fun MethodCard(method: com.ybblab.jiumi.access.AccessMethod, selected: B
                 Text(stringResource(hint), style = MaterialTheme.typography.bodySmall, color = Ink.secondary,
                     modifier = Modifier.padding(top = 2.dp))
             }
-            if (selected) Icon(JiumiIcons.CheckCircle, null, tint = Ink.primary, modifier = Modifier.size(20.dp))
         }
     }
 }

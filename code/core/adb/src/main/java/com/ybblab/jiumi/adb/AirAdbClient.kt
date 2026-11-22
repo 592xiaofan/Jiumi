@@ -19,7 +19,8 @@ class AirAdbClient(
     private val host: String,
     private val port: Int,
     private val adbKey: AirAdbKey,
-    private val allowUserAuthorization: Boolean = false
+    private val allowUserAuthorization: Boolean = false,
+    private val legacyOnly: Boolean = false
 ) : Closeable {
     private var socket: Socket? = null
     private var tlsSocket: SSLSocket? = null
@@ -36,13 +37,13 @@ class AirAdbClient(
         if (connected) return
         val tcpSocket = Socket().also {
             it.tcpNoDelay = true
-            it.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            it.connect(InetSocketAddress(host, port), if (legacyOnly) 750 else CONNECT_TIMEOUT_MS)
             // Give the socket a read timeout. On a half-open connection (the peer's Wi-Fi dropped or it slept without sending RST),
             // readFully without one blocks until the OS-level TCP timeout (minutes). That was the real cause of background work
             // being "very slow and mostly failing" (a single screenshot or injection hung for 6 minutes until the wall timeout).
             // With soTimeout set, any stuck read throws SocketTimeoutException within seconds; the caller then
             // marks the shell down and reconnects, so the loop is never hung forever by one read.
-            it.soTimeout = READ_TIMEOUT_MS
+            it.soTimeout = if (legacyOnly) 1_500 else READ_TIMEOUT_MS
             socket = it
         }
         inputStream = DataInputStream(tcpSocket.inputStream)
@@ -52,6 +53,7 @@ class AirAdbClient(
         var message = readMessage()
         when (message.command) {
             A_STLS -> {
+                if (legacyOnly) error("Expected a classic ADB port")
                 writeMessage(A_STLS, A_VERSION, 0, null)
                 val sslSocket = adbKey.sslContext.socketFactory
                     .createSocket(tcpSocket, host, port, true) as SSLSocket
@@ -82,6 +84,7 @@ class AirAdbClient(
             }
             throw IllegalStateException("ADB connection failed: command=${message.command}")
         }
+        tcpSocket.soTimeout = READ_TIMEOUT_MS
         connected = true
     }
 
@@ -151,7 +154,13 @@ class AirAdbClient(
         if (message.command == A_AUTH && allowUserAuthorization) {
             // A TLS-paired key may still need one explicit approval for the classic TCP transport.
             writeMessage(A_AUTH, ADB_AUTH_RSAPUBLICKEY, 0, adbKey.publicKeyBytes)
-            message = readMessage()
+            if (legacyOnly) socket?.soTimeout = 25_000
+            message = try {
+                readMessage()
+            } catch (error: java.io.IOException) {
+                if (!legacyOnly) throw error
+                throw AirAdbAuthorizationException("ADB authorization did not complete", error)
+            }
         }
         if (message.command == A_AUTH) {
             throw AirAdbAuthorizationException("ADB rejected the key or is awaiting user authorization")

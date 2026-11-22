@@ -101,7 +101,8 @@ fun HomeScreen(
     onOpenGroup: (String) -> Unit,
     onOpenAttention: (String) -> Unit,
     onOpenLog: (LogEntry) -> Unit,
-    onOpenPairing: () -> Unit
+    onOpenPairing: () -> Unit,
+    onOpenNetwork: () -> Unit
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
     val pairingFlow = state.method == com.ybblab.jiumi.access.AccessMethod.WIRELESS &&
@@ -144,9 +145,10 @@ fun HomeScreen(
             Box(Modifier.fillMaxWidth().heightIn(min = 1.dp)) {
                 when {
                     state.sessionOpen && state.running && !pairingFlow && (state.problem == null || state.problem == Problem.STOP) -> SessionStrip(state, controller)
-                    state.sessionOpen && !state.running && paired && !pairingFlow && session != null ->
-                        InterruptedCard(state, session, controller)
-                    else -> ServiceCard(state, controller, pairingFlow, paired, onOpenPairing)
+                    state.sessionOpen && !state.running &&
+                        (paired || state.method == com.ybblab.jiumi.access.AccessMethod.NETWORK) && !pairingFlow && session != null ->
+                        InterruptedCard(state, session, controller, onOpenNetwork)
+                    else -> ServiceCard(state, controller, pairingFlow, paired, onOpenPairing, onOpenNetwork)
                 }
             }
         }
@@ -435,7 +437,8 @@ private fun SessionStrip(state: MonitorController.UiState, controller: MonitorCo
     )
     MonitorCapsule(
         tone = StatusSuccess, live = true,
-        title = stringResource(R.string.monitor_live), clock = clock(now - session.session.start),
+        title = stringResource(R.string.monitor_live),
+        clock = clock(session.coverage.coveredMs + (now - session.measuredAt).coerceAtLeast(0L)),
         corner = {
             Box(Modifier.semantics { contentDescription = stopLabel }) {
                 StopButton(enabled = state.busy == null, onClick = controller::stopMonitor)
@@ -456,26 +459,39 @@ private fun SessionStrip(state: MonitorController.UiState, controller: MonitorCo
 
 /** The session is open but the monitor stopped (a reboot, Wireless debugging off): resume it, or end it. */
 @Composable
-private fun InterruptedCard(state: MonitorController.UiState, session: MonitorController.SessionView, controller: MonitorController) {
-    MonitorCapsule(
-        tone = StatusWarning, live = false,
-        title = stringResource(R.string.monitoring_interrupted),
-        corner = {
-            CornerButton(stringResource(R.string.action_resume_short),
-                busy = state.busy == Busy.STARTING || state.pairingState == PairingState.CONNECTING, onClick = controller::startMonitor)
-        },
-        detail = { Row(verticalAlignment = Alignment.CenterVertically) {
-            Figures(listOf(
-                formatDuration(session.coverage.coveredMs) to stringResource(R.string.stat_covered),
-                formatCount((state.ledger?.apps?.size ?: 0).toLong()) to stringResource(R.string.stat_apps)
-            ))
-            Text(stringResource(R.string.action_end_short), style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium, color = Ink.secondary,
-                modifier = Modifier.clip(CircleShape).clickable(enabled = state.busy == null, onClick = controller::stopMonitor)
-                    .padding(horizontal = 8.dp, vertical = 4.dp))
-        } },
-        message = statusMessage(state)
-    )
+private fun InterruptedCard(
+    state: MonitorController.UiState, session: MonitorController.SessionView, controller: MonitorController,
+    onOpenNetwork: () -> Unit
+) {
+    val network = state.method == com.ybblab.jiumi.access.AccessMethod.NETWORK
+    val recovering = state.busy == Busy.STARTING || state.pairingState == PairingState.CONNECTING
+    Column {
+        MonitorCapsule(
+            tone = StatusWarning, live = false,
+            title = stringResource(if (network && recovering) R.string.network_adb_recovering else R.string.monitoring_interrupted),
+            corner = {
+                CornerButton(stringResource(R.string.action_resume_short),
+                    busy = recovering, onClick = {
+                        if (network && state.problem == Problem.NETWORK_AUTHORIZATION) onOpenNetwork()
+                        else controller.startMonitor()
+                    })
+            },
+            detail = { Row(verticalAlignment = Alignment.CenterVertically) {
+                Figures(listOf(
+                    formatDuration(session.coverage.coveredMs) to stringResource(R.string.stat_covered),
+                    formatCount((state.ledger?.apps?.size ?: 0).toLong()) to stringResource(R.string.stat_apps)
+                ))
+                Text(stringResource(R.string.action_end_short), style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Medium, color = Ink.secondary,
+                    modifier = Modifier.clip(CircleShape).clickable(enabled = state.busy == null, onClick = controller::stopMonitor)
+                        .padding(horizontal = 8.dp, vertical = 4.dp))
+            } },
+            message = statusMessage(state)
+        )
+        if (network && !recovering && (state.problem != null || !state.ready)) {
+            androidx.compose.material3.TextButton(onClick = onOpenNetwork) { Text(stringResource(R.string.network_adb_connection_settings)) }
+        }
+    }
 }
 
 /**
@@ -488,7 +504,8 @@ private fun ServiceCard(
     controller: MonitorController,
     pairingFlow: Boolean,
     paired: Boolean,
-    onOpenPairing: () -> Unit
+    onOpenPairing: () -> Unit,
+    onOpenNetwork: () -> Unit
 ) {
     val needsPairing = !paired && !pairingFlow
     val last = state.session?.takeIf { !it.running }
@@ -503,6 +520,7 @@ private fun ServiceCard(
             state.busy == Busy.STARTING -> stringResource(R.string.service_starting)
             !paired && state.method == com.ybblab.jiumi.access.AccessMethod.ROOT -> stringResource(rootStatus(state.root))
             !paired && state.method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> stringResource(R.string.service_shizuku_needed)
+            !paired && state.method == com.ybblab.jiumi.access.AccessMethod.NETWORK -> stringResource(R.string.network_adb_not_configured)
             !paired -> stringResource(if (state.trust == PairingTrustState.PAIRING_REQUIRED) R.string.service_repair else R.string.service_unpaired)
             else -> stringResource(R.string.hero_idle)
         },
@@ -517,6 +535,9 @@ private fun ServiceCard(
             !paired && state.method == com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> { {
                 CornerButton(stringResource(shizukuNextAction(state.shizuku))) { runShizukuNextAction(controller, state.shizuku) }
             } }
+            state.method == com.ybblab.jiumi.access.AccessMethod.NETWORK && (!paired || state.problem == Problem.NETWORK_AUTHORIZATION) -> {
+                { CornerButton(stringResource(R.string.network_adb_configure), onClick = onOpenNetwork) }
+            }
             !paired -> { { CornerButton(stringResource(R.string.action_pair), enabled = !pairingFlow, onClick = onOpenPairing) } }
             !pairingFlow -> { {
                 CornerButton(stringResource(R.string.action_start_short),
@@ -706,6 +727,9 @@ private fun problemText(problem: Problem): String = stringResource(
         Problem.STOP -> R.string.error_service_stop
         Problem.STOP_PARTIAL -> R.string.error_service_stop_partial
         Problem.SHIZUKU -> R.string.error_shizuku
+        Problem.NETWORK_UNAVAILABLE -> R.string.network_adb_unavailable
+        Problem.NETWORK_AUTHORIZATION -> R.string.network_adb_authorization_needed
+        Problem.NETWORK_IDENTITY -> R.string.network_adb_wrong_identity
     }
 )
 

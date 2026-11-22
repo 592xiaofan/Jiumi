@@ -39,6 +39,7 @@ object MonitorNotice {
     private const val ACTION_STOP = "com.ybblab.jiumi.STOP_MONITORING"
     /** A page to open, as MainActivity names its pages; only attention pages are opened from here. */
     const val EXTRA_ROUTE = "com.ybblab.jiumi.ROUTE"
+    const val ROUTE_MONITOR = "monitor"
     const val ROUTE_ATTENTION = "attention:"
     /** Apps named in one line before the rest are counted. */
     private const val NAMED_APPS = 3
@@ -88,17 +89,20 @@ object MonitorNotice {
     fun update(context: Context, running: Running) = post(context, null, RUNNING_ID, running(context, running))
 
     /** The monitor stopped while the session it was shown running for is still open. */
-    fun postInterrupted(context: Context) {
+    fun postInterrupted(context: Context, message: Int = R.string.notification_interrupted_text): Boolean {
         val text = ContextCompat.getContextForLanguage(context)
         ensureChannels(context, text)
-        post(context, null, INTERRUPTED_ID, NotificationCompat.Builder(context, CHANNEL_MONITORING)
+        val content = text.getString(message)
+        return post(context, null, INTERRUPTED_ID, NotificationCompat.Builder(context, CHANNEL_MONITORING)
             .setSmallIcon(R.drawable.ic_stat_monitoring)
             .setContentTitle(text.getString(R.string.monitoring_interrupted))
-            .setContentText(text.getString(R.string.notification_interrupted_text))
+            .setContentText(content)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setOnlyAlertOnce(true)
             .setSilent(true)
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .setContentIntent(open(context, null))
+            .setContentIntent(open(context, ROUTE_MONITOR))
             .build())
     }
 
@@ -140,9 +144,9 @@ object MonitorNotice {
             NotificationManagerCompat.from(context).areNotificationsEnabled()
 
     @SuppressLint("MissingPermission")
-    private fun post(context: Context, tag: String?, id: Int, notification: Notification) {
-        if (!allowed(context)) return
-        runCatching { NotificationManagerCompat.from(context).notify(tag, id, notification) }
+    private fun post(context: Context, tag: String?, id: Int, notification: Notification): Boolean {
+        if (!allowed(context)) return false
+        return runCatching { NotificationManagerCompat.from(context).notify(tag, id, notification) }.isSuccess
     }
 
     private fun summaryLine(text: Context, summary: NoticeSummary): String = listOf(

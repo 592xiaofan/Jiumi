@@ -12,6 +12,9 @@ import com.ybblab.jiumi.adb.AirModePairingManager
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingState
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingTrustState
 import com.ybblab.jiumi.adb.AirPairingFailure
+import com.ybblab.jiumi.adb.NetworkAdb
+import com.ybblab.jiumi.access.AccessMethod
+import kotlinx.coroutines.CancellationException
 import androidx.core.graphics.drawable.toBitmap
 import com.ybblab.jiumi.access.RootShell
 import com.ybblab.jiumi.data.AppBackups
@@ -50,9 +53,12 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.getAndUpdate
@@ -70,6 +76,7 @@ class MonitorController(
     private val context: Context,
     private val scope: CoroutineScope,
     private val pairing: AirModePairingManager,
+    private val networkAdb: NetworkAdb,
     private val probe: ProbeClient,
     private val rules: AccessRules,
     private val store: JiumiStore,
@@ -85,10 +92,15 @@ class MonitorController(
     enum class Range { SESSION, TODAY, WEEK, MONTH }
 
     /** A monitoring session with how much of it the monitor covered. */
-    data class SessionView(val session: JiumiStore.Session, val coverage: Coverage.Result, val latest: Boolean) {
+    data class SessionView(
+        val session: JiumiStore.Session,
+        val coverage: Coverage.Result,
+        val measuredAt: Long,
+        val latest: Boolean
+    ) {
         val running: Boolean get() = session.end == null
     }
-    enum class Problem { CONNECT, START, STOP, STOP_PARTIAL, SHIZUKU }
+    enum class Problem { CONNECT, START, STOP, STOP_PARTIAL, SHIZUKU, NETWORK_UNAVAILABLE, NETWORK_AUTHORIZATION, NETWORK_IDENTITY }
 
     data class UiState(
         val pairingState: PairingState = PairingState.IDLE,
@@ -620,12 +632,62 @@ class MonitorController(
                            val root: RootShell.State, val shizuku: com.ybblab.jiumi.access.ShizukuState)
 
     private val env = combine(access.method, pairing.pairingTrustState, access.root.state, access.shizuku.state, ::Env)
+    private var networkRetry: Job? = null
+    data class NetworkCheck(val pending: Boolean = false, val result: NetworkAdb.Result? = null)
+
+    private var networkCheckJob: Job? = null
+    private val _networkCheck = MutableStateFlow(NetworkCheck())
+    val networkCheck = _networkCheck.asStateFlow()
+    val networkAdbPort: StateFlow<Int?> get() = networkAdb.savedPort
+    private val connectionEnv = combine(env, networkAdb.savedPort, networkCheck, ::Triple)
+
+    fun ensureNetworkAdbChecked() {
+        if (networkCheck.value.result == null) checkNetworkAdb()
+    }
+
+    /** Selecting the method checks the local endpoint without opening an Android authorization prompt. */
+    fun checkNetworkAdb(port: Int? = null, authorize: Boolean = false) {
+        if (access.method.value != AccessMethod.NETWORK || networkCheck.value.pending) return
+        _networkCheck.value = NetworkCheck(pending = true)
+        networkCheckJob = scope.launch(Dispatchers.Main.immediate) {
+            val result = try {
+                networkAdb.use(port, allowAuthorization = authorize)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                android.util.Log.w(TAG, "Network ADB check failed", error)
+                NetworkAdb.Result.Unavailable
+            }
+            if (result is NetworkAdb.Result.Ready) {
+                networkAdb.rememberPort(result.port)
+                local.update { if (it.problem.isNetworkProblem()) it.copy(problem = null) else it }
+                resumeInterrupted("network ADB configured")
+            }
+            _networkCheck.value = NetworkCheck(result = result)
+        }
+    }
+
+    /** Retry a briefly unavailable local endpoint while this process remains alive. */
+    @Synchronized
+    private fun scheduleNetworkRetry() {
+        if (networkRetry?.isActive == true || store.sessions().none { it.end == null }) return
+        networkRetry = scope.launch(Dispatchers.IO) {
+            for (pause in listOf(5_000L, 15_000L, 30_000L)) {
+                delay(pause)
+                if (probe.service.value != null || access.method.value != AccessMethod.NETWORK ||
+                    local.value.problem != Problem.NETWORK_UNAVAILABLE) break
+                resumeInterrupted("network ADB retry").join()
+            }
+        }
+    }
 
     val state: StateFlow<UiState> = combine(
-        pairing.state, pairing.failure, probe.service, local, env
-    ) { pairingState, failure, service, l, e ->
+        pairing.state, pairing.failure, probe.service, local, connectionEnv
+    ) { pairingState, failure, service, l, (e, networkPort, check) ->
         val ready = when (e.method) {
             com.ybblab.jiumi.access.AccessMethod.WIRELESS -> e.trust == PairingTrustState.PAIRED
+            AccessMethod.NETWORK -> !check.pending &&
+                (check.result is NetworkAdb.Result.Ready || (check.result == null && networkPort != null))
             // Until this run of the app has asked again, a grant from before counts, as it does for
             // starting unattended: otherwise every cold start shows "authorize" for a moment.
             com.ybblab.jiumi.access.AccessMethod.ROOT -> e.root == RootShell.State.READY ||
@@ -653,12 +715,13 @@ class MonitorController(
             probe.service.collect { service ->
                 if (service == null) {
                     local.update { l -> l.copy(footprint = null) }
+                    if (access.method.value == AccessMethod.NETWORK) networkInterruptionNotified = false
                     showIndicator()
                     // Lost without being stopped from here: try to pick the session up again.
                     if (hadMonitor && local.value.busy != Busy.STOPPING) resumeInterrupted("monitor lost")
                 } else {
                     // A start that gave up waiting is answered all the same; it did not fail.
-                    local.update { l -> if (l.problem == Problem.START) l.copy(problem = null) else l }
+                    local.update { l -> if (l.problem == Problem.START || l.problem.isNetworkProblem()) l.copy(problem = null) else l }
                     configure(service)
                     scope.launch(Dispatchers.IO) {
                         shellCatalog()
@@ -742,6 +805,7 @@ class MonitorController(
                 }
                 problem = when (access.method.value) {
                     com.ybblab.jiumi.access.AccessMethod.WIRELESS -> startOverWireless(restoreWirelessDebugging, launched)
+                    AccessMethod.NETWORK -> startOverNetwork(launched)
                     com.ybblab.jiumi.access.AccessMethod.ROOT -> startOverRoot(launched)
                     com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> startOverShizuku(launched)
                 }
@@ -751,6 +815,10 @@ class MonitorController(
                 // A monitor that answered after the wait ran out still counts as started.
                 val settled = problem.takeUnless { probe.service.value != null }
                 local.update { it.copy(busy = null, problem = settled) }
+                if (access.method.value == AccessMethod.NETWORK) {
+                    showIndicator()
+                    if (settled == Problem.NETWORK_UNAVAILABLE) scheduleNetworkRetry()
+                }
             }
         }
     }
@@ -772,6 +840,34 @@ class MonitorController(
         } finally {
             // The monitor does not depend on ADB; never keep the session open.
             pairing.disconnect()
+        }
+    }
+
+    private suspend fun startOverNetwork(launched: () -> Unit): Problem? {
+        val previousCheck = networkCheck.value
+        val result = try {
+            networkAdb.use { shell ->
+                shell.shell(ownPermissionsCommand())
+                shell.shell(probe.startCommand(probeConfiguration()))
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            android.util.Log.w(TAG, "Network ADB could not start the monitor", error)
+            return Problem.START
+        }
+        if (!previousCheck.pending && access.method.value == AccessMethod.NETWORK) {
+            _networkCheck.compareAndSet(previousCheck, NetworkCheck(result = result))
+        }
+        return when (result) {
+            is NetworkAdb.Result.Ready -> {
+                networkAdb.rememberPort(result.port)
+                launched()
+                waitForProbe()
+            }
+            is NetworkAdb.Result.NeedsAuthorization -> Problem.NETWORK_AUTHORIZATION
+            NetworkAdb.Result.WrongIdentity -> Problem.NETWORK_IDENTITY
+            NetworkAdb.Result.Unavailable -> Problem.NETWORK_UNAVAILABLE
         }
     }
 
@@ -798,6 +894,7 @@ class MonitorController(
     /** Whether the chosen way can start the monitor without asking the user anything. */
     private fun canStartUnattended(): Boolean = when (access.method.value) {
         com.ybblab.jiumi.access.AccessMethod.WIRELESS -> isPaired
+        AccessMethod.NETWORK -> networkAdb.savedPort.value != null
         com.ybblab.jiumi.access.AccessMethod.ROOT -> access.root.wasReady
         com.ybblab.jiumi.access.AccessMethod.SHIZUKU -> access.shizuku.refresh().ready
     }
@@ -835,9 +932,14 @@ class MonitorController(
     fun selectAccess(method: com.ybblab.jiumi.access.AccessMethod) {
         val changed = access.method.value != method
         access.select(method)
+        if (changed && method != AccessMethod.NETWORK) {
+            networkCheckJob?.cancel()
+            _networkCheck.value = NetworkCheck()
+        }
         local.update { it.copy(problem = null) }
         when (method) {
             com.ybblab.jiumi.access.AccessMethod.WIRELESS -> Unit
+            AccessMethod.NETWORK -> checkNetworkAdb()
             com.ybblab.jiumi.access.AccessMethod.ROOT -> {
                 if (checkGate.onSelectRoot(changed, access.root.ready)) authorizeRoot()
             }
@@ -859,6 +961,10 @@ class MonitorController(
         refreshMonitoringPackages()
         when (access.method.value) {
             com.ybblab.jiumi.access.AccessMethod.WIRELESS -> checkGate.onResumeWireless()
+            AccessMethod.NETWORK -> {
+                checkGate.onResumeWireless()
+                resumeInterrupted("app returned")
+            }
             com.ybblab.jiumi.access.AccessMethod.ROOT -> {
                 if (checkGate.onResumeRoot(access.root.ready)) authorizeRoot()
             }
@@ -911,27 +1017,45 @@ class MonitorController(
      * the user wants it, removed otherwise. Refreshes correct the timer from newly imported monitor
      * events. When the monitor stops under the open session it was shown for, a notice says so instead.
      */
+    private fun Problem?.isNetworkProblem(): Boolean =
+        this == Problem.NETWORK_UNAVAILABLE || this == Problem.NETWORK_AUTHORIZATION || this == Problem.NETWORK_IDENTITY
+
     @Synchronized
     private fun showIndicator() {
         val open = store.sessions().firstOrNull { it.end == null }
         val running = probe.service.value != null
-        val on = local.value.notices.persistent
+        val status = local.value
+        val on = status.notices.persistent
+        val network = access.method.value == AccessMethod.NETWORK
+        if (running || open == null || !on) networkInterruptionNotified = false
         val session = open?.takeIf { running && on }
         if (session == null) {
             if (shownSince != null) {
                 MonitorNotificationService.hide(context)
-                if (on && open != null && !running && shownSince == open.start && local.value.busy != Busy.STOPPING) {
+                if (!network && on && open != null && !running && shownSince == open.start && status.busy != Busy.STOPPING) {
                     MonitorNotice.postInterrupted(context)
                 }
                 shownSince = null
             }
+            // At boot there may be no previous running notification. Only notify once the
+            // unattended recovery has failed, and deduplicate later retries of this interruption.
+            if (network && on && open != null && !running && status.busy == null && !networkInterruptionNotified &&
+                (status.problem.isNetworkProblem() || status.problem == Problem.START)) {
+                val message = when (status.problem) {
+                    Problem.NETWORK_UNAVAILABLE -> R.string.network_adb_unavailable
+                    Problem.NETWORK_AUTHORIZATION -> R.string.network_adb_authorization_needed
+                    Problem.NETWORK_IDENTITY -> R.string.network_adb_wrong_identity
+                    else -> R.string.notification_interrupted_text
+                }
+                networkInterruptionNotified = MonitorNotice.postInterrupted(context, message)
+            }
         } else {
+            MonitorNotice.cancelInterrupted(context)
             val since = session.start
             val base = noticeChronometerBase(session)
             if (since == shownSince) {
                 MonitorNotificationService.update(context, since) { it.copy(chronometerBase = base) }
             } else {
-                MonitorNotice.cancelInterrupted(context)
                 // A start refused while the app is in the background is tried again on the next refresh.
                 val notice = MonitorNotice.Running(since, base, noticeSummary(since))
                 if (!MonitorNotificationService.show(context, notice)) return
@@ -944,10 +1068,12 @@ class MonitorController(
     }
 
     @Volatile private var shownSince: Long? = null
+    @Volatile private var networkInterruptionNotified = false
 
     /** Posts the notification again, for when it was posted before notifications were allowed. */
     fun reshowIndicator() {
         shownSince = null
+        networkInterruptionNotified = false
         scope.launch(Dispatchers.IO) { showIndicator() }
     }
 
@@ -1085,7 +1211,7 @@ class MonitorController(
     /** Every session, newest first, for the monitoring record. */
     suspend fun sessions(): List<SessionView> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        store.sessions().mapIndexed { i, s -> SessionView(s, coverage(s, now), latest = i == 0) }
+        store.sessions().mapIndexed { i, s -> SessionView(s, coverage(s, now), now, latest = i == 0) }
     }
 
     fun selectSession(id: Long) {
@@ -1182,7 +1308,7 @@ class MonitorController(
     private fun chosenSession(now: Long): SessionView? {
         val all = store.sessions()
         val picked = local.value.selected?.let { id -> all.firstOrNull { it.id == id } } ?: all.firstOrNull() ?: return null
-        return SessionView(picked, coverage(picked, now), latest = picked.id == all.first().id)
+        return SessionView(picked, coverage(picked, now), now, latest = picked.id == all.first().id)
     }
 
     private fun coverage(s: JiumiStore.Session, now: Long) =

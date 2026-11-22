@@ -76,6 +76,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -87,6 +89,7 @@ import com.ybblab.jiumi.R
 import com.ybblab.jiumi.ui.icons.JiumiIcons
 import com.ybblab.jiumi.ui.theme.AppIconSize
 import com.ybblab.jiumi.ui.theme.AppShapes
+import com.ybblab.jiumi.ui.theme.StatusSuccess
 import java.text.NumberFormat
 
 // Components follow Droidance: small grey group titles outside the cards, flat cards, rows with a
@@ -355,7 +358,14 @@ fun formatBytes(bytes: Long): String = android.text.format.Formatter.formatShort
  * the chosen one, whose label is bold and full ink while the others stay grey.
  */
 @Composable
-fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun Segmented(
+    options: List<String>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    activeOption: Int? = null
+) {
+    val activeDescription = activeOption?.let { stringResource(R.string.connection_current_method) }
     val dark = LocalAppIsDark.current
     val thumb = if (dark) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceBright
     Box(modifier.clip(SegmentTrack).background(Ink.track).padding(3.dp)) {
@@ -371,21 +381,37 @@ fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit, mod
             Row(Modifier.fillMaxWidth().height(SEGMENT_HEIGHT)) {
                 options.forEachIndexed { index, label ->
                     val chosen = index == selected
+                    val active = index == activeOption
                     val color by animateColorAsState(if (chosen) Ink.primary else Ink.secondary, label = "segmentLabel")
                     Box(
                         Modifier.weight(1f).fillMaxHeight().clip(SegmentThumb)
-                            .selectable(selected = chosen, role = Role.Tab, interactionSource = null, indication = null) { onSelect(index) },
+                            .selectable(selected = chosen, role = Role.Tab, interactionSource = null, indication = null) { onSelect(index) }
+                            .then(if (active && activeDescription != null) Modifier.semantics {
+                                stateDescription = activeDescription
+                            } else Modifier),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(label, style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (chosen) FontWeight.SemiBold else FontWeight.Medium,
-                            color = color, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 6.dp))
+                        Row(Modifier.padding(horizontal = if (activeOption == null) 6.dp else 2.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            if (active) {
+                                SelectionDot()
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            Text(label, style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (chosen) FontWeight.SemiBold else FontWeight.Medium,
+                                color = color, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** Marks a chosen option without implying its connection or permission is ready. */
+@Composable
+internal fun SelectionDot() {
+    Box(Modifier.size(6.dp).background(StatusSuccess, CircleShape))
 }
 
 private val SEGMENT_HEIGHT = 28.dp
