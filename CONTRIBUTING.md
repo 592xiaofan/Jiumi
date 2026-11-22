@@ -14,7 +14,7 @@
 ## 报告问题
 
 - 安全漏洞请**不要**公开提 Issue，按 [SECURITY.md](SECURITY.md) 私下报告。
-- 其他问题请写明：手机品牌和型号、系统版本（如 HyperOS 3 / Android 15）、揪咪版本、连接方式（无线调试、Root 或 Shizuku），以及复现步骤。
+- 其他问题请写明：手机品牌和型号、系统版本（如 HyperOS 3 / Android 15）、揪咪版本、连接方式（无线调试、网络调试、Shizuku 或 Root），以及复现步骤。
 - 误报或漏报请说明涉及的应用包名、类别和你期望的结果。附日志或导出文件前，先删掉你不想公开的内容（其他应用、地址、账号等）。
 
 ## 提交代码
@@ -88,7 +88,7 @@ Thanks for helping improve Jiumi. Please read the following before opening an is
 ### Reporting problems
 
 - Do **not** file security vulnerabilities as public issues; report them privately as described in [SECURITY.md](SECURITY.md).
-- For other issues, include the phone model, system version (such as HyperOS 3 / Android 15), Jiumi version, how the monitor was started (Wireless debugging, root or Shizuku) and the steps to reproduce.
+- For other issues, include the phone model, system version (such as HyperOS 3 / Android 15), Jiumi version, how the monitor was started (Wireless debugging, network debugging, Shizuku or root) and the steps to reproduce.
 - For a false or missed report, give the package name, the category and what you expected. Before attaching logs or exports, remove anything you do not want public (other apps, addresses, accounts).
 
 ### Building and testing

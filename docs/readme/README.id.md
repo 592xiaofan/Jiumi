@@ -4,7 +4,7 @@
 
 # Jiumi 揪咪
 
-Alat ringan untuk memantau aktivitas dan mengelola aplikasi Android.
+Lihat apa yang dilakukan aplikasi di latar depan dan latar belakang, lalu putuskan untuk mempertahankan, membatasi, menonaktifkan, atau mencopotnya.
 <br>Tidak memerlukan akses root atau komputer. Catatan tetap tersimpan di ponsel.
 
 **[Unduh APK](https://github.com/ybblab/Jiumi/releases/latest)** · [Panduan](https://jiumi.ybblab.com/en/download/) · [Situs resmi](https://jiumi.ybblab.com/en/)
@@ -18,22 +18,42 @@ Alat ringan untuk memantau aktivitas dan mengelola aplikasi Android.
 ## Sekilas tentang aplikasi
 
 <p align="center">
-  <a href="../images/monitor.en.png"><img src="../images/monitor.en.png" width="132" alt="Ringkasan status pemantauan dan aktivitas yang perlu diperhatikan" /></a>&nbsp;
-  <a href="../images/timeline.en.png"><img src="../images/timeline.en.png" width="132" alt="Linimasa aktivitas dan status aplikasi" /></a>&nbsp;
-  <a href="../images/by-type.en.png"><img src="../images/by-type.en.png" width="132" alt="Aktivitas yang dikelompokkan menurut jenis, beserta jumlah aplikasi dan catatan" /></a>&nbsp;
-  <a href="../images/apps.en.png"><img src="../images/apps.en.png" width="132" alt="Daftar aplikasi yang dikelompokkan menurut sumber pemasangan" /></a>
+  <a href="../images/monitor.en.png"><img src="../images/monitor.en.png" width="196" alt="Aktivitas 30 hari dengan peta panas" /></a>&nbsp;
+  <a href="../images/monitor-week.en.png"><img src="../images/monitor-week.en.png" width="196" alt="Tren 7 hari dengan peta panas" /></a>&nbsp;
+  <a href="../images/by-app.en.png"><img src="../images/by-app.en.png" width="196" alt="Peringkat aplikasi menurut akses dan aktivitas latar belakang" /></a>&nbsp;
+  <a href="../images/app-detail.en.png"><img src="../images/app-detail.en.png" width="196" alt="Kurva aktivitas aplikasi selama 30 hari" /></a>
 </p>
+
+<p align="center">
+  <a href="../images/timeline.en.png"><img src="../images/timeline.en.png" width="196" alt="Linimasa aktivitas aplikasi" /></a>&nbsp;
+  <a href="../images/by-type.en.png"><img src="../images/by-type.en.png" width="196" alt="Aktivitas menurut jenis" /></a>&nbsp;
+  <a href="../images/apps.en.png"><img src="../images/apps.en.png" width="196" alt="Aplikasi menurut sumber" /></a>&nbsp;
+  <a href="../images/connection.en.png"><img src="../images/connection.en.png" width="196" alt="Empat cara memulai: proses debug nirkabel, proses debug jaringan, Shizuku, dan root" /></a>
+</p>
+
+<p align="center"><sub>Layar ini memakai data contoh. Aplikasi dan alamatnya fiktif. Ketuk gambar untuk memperbesar.</sub></p>
 
 ## Fitur
 
+### Memahami aktivitas
+
 | Fitur | Yang dapat Anda lakukan |
 | --- | --- |
+| Ringkasan aktivitas | Lihat total, tren, rata-rata, puncak, dan jumlah akses latar belakang untuk **sesi, hari ini, 7 hari, atau 30 hari**. Ketuk atau geser kurva untuk membaca rentang waktu. Rentang tanpa pemantauan maupun catatan ditandai **No records**. |
+| Perlu perhatian | Gunakan **peta panas** untuk menemukan hari dan jam yang menonjol, lalu tinjau pengiriman data dan aktivitas sensitif di latar belakang, pembacaan berulang, serta percobaan berulang setelah ditolak. |
+| Peringkat aplikasi | Temukan aplikasi paling aktif menurut semua akses atau akses latar belakang dan bandingkan data yang diakses. Pekerjaan rutin sistem dilipat terpisah. |
+| Detail aplikasi | Ikuti satu aplikasi dengan kurva yang sama. Ketuk jenis data untuk menampilkan hanya jenis itu pada kurva dan linimasa. |
 | Catatan aktivitas | Lihat **56 jenis akses dalam 12 kelompok**, termasuk lokasi, papan klip, dan pengenal perangkat. Lihat catatan berdasarkan waktu, aplikasi, atau jenis, serta saring aktivitas latar belakang. |
-| Perlu perhatian | Tinjau transfer data dan akses data sensitif di latar belakang, akses yang sering terjadi, serta percobaan akses yang berulang kali ditolak. |
 | Aktivitas jaringan | Lihat alamat koneksi dan pengukuran lalu lintas yang tersedia untuk tiap aplikasi. Jika pencatatan domain diaktifkan, koneksi yang berhasil dicocokkan dapat menampilkan nama domain. |
 | Riwayat sistem | Buka detail aplikasi untuk melihat catatan dan jumlah akses izin yang disimpan Android, termasuk sebagian aktivitas sebelum pemantauan dimulai. |
-| Ekspor catatan | Di **Settings › Export logs**, simpan catatan dari rentang waktu yang dipilih sebagai arsip ZIP berisi berkas CSV. |
-| Notifikasi | Selama pemantauan, notifikasi ringkas menampilkan durasi dan tombol berhenti. Notifikasi ini dapat dimatikan di **Settings › Notifications**. Notifikasi juga dapat menampilkan jumlah aplikasi dan catatan dalam sesi. Jika **Attention alerts** diaktifkan, Anda mendapat notifikasi ketika muncul aktivitas baru yang perlu diperhatikan, sekali per aplikasi dan jenis peringatan dalam satu sesi. |
+
+### Pemantauan dan catatan
+
+| Fitur | Yang dapat Anda lakukan |
+| --- | --- |
+| Daftar pengecualian pemantauan | Pilih aplikasi yang tidak dipantau di **Settings › Monitoring › Monitoring allowlist**. Jiumi tidak membuat catatan baru dan menyembunyikan catatan yang ada. Catatan tampil lagi setelah aplikasi dikeluarkan dari daftar. Aktivitas selama dikecualikan tidak dilengkapi kembali. |
+| Notifikasi | Selama pemantauan, notifikasi menampilkan durasi dan tombol berhenti. Notifikasi ini dapat dimatikan di **Settings › Notifications**. Dengan **Show summary**, notifikasi menampilkan **jumlah akses sesi dan akses latar belakang**, tanpa nama aplikasi. Dengan **Attention alerts**, Anda diberi tahu tentang aktivitas baru yang perlu diperhatikan, sekali per aplikasi dan jenis peringatan dalam satu sesi. |
+| Ekspor catatan | Di **Settings › Logs › Export logs**, simpan catatan dari rentang waktu yang dipilih sebagai arsip ZIP berisi berkas CSV. |
 
 ## Mengelola aplikasi
 
@@ -52,9 +72,9 @@ Aplikasi dikelompokkan menurut sumber pemasangan. Buka detail aplikasi untuk men
 | Nonaktifkan atau aktifkan aplikasi | Android menonaktifkan aplikasi untuk pengguna saat ini. Aplikasi dan datanya tetap disimpan. Aktifkan kembali melalui **Apps › Disabled**. Aplikasi yang dinonaktifkan ditandai ikon kepingan salju. |
 | Aktif kembali | Jika Jiumi menemukan aplikasi yang dinonaktifkannya sudah aktif kembali, status **Re-enabled** muncul di daftar dan detail aplikasi. Linimasa mencatat waktu terdeteksinya perubahan. Aktifkan **Settings › App management › Disable again when re-enabled** agar Jiumi menonaktifkannya lagi. |
 | Copot aplikasi yang Anda pasang | Masukkan nama paket lengkap untuk konfirmasi. Jiumi mencadangkan APK utama beserta APK terpisahnya jika ada. Anda dapat mencoba memasang ulang aplikasi dari **Apps › Uninstalled**. **Mencopot aplikasi menghapus datanya. Cadangan hanya berisi berkas pemasangan.** |
-| Copot aplikasi bawaan | Aktifkan **Allow uninstalling preinstalled apps** di **Settings › App management** untuk mencopot aplikasi bawaan yang didukung bagi pengguna saat ini. Salinan bawaan dan data aplikasi tetap disimpan. Anda dapat mencoba memulihkan aplikasi dari **Apps › Uninstalled**. Aplikasi yang dicopot ditandai ikon tempat sampah. |
+| Copot aplikasi bawaan | Aktifkan **Allow uninstalling preinstalled apps** di **Settings › App management** untuk mencopot aplikasi bawaan yang didukung bagi pengguna saat ini. Salinan bawaan dan data aplikasi tetap disimpan. Anda dapat mencoba memulihkan aplikasi dari **Apps › Uninstalled**. Aplikasi yang dicopot ditandai ikon tempat sampah. Jika opsi ini nonaktif, mengetuk **Uninstall** menjelaskannya dan membawa Anda ke **App management**. |
 
-Di **Settings › App management**, **Runs as** menunjukkan identitas pengguna yang menjalankan tindakan. Dengan akses root atau Shizuku yang dijalankan sebagai root, tindakan menonaktifkan dan mengaktifkan aplikasi serta mencopot dan memulihkan aplikasi bawaan dijalankan sebagai root. Dengan begitu, Jiumi bisa mengubah aplikasi sistem yang tidak dapat diubah oleh pengguna shell. Dengan proses debug nirkabel, tindakan tersebut dijalankan sebagai pengguna shell. Jika ponsel memblokir perubahan pada aplikasi sistem tertentu, Jiumi menampilkan alasannya. Mencopot aplikasi yang Anda pasang hanya memengaruhi pengguna saat ini. Salinan di profil kerja atau ruang kedua tetap terpasang.
+Di **Settings › App management**, **Runs as** menunjukkan identitas pengguna yang menjalankan tindakan. Dengan akses root atau Shizuku yang dijalankan sebagai root, tindakan menonaktifkan dan mengaktifkan aplikasi serta mencopot dan memulihkan aplikasi bawaan dijalankan sebagai root. Dengan begitu, Jiumi bisa mengubah aplikasi sistem yang tidak dapat diubah oleh pengguna shell. Dengan proses debug nirkabel atau jaringan, tindakan tersebut dijalankan sebagai pengguna shell. Jika ponsel memblokir perubahan pada aplikasi sistem tertentu, Jiumi menampilkan alasannya. Mencopot aplikasi yang Anda pasang hanya memengaruhi pengguna saat ini. Salinan di profil kerja atau ruang kedua tetap terpasang.
 
 Komponen inti sistem dilindungi secara bawaan. Mengubah komponen yang dibutuhkan ponsel dapat memengaruhi fungsi sistem. Jiumi menampilkan peringatan sebelum melakukan perubahan tersebut.
 
@@ -71,25 +91,39 @@ Saat aplikasi berjalan, Android menyediakan catatan akses izin, tabel koneksi, r
 | Penelusuran sistem (Perfetto) | Panggilan layanan sistem yang dapat dikenali dan lalu lintas per koneksi jika didukung sistem. |
 | Log peristiwa | Waktu suatu proses dimulai dan alasan yang dicatat Android. |
 
-**Pilih proses debug nirkabel, Shizuku, atau root.** Monitor berjalan sebagai pengguna shell dengan ketiga metode. Proses debug nirkabel dapat dipasangkan langsung di ponsel. Shizuku dapat dimulai melalui ADB atau dengan akses root, dan Anda harus memberikan izin kepada Jiumi. Opsi root beralih ke pengguna shell untuk memulai monitor. Tindakan menonaktifkan dan mengaktifkan aplikasi serta mencopot dan memulihkan aplikasi bawaan dijalankan langsung sebagai root. Ini memungkinkan Jiumi mengubah aplikasi yang tidak dapat diubah oleh pengguna shell. Hal yang sama berlaku untuk Shizuku yang dijalankan sebagai root.
+### Empat cara terhubung
+
+| Metode | Cocok untuk | Penyiapan pertama | Setelah ponsel dimulai ulang |
+| --- | --- | --- | --- |
+| **Proses debug nirkabel** (disarankan) | Sebagian besar ponsel, tanpa root atau komputer | Sambungkan Wi-Fi dan masukkan kode sekali di ponsel | Penyambungan tersimpan. Wi-Fi dan proses debug nirkabel harus aktif |
+| **Proses debug jaringan** | Ponsel dengan port ADB yang sudah terbuka | Cari atau masukkan port dan izinkan di Android jika diminta. Tanpa kode | Ponsel harus membuka port lagi |
+| **Shizuku** | Pengguna Shizuku | Jalankan Shizuku dan izinkan Jiumi | Shizuku harus berjalan |
+| **Root** | Ponsel yang sudah di-root | Izinkan Jiumi di pengelola root | Berfungsi selama izin berlaku |
+
+Keempatnya menjalankan monitor sebagai pengguna shell. Hanya root, atau Shizuku yang dijalankan sebagai root, yang menjalankan tindakan pengelolaan di atas sebagai root.
+
+> **Keamanan proses debug jaringan:** Jiumi hanya terhubung ke alamat ponsel itu sendiri dan tidak membuka port untuk Anda. Port yang dibuka dengan `adb tcpip` atau cara serupa biasanya dapat diakses perangkat lain di jaringan yang sama. Gunakan hanya di jaringan tepercaya, jangan izinkan permintaan debug yang tidak dikenal, dan tutup port saat tidak diperlukan.
 
 **Pencatatan domain opsional** menggunakan VPN lokal untuk menerima kueri DNS dan meneruskannya tanpa perubahan ke server DNS jaringan yang sedang digunakan. Lalu lintas lainnya langsung menuju tujuan. Pencatatan domain memakai slot VPN sistem. Kueri yang menggunakan DNS terenkripsi bawaan aplikasi atau penyedia DNS Pribadi yang ditentukan melalui nama host mungkin tidak tercatat.
 
 ## Mengunduh dan mulai memantau
 
 1. Pada ponsel dengan Android 11 atau lebih baru, unduh dan pasang APK dari [GitHub Releases](https://github.com/ybblab/Jiumi/releases/latest).
-2. Saat pertama membuka Jiumi, pilih metode untuk memulai. Jika menggunakan proses debug nirkabel, yaitu metode yang disarankan, sambungkan ke Wi-Fi dan ikuti panduan untuk mengizinkan notifikasi dan mengaktifkan opsi developer. Masukkan kode penyambungan enam digit yang ditampilkan sistem ke notifikasi Jiumi.
+2. Saat pertama membuka Jiumi, pilih metode untuk memulai. Jika menggunakan proses debug nirkabel, yaitu metode yang disarankan, sambungkan ke Wi-Fi dan ikuti panduan untuk mengizinkan notifikasi dan mengaktifkan opsi developer. Masukkan kode penyambungan enam digit yang ditampilkan sistem ke notifikasi Jiumi. Jika port ADB sudah terbuka, Anda juga dapat memilih proses debug jaringan.
 3. Ketuk **Start monitoring** pada halaman **Monitor**. Selama pemantauan berlangsung, notifikasi tetap muncul. Anda dapat menghentikan pemantauan dari notifikasi atau dari aplikasi.
 
-Setelah ponsel dimulai ulang, Jiumi diperbarui, atau layanan debug terputus, Jiumi otomatis melanjutkan sesi yang sama begitu koneksi yang dipilih kembali tersedia. Jika kartu menampilkan **Monitoring interrupted**, pulihkan koneksi yang dipilih lalu ketuk **Resume**. Waktu saat pemantauan terputus tidak dihitung sebagai durasi pemantauan.
+Setelah ponsel dimulai ulang, Jiumi diperbarui, atau layanan debug terputus, Jiumi mencoba melanjutkan sesi yang sama saat koneksi yang dipilih tersedia, dan mencoba lagi saat Anda kembali ke aplikasi. Jika kartu menampilkan **Monitoring interrupted**, pulihkan koneksi lalu ketuk **Resume**. Waktu saat pemantauan terputus tidak dihitung sebagai durasi pemantauan.
 
-Saat menggunakan proses debug nirkabel, mengaktifkan proses debug USB juga dapat membantu monitor tetap berjalan jika Android mematikan proses debug nirkabel ketika Wi-Fi terputus. Persistensi ADB secara bawaan tidak aktif. Jika diaktifkan, port hanya digunakan kembali apabila perangkat sudah memiliki layanan yang terverifikasi dan aktif pada antarmuka loopback. Lihat [panduan penyiapan](https://jiumi.ybblab.com/en/download/) untuk informasi lebih lanjut.
+Jika monitor berhenti saat memakai proses debug jaringan, Jiumi mencoba port terakhir atau mencari kembali port lokal untuk melanjutkan sesi. Kartu memberi tahu jika port tidak ditemukan atau izin diperlukan.
+
+Saat menggunakan proses debug nirkabel, mengaktifkan proses debug USB juga dapat membantu monitor tetap berjalan jika Android mematikannya ketika Wi-Fi terputus. **Settings › Connection › Backup connection** nonaktif secara bawaan dan hanya untuk ponsel yang sistemnya sudah menyediakan port ADB terbatas pada perangkat itu sendiri. Jiumi memverifikasi dan memakai kembali port itu tanpa membuka port baru. Lihat [panduan penyiapan](https://jiumi.ybblab.com/en/download/) untuk informasi lebih lanjut.
 
 ## Privasi dan batasan
 
 - **Catatan tetap tersimpan di ponsel.** Jiumi tidak menggunakan akun dan tidak mengunggah catatan pemantauan. Aplikasi dapat memeriksa pembaruan di GitHub. Jika Anda memilih untuk memperbarui, Jiumi mengunduh APK dan memverifikasi ukuran, hash SHA-256, serta tanda tangannya. Pemeriksaan pembaruan dapat dinonaktifkan.
 - **Catatan menunjukkan aktivitas dan koneksi.** Jiumi dapat menunjukkan bahwa izin digunakan atau akses ditolak. Jiumi tidak dapat melihat pesan, kata sandi, atau isi lalu lintas jaringan.
 - **Cakupan bergantung pada sistem.** Koneksi singkat dapat berakhir di antara pengambilan sampel. Tindakan seperti membaca berkas secara langsung mungkin tidak menghasilkan sinyal yang dapat digunakan. Pengukuran lalu lintas per koneksi memerlukan Android 14 atau lebih baru dan dukungan sistem. Untuk mengurangi peringatan keliru, Jiumi mengabaikan sebagian aktivitas yang tidak dapat dikonfirmasi.
+- **Ringkasan dan peringkat menghitung secara berbeda.** Ringkasan menambahkan hitungan per rentang waktu yang disimpan Android, yang dapat mencakup waktu sebelum pemantauan. Peringkat hanya menghitung catatan Jiumi satu per satu. Jika sesi melebihi 31 hari, ringkasan **Session** dan notifikasi hanya menghitung 31 hari pertama; gunakan **30 days**.
 - **Pemantauan menggunakan lebih banyak daya baterai.** Besarnya bergantung pada aktivitas aplikasi. Hentikan pemantauan dari notifikasi jika sudah tidak diperlukan.
 
 ## Membangun dari kode sumber
