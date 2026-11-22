@@ -6,6 +6,13 @@ Versions follow [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-22
+
+- **Add activity charts and app rankings.** See access trends, attention heatmaps and per-app charts. Rank apps by all or background accesses.
+- **Add network debugging.** Find an existing ADB port on the phone automatically or enter it manually. Use this mode on trusted networks.
+- **Improve monitoring recovery.** Retry when Jiumi returns to the foreground, show recovery status and exclude interruptions from monitoring time.
+- **Update notifications and settings.** Show access and background counts in the optional notification summary, rename ADB persistence to Backup connection, and link to App management to enable preinstalled app removal.
+
 ## [0.3.2]
 
 - **Add a monitoring allowlist.** Find it under Settings → Monitoring. Allowlisted apps appear at the top, generate no new monitoring records, and have their saved records hidden. Removing an app resumes monitoring and shows its saved records. Activity during the excluded period is never backfilled.
