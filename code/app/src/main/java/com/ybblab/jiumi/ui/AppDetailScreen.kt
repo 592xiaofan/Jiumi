@@ -87,6 +87,7 @@ fun AppDetailScreen(
     key: AppKey,
     onBack: () -> Unit,
     onOpenLog: (LogEntry) -> Unit,
+    onOpenAppManagement: () -> Unit,
     onOpenAccess: (Boolean) -> Unit
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
@@ -96,7 +97,8 @@ fun AppDetailScreen(
     }
     val summary = state.ledger?.apps?.firstOrNull { it.key == key }
     var manageRevision by remember(key.pkg) { mutableStateOf(0) }
-    val managed by produceState<MonitorController.Managed?>(null, key.pkg, state.ledger, manageRevision) {
+    val managed by produceState<MonitorController.Managed?>(null, key.pkg, state.ledger, manageRevision,
+        state.allowRemovePreinstalled) {
         value = key.pkg?.let { controller.managed(it) }
     }
     // Read from the system while the monitor runs; nothing to show without it.
@@ -122,7 +124,7 @@ fun AppDetailScreen(
         }
     }
     val live = state.running && (state.shownRange != Range.SESSION || state.sessionOpen)
-    var picked by remember(key, state.shownRange, category, state.window.first) { mutableStateOf<Int?>(null) }
+    var picked by remember(key, state.shownRange, category, state.window.first, activity?.buckets?.stepMs) { mutableStateOf<Int?>(null) }
 
     val all = detail?.items.orEmpty()
     val shownItems = all.filter { category == null || categoryOf(it) == category }
@@ -185,7 +187,7 @@ fun AppDetailScreen(
         managed?.let { m ->
             item(key = "manage") {
                 ManageBar(controller, m, name, monitorRunning = state.running,
-                    onChanged = { manageRevision++ }, onDiscarded = onBack)
+                    onChanged = { manageRevision++ }, onDiscarded = onBack, onOpenAppManagement = onOpenAppManagement)
             }
         }
         if (key.pkg != null && key.uid >= 0 && Management.isPackageName(key.pkg) &&
@@ -407,7 +409,7 @@ private const val DESTINATIONS_SHOWN = 8
  */
 @Composable
 private fun ManageBar(controller: MonitorController, m: MonitorController.Managed, name: String, monitorRunning: Boolean,
-                      onChanged: () -> Unit, onDiscarded: () -> Unit) {
+                      onChanged: () -> Unit, onDiscarded: () -> Unit, onOpenAppManagement: () -> Unit) {
     val scope = rememberCoroutineScope()
     var asking by rememberSaveable(m.pkg) { mutableStateOf<String?>(null) }
     var outcome by rememberSaveable(m.pkg, stateSaver = manageResultSaver) { mutableStateOf<ManageResult?>(null) }
@@ -429,11 +431,13 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
     }
     // A deleted app's backup can also be thrown away.
     val discard = m.backup != null && m.facts == null
+    val actions = if (m.removable) m.actions + ManageAction.REMOVE else m.actions
     Column(Modifier.padding(top = 20.dp)) {
-        if (m.actions.isNotEmpty() || discard) {
+        if (actions.isNotEmpty() || discard) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                m.actions.forEach { action ->
-                    ManageButton(stringResource(actionLabel(action)), actionIcon(action), actionTone(action), enabled = !working,
+                actions.forEach { action ->
+                    val label = if (action == ManageAction.REMOVE) R.string.manage_action_uninstall else actionLabel(action)
+                    ManageButton(stringResource(label), actionIcon(action), actionTone(action), enabled = !working,
                         Modifier.weight(1f)) {
                         if (Management.isUndo(action)) run(action) else asking = action.id
                     }
@@ -465,14 +469,13 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
             failureTitle != null -> null
             m.refusal != null && m.expertUnlocks -> stringResource(R.string.refusal_platform_expert)
             m.refusal != null -> refusalText(m.refusal)
-            outcome == null && m.removable -> stringResource(R.string.remove_hint)
             outcome == null && m.risk != null && m.actions.any { !Management.isUndo(it) } -> stringResource(R.string.risk_note)
             else -> null
         }
         note?.let {
             Text(it, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp, top = if (m.actions.isNotEmpty() || discard) 8.dp else 0.dp))
+                modifier = Modifier.padding(start = 4.dp, top = if (actions.isNotEmpty() || discard) 8.dp else 0.dp))
         }
         failureTitle?.let { ManageNotice(it, explanation, warning = true) }
         val process = when (status) {
@@ -505,7 +508,27 @@ private fun ManageBar(controller: MonitorController, m: MonitorController.Manage
             scope.launch { controller.discardBackup(m.pkg); onDiscarded() }
         }, onDismiss = { asking = null })
         else -> ManageAction.of(a)?.let { action ->
-            ConfirmManage(action, name, m.pkg, m.risk, onConfirm = { run(action) }, onDismiss = { asking = null })
+            when {
+                action == ManageAction.REMOVE && m.removable -> AlertDialog(
+                    onDismissRequest = { asking = null },
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    icon = { Icon(JiumiIcons.Warning, null, tint = StatusWarning) },
+                    title = { Text(stringResource(R.string.settings_allow_remove), style = MaterialTheme.typography.titleMedium) },
+                    text = { Text(stringResource(R.string.remove_setting_required)) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            asking = null
+                            onOpenAppManagement()
+                        }) { Text(stringResource(R.string.remove_open_app_management)) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { asking = null }) { Text(stringResource(R.string.action_cancel)) }
+                    }
+                )
+                action in m.actions -> ConfirmManage(action, name, m.pkg, m.risk,
+                    onConfirm = { run(action) }, onDismiss = { asking = null })
+                else -> Unit
+            }
         }
     }
 }

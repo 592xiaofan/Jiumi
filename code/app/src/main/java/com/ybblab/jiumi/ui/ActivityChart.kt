@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -45,16 +46,20 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
@@ -79,7 +84,7 @@ val chartColor: Color @Composable @ReadOnlyComposable get() = if (LocalAppIsDark
 
 /**
  * Every word and figure around a chart, in one size: the app's small text, with figures in fixed
- * widths. What matters is set apart by weight and ink, never by size; only the total is larger.
+ * widths. What matters is set apart by weight and ink, never by size.
  */
 private val chartLabel: TextStyle @Composable @ReadOnlyComposable
     get() = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum")
@@ -88,8 +93,8 @@ private val chartLabel: TextStyle @Composable @ReadOnlyComposable
  * Records over time as one smooth line over a fill that fades downwards. A slot that is null (not
  * watched, or still to come) breaks the line, and a dashed stroke bridges the gap. With [references],
  * the busiest slot is marked ([peakLabel], else its count) and a faint dashed line marks the average, so the line can be read
- * without touching it; [onSelect] lets a tap or a horizontal slide pick a slot. [live] marks the
- * latest point, where the line is still growing.
+ * without touching it; [onSelect] lets a tap or a horizontal slide pick a slot. [growing] is the slot
+ * under way: the point just before it is marked, with a dashed run to it, and only that far.
  */
 @Composable
 fun ActivityCurve(
@@ -97,7 +102,7 @@ fun ActivityCurve(
     modifier: Modifier = Modifier,
     height: Dp = 64.dp,
     references: Boolean = true,
-    live: Boolean = false,
+    growing: Int? = null,
     peakLabel: String? = null,
     unrecorded: List<Boolean> = emptyList(),
     unrecordedLabel: String = "",
@@ -203,11 +208,11 @@ fun ActivityCurve(
             drawText(text, topLeft = Offset(left, p.y - text.size.height - 4.dp.toPx()))
         }
         // The slot under way, not drawn yet: a faint dashed run from the last point to now.
-        if (live) segments.lastOrNull()?.last()?.let { p ->
-            if (p.x < size.width - 1f) drawLine(color.copy(alpha = 0.35f), p, Offset(size.width, p.y), 1.2.dp.toPx(),
+        // Never across a stretch without records, nor into hours still to come.
+        growing?.takeIf { it in 1 until n && values[it - 1] != null }?.let { i ->
+            val p = Offset(x(i - 1), y(values[i - 1]!!))
+            drawLine(color.copy(alpha = 0.35f), p, Offset(x(i), p.y), 1.2.dp.toPx(),
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f)))
-        }
-        if (live) segments.lastOrNull()?.last()?.let { p ->
             drawCircle(color.copy(alpha = 0.18f), 6.dp.toPx(), p)
             drawCircle(color, 2.8.dp.toPx(), p)
         }
@@ -239,10 +244,28 @@ private fun smooth(p: List<Offset>): Path = Path().apply {
     }
 }
 
+/** A card's title as a figure: what it is, how much in bold, then its unit. */
+@Composable
+private fun HeaderFigure(label: String, value: String?, unit: String, modifier: Modifier = Modifier) {
+    val strong = SpanStyle(color = Ink.primary, fontWeight = FontWeight.SemiBold)
+    Text(
+        buildAnnotatedString {
+            append(label)
+            if (value != null) {
+                append(' ')
+                withStyle(strong) { append(value) }
+                append(unit)
+            }
+        },
+        style = chartLabel, color = Ink.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        modifier = modifier.semantics { heading() }
+    )
+}
+
 /**
- * A range told as one card: the total (or the picked slot) above, the curve, the time, then a line of
- * figures in even columns: the average, the busiest slot, and how many were in the background. [apps]: how many apps the range's records came from, when the
- * card covers every app.
+ * A range told as one card: its title line (the total and the span, or the picked slot), the curve,
+ * the time (or what the picked slot raised, on the same line so nothing moves), then a line of
+ * figures in even columns: the average, the busiest slot, and how many were in the background.
  */
 @Composable
 fun ActivityCard(
@@ -250,35 +273,32 @@ fun ActivityCard(
     selected: Int?, onSelect: (Int?) -> Unit, modifier: Modifier = Modifier
 ) {
     val values = activity.values
+    // A pick can outlast its slots: the range was rebuilt with fewer, longer ones.
+    @Suppress("NAME_SHADOWING")
+    val selected = selected?.takeIf { it in values.indices }
     val known = values.withIndex().filter { it.value != null }
-    val pickedValue = selected?.let { values.getOrNull(it) }
+    val pickedValue = selected?.let { values[it] }
     Column(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Column(Modifier.weight(1f)) {
-                Text(selected?.let { slotLabel(activity, it) } ?: stringResource(R.string.chart_total),
-                    style = chartLabel, color = Ink.tertiary, maxLines = 1)
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    when {
-                        selected == null -> formatCount(activity.total.toLong())
-                        pickedValue == null -> "—"
-                        else -> formatCount(pickedValue.toLong())
-                    },
-                    style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
-                    fontWeight = FontWeight.SemiBold, color = Ink.primary, maxLines = 1
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    when {
-                        selected == null -> spanLabel(activity, range, live)
-                        pickedValue == null -> stringResource(R.string.chart_not_monitored)
-                        else -> attentionNote(activity.hits[selected])
-                    },
-                    style = chartLabel, maxLines = 1,
-                    color = if (selected != null && activity.hits[selected].total > 0) chartColor else Ink.tertiary
-                )
-            }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            HeaderFigure(
+                selected?.let { slotLabel(activity, it) } ?: stringResource(R.string.chart_total),
+                when {
+                    selected == null -> formatCount(activity.total.toLong())
+                    pickedValue == null -> null
+                    else -> formatCount(pickedValue.toLong())
+                },
+                stringResource(R.string.chart_unit_times)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                when {
+                    selected == null -> spanLabel(activity, range, live)
+                    activity.unrecorded(selected) -> stringResource(R.string.chart_not_monitored)
+                    else -> ""
+                },
+                style = chartLabel, color = Ink.tertiary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End, modifier = Modifier.weight(1f)
+            )
         }
         Spacer(Modifier.height(12.dp))
         // While the range is still growing, its last slot is not over yet: drawn, it would always dip.
@@ -288,16 +308,23 @@ fun ActivityCard(
         val drawn = plotted.count { it != null }
         val peak = plotted.withIndex().filter { it.value != null }.maxByOrNull { it.value!! }?.index
         // Too few whole slots for a line yet: say when one will be there.
-        val pending = if (live && drawn < 2) {
-            val ready = activity.startOf(minOf(1, activity.size - 1)) + 2 * step
+        val pending = if (range == Range.SESSION && live && drawn < 2 && step < Behavior.DAY) {
+            val ready = activity.startOf(0) + 2 * step
             val minutes = ((ready - activity.until + 59_999) / 60_000).coerceAtLeast(1)
             stringResource(R.string.chart_collecting, minutes.toInt())
         } else null
-        ActivityCurve(if (pending != null) List(values.size) { null } else plotted, height = 72.dp, live = live,
+        val growing = values.indices.firstOrNull { values[it] != null && plotted[it] == null }
+        ActivityCurve(if (pending != null) List(values.size) { null } else plotted, height = 72.dp, growing = growing,
             peakLabel = peak?.let { whenLabel(activity, range, it) },
             unrecorded = List(activity.size) { activity.unrecorded(it) }, unrecordedLabel = stringResource(R.string.chart_unrecorded),
             pendingLabel = pending, selected = selected, onSelect = onSelect)
-        AxisLabels(axis(activity, range, live))
+        // A picked slot's note takes the axis's line: the long names need the whole width.
+        val note = selected?.takeIf { values[it] != null }?.let { activity.hits[it] }
+        Box(Modifier.fillMaxWidth()) {
+            AxisLabels(axis(activity, range, live), Modifier.alpha(if (note == null) 1f else 0f))
+            if (note != null) Text(attentionNote(note), style = chartLabel, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = if (note.total > 0) chartColor else Ink.tertiary, modifier = Modifier.padding(top = 6.dp))
+        }
         Spacer(Modifier.height(14.dp))
         // The figures sit apart from the chart, each on a quiet tile of the same size, centred.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -323,19 +350,21 @@ fun ActivityCard(
 
 /** Labels at fractions of the width, each centred on its slot and kept inside the edges. */
 @Composable
-private fun AxisLabels(labels: List<Pair<Float, String>>) {
+private fun AxisLabels(labels: List<Pair<Float, String>>, modifier: Modifier = Modifier) {
     val style = chartLabel
     val color = Ink.tertiary
     Layout(
         content = { labels.forEach { (_, text) -> Text(text, style = style, color = color, maxLines = 1, softWrap = false) } },
-        modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+        modifier = modifier.fillMaxWidth().padding(top = 6.dp)
     ) { measurables, constraints ->
         val width = constraints.maxWidth
         val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0)) }
-        layout(width, placeables.maxOfOrNull { it.height } ?: 0) {
+        // On one baseline: digits and Chinese sit differently in boxes of their own.
+        val baseline = placeables.maxOfOrNull { it[FirstBaseline] } ?: 0
+        layout(width, placeables.maxOfOrNull { baseline - it[FirstBaseline] + it.height } ?: 0) {
             placeables.forEachIndexed { i, p ->
                 val x = (labels[i].first * width - p.width / 2f).roundToInt().coerceIn(0, (width - p.width).coerceAtLeast(0))
-                p.place(x, 0)
+                p.place(x, baseline - p[FirstBaseline])
             }
         }
     }
@@ -411,6 +440,7 @@ private fun figures(activity: Activity): List<Triple<String, String, String>> {
     val unit = when {
         step >= Behavior.DAY -> stringResource(R.string.chart_per_day)
         step == Behavior.HOUR -> stringResource(R.string.chart_per_hour)
+        step == 60_000L -> stringResource(R.string.chart_per_minute)
         step > Behavior.HOUR -> stringResource(R.string.chart_per_hours, (step / Behavior.HOUR).toInt())
         else -> stringResource(R.string.chart_per_minutes, (step / 60_000).toInt())
     }
@@ -435,6 +465,31 @@ private fun columns(n: Int): Int = when {
 }
 
 /**
+ * The attention card's title line: how many items were raised ([count]), and with [key], what the
+ * cells' shades mean.
+ */
+@Composable
+fun AttentionHeader(count: Int, key: Boolean, modifier: Modifier = Modifier) {
+    val color = chartColor
+    val faint = if (LocalAppIsDark.current) ChartPurpleFaintDark else ChartPurpleFaint
+    val empty = Ink.fill
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        HeaderFigure(stringResource(R.string.attention_title), if (count > 0) formatCount(count.toLong()) else null,
+            stringResource(R.string.chart_unit_items), Modifier.weight(1f))
+        if (key) {
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.chart_less), style = chartLabel, color = Ink.tertiary)
+            listOf(0f, 0.15f, 0.45f, 1f).forEach { t ->
+                Spacer(Modifier.width(3.dp))
+                Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(if (t == 0f) empty else lerp(faint, color, sqrt(t))))
+            }
+            Spacer(Modifier.width(3.dp))
+            Text(stringResource(R.string.chart_more), style = chartLabel, color = Ink.tertiary)
+        }
+    }
+}
+
+/**
  * When something was raised for attention, as rows of cells over the range: thirty days in three rows
  * of ten, a week in one row, today in two rows of six two-hour cells. The deeper the purple, the more
  * was raised; grey, nothing; faintest, not watched. A tap names what a cell raised.
@@ -442,7 +497,8 @@ private fun columns(n: Int): Int = when {
 @Composable
 fun AttentionStrip(activity: Activity, modifier: Modifier = Modifier) {
     val cells = remember(activity) { attentionCells(activity) }
-    var picked by remember(activity) { mutableStateOf<Int?>(null) }
+    // Kept while a running range refreshes; dropped when its cells become other stretches of time.
+    var picked by remember(activity.buckets.start, activity.buckets.stepMs, cells.size) { mutableStateOf<Int?>(null) }
     val dark = LocalAppIsDark.current
     val color = chartColor
     val faint = if (dark) ChartPurpleFaintDark else ChartPurpleFaint
@@ -453,18 +509,6 @@ fun AttentionStrip(activity: Activity, modifier: Modifier = Modifier) {
     fun tint(t: Float) = lerp(faint, color, sqrt(t))
     val shape = RoundedCornerShape(3.dp)
     Column(modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.chart_attention_when), style = chartLabel, color = Ink.tertiary)
-            Spacer(Modifier.weight(1f))
-            Text(stringResource(R.string.chart_less), style = chartLabel, color = Ink.tertiary)
-            listOf(0f, 0.15f, 0.45f, 1f).forEach { t ->
-                Spacer(Modifier.width(3.dp))
-                Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(if (t == 0f) empty else tint(t)))
-            }
-            Spacer(Modifier.width(3.dp))
-            Text(stringResource(R.string.chart_more), style = chartLabel, color = Ink.tertiary)
-        }
-        Spacer(Modifier.height(8.dp))
         val perRow = columns(cells.size).coerceAtLeast(1)
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 cells.indices.chunked(perRow).forEach { row ->

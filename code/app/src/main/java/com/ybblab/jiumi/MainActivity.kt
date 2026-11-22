@@ -174,6 +174,7 @@ class MainActivity : AppCompatActivity() {
                     top.startsWith("app:") -> {
                         val (uid, pkg) = top.removePrefix("app:").split('|', limit = 2)
                         AppDetailScreen(controller, labels, AppKey(uid.toInt(), pkg.ifEmpty { null }), onBack = pop, onOpenLog = openLog,
+                            onOpenAppManagement = { push("settings:${SettingsSection.MANAGEMENT.name}") },
                             onOpenAccess = { network -> push("access:${if (network) "network" else "permissions"}|${uid}|${pkg}") })
                     }
                     top.startsWith("apex:") ->

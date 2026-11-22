@@ -53,7 +53,7 @@
     <string name="settings_domain_recording">Domain recording</string>
     <string name="settings_connection">Connection</string>
     <string name="settings_connection_summary">Wireless debugging, network debugging, Shizuku and root</string>
-    <string name="settings_adb_options">Advanced ADB options</string>
+    <string name="settings_adb_options">Backup connection</string>
     <string name="settings_records">Logs</string>
     <string name="settings_records_summary">Monitoring history, export and buffer limit</string>
     <string name="settings_management_summary">Disable and uninstall apps</string>
@@ -267,7 +267,7 @@
     <string name="settings_notice_persistent">Persistent notification</string>
     <string name="settings_notice_summary">Show summary</string>
     <string name="settings_notice_alerts">Attention alerts</string>
-    <string name="settings_notice_desc">While monitoring, the notification shows how long it has run and a button to stop. The summary adds this session\'s reads and how many were in the background; alerts tell you when an app is newly raised for attention, once per app and item in each session. Both keep the record up to date about once a minute while the screen is on, which uses a little more battery. The lock screen shows no app names.</string>
+    <string name="settings_notice_desc">While monitoring, the notification shows how long it has run and a button to stop. The summary adds this session\'s accesses and how many were in the background; alerts tell you when an app is newly raised for attention, once per app and item in each session. Both keep the record up to date about once a minute while the screen is on, which uses a little more battery. The lock screen shows no app names.</string>
     <string name="settings_notice_off_desc">Monitoring goes on without the notification; its status shows only in Jiumi.</string>
     <string name="settings_notice_blocked">Notifications from Jiumi are turned off. Tap to open the system settings.</string>
     <string name="catd_location_precise">Gets your location through the precise location permission, down to a few metres: which building or shop you are in.</string>
@@ -554,8 +554,8 @@
     <string name="setup_next">Next · %1$d/%2$d</string>
     <string name="setup_privacy">Your data stays on this phone</string>
     <string name="access_wireless_hint">Turn on Android’s Wireless debugging and pair once.</string>
-    <string name="access_root_hint">Magisk, KernelSU or APatch. Manages apps as root</string>
-    <string name="access_shizuku_hint">Shizuku is installed</string>
+    <string name="access_root_hint">Already rooted? Allow Jiumi in your root manager.</string>
+    <string name="access_shizuku_hint">Start Shizuku, then let Jiumi use it.</string>
     <string name="setup_step_notify_title">Allow notifications</string>
     <string name="setup_step_notify_desc">You enter the pairing code in Jiumi\'s notification.</string>
     <string name="setup_step_notify_action">Allow notifications</string>
@@ -581,8 +581,9 @@
     <string name="risk_background">This is a preinstalled component with no launcher icon, usually supporting a phone feature in the background. That feature may stop working.</string>
     <string name="risk_acknowledge">I understand the risk and want to continue</string>
     <string name="risk_note">The phone relies on this app; you will be warned before changing it.</string>
-    <string name="remove_hint">To uninstall preinstalled apps, first allow it in Settings › App management.</string>
     <string name="settings_allow_remove_desc">Applies only to the current user and keeps app data. Restore from Apps › Uninstalled.</string>
+    <string name="remove_open_app_management">Open app management</string>
+    <string name="remove_setting_required">First turn on Allow uninstalling preinstalled apps in App management. Uninstalling apps that came with your phone may affect system features.</string>
     <string name="allow_remove_title">Allow uninstalling preinstalled apps?</string>
     <string name="allow_remove_body">You can uninstall apps that came with the phone for the current user only. The factory copy and app data stay on the phone. You can usually restore the app under Apps › Uninstalled. Uninstalling some apps may affect phone features, and you assume that risk.</string>
     <string name="allow_remove_confirm">Allow</string>
@@ -597,7 +598,7 @@
     <string name="risk_core">This core component is bound deeply into the system. Changing it may break related features, or at worst stop the phone from starting, leaving only a factory reset. Jiumi does not promise it can be undone; the risk is yours.</string>
     <string name="refusal_platform_expert">Core system component, left alone by default; turn on expert mode in Settings › Advanced to change it.</string>
     <string name="stat_apps">Apps</string>
-    <string name="stat_accesses">Reads</string>
+    <string name="stat_accesses">Accesses</string>
     <string name="stat_memory">Mem</string>
     <string name="stat_covered">Monitored</string>
     <string name="action_stop_monitoring">Stop monitoring</string>
@@ -608,10 +609,11 @@
     <string name="source_detail_sideloaded">Installed directly (not from a store)</string>
     <string name="source_detail_preinstalled">Preinstalled</string>
     <string name="settings_usb_debugging_off">USB debugging is off. When Android turns Wireless debugging off (on leaving or changing Wi-Fi, for example), a running monitor ends with it. Turning on USB debugging avoids this.</string>
-    <string name="settings_adb_persistence">ADB persistence</string>
-    <string name="settings_adb_persistence_desc">When enabled, Jiumi checks for an ADB port that can only be reached from this phone, then prefers it until the phone restarts. Off by default.</string>
+    <string name="settings_adb_persistence">Use a local backup connection</string>
+    <string name="settings_adb_persistence_desc">For phones with a system-configured ADB port restricted to this phone. Jiumi checks it when Wireless debugging connects.</string>
     <string name="settings_adb_persistence_usb_required">Needs USB debugging on; tap to open Developer options.</string>
-    <string name="settings_adb_persistence_next_start">The next time Wireless debugging connects, Jiumi will automatically check for an existing ADB port that can only be reached from this phone.</string>
+    <string name="settings_adb_persistence_next_start">No local backup connection verified yet. Jiumi will check existing ports the next time Wireless debugging connects.</string>
+    <string name="settings_adb_persistence_verified">Local backup connection verified. Until the phone restarts, Jiumi will try it first if monitoring stops after Wi-Fi disconnects.</string>
     <string name="settings_adb_persistence_close_after_stop">Jiumi will try to close the legacy ADB port after monitoring stops.</string>
     <string name="settings_close_legacy_adb">Close legacy ADB port</string>
     <string name="about_not_public">Not public yet</string>
@@ -688,7 +690,7 @@
     <string name="access_wireless">Wireless debugging</string>
     <string name="access_root">Root</string>
     <string name="access_shizuku">Shizuku</string>
-    <string name="access_wireless_desc">Use this if you haven’t opened a traditional ADB port. Turn on Android’s Wireless debugging and enter a pairing code once. When the switch is on, Jiumi finds its port automatically.</string>
+    <string name="access_wireless_desc">Turn on Wireless debugging in your phone’s settings and enter the pairing code. Jiumi can reconnect while that pairing stays valid.</string>
     <string name="access_root_desc">Jiumi uses your root manager (Magisk, KernelSU, APatch) to start the monitor as the shell user. It uses root to disable and enable apps and to uninstall and restore preinstalled apps.</string>
     <string name="access_shizuku_desc">Shizuku starts the monitor as the shell user. With Shizuku started as root, Jiumi uses root to disable and enable apps and to uninstall and restore preinstalled apps.</string>
     <string name="action_authorize">Authorize</string>
@@ -762,8 +764,8 @@
     <string name="toast_enable_developer_first">Turn on Developer options first by tapping Build number 7 times in About phone</string>
     <string name="toast_open_developer_manually">Couldn\'t open Developer options directly. In Settings, open Developer options › Wireless debugging.</string>
     <string name="access_network_debugging">Network debugging</string>
-    <string name="access_network_hint">Automatically find an already-open ADB port. No pairing code.</string>
-    <string name="access_network_desc">Use this if an ADB port is already open on the phone, for example through adb tcpip. Jiumi finds it automatically. The Wireless debugging switch can stay off.</string>
+    <string name="access_network_hint">Already have an open ADB port? Jiumi finds it automatically.</string>
+    <string name="access_network_desc">Jiumi finds an ADB port already open on this phone, such as one opened through adb tcpip or system configuration. Approve the connection on your phone if prompted.</string>
     <string name="network_adb_setup_step">Find an open ADB port</string>
     <string name="network_adb_configure">Set up</string>
     <string name="network_adb_connect">Connect</string>
@@ -793,24 +795,27 @@
     <string name="network_adb_manual_hint">Enter the port number already open on this phone.</string>
     <string name="network_adb_after_reboot">After a restart, Jiumi can reconnect only if the phone opens an ADB port again.</string>
     <string name="connection_current_method">Current method</string>
-    <!-- Activity chart: short labels set in small capitals -->
-    <string name="chart_total">TOTAL</string>
-    <string name="chart_avg">AVG</string>
-    <string name="chart_peak">PEAK</string>
+    <!-- Activity chart: short labels, in sentence case as the card titles are -->
+    <string name="chart_total">Total</string>
+    <string name="chart_avg">Avg</string>
+    <string name="chart_peak">Peak</string>
     <string name="chart_per_day">/d</string>
     <string name="chart_per_hour">/h</string>
     <string name="chart_per_hours">/%1$dh</string>
+    <string name="chart_per_minute">/m</string>
     <string name="chart_per_minutes">/%1$dm</string>
     <string name="chart_unit_times">""</string>
     <string name="chart_unit_apps">""</string>
-    <string name="chart_attention_when">When</string>
+    <string name="chart_unit_items">""</string>
     <string name="chart_less">Less</string>
     <string name="chart_more">More</string>
-    <string name="chart_background">BACKGROUND</string>
+    <string name="chart_background">Background</string>
     <string name="chart_unrecorded">No records</string>
     <string name="chart_collecting">Collecting · the curve shows in about %1$d min</string>
     <string name="chart_not_monitored">Not monitored</string>
     <string name="attention_slot_none">Nothing raised</string>
     <string name="attention_slot_apps">%1$d apps</string>
+    <!-- The total, then the part in the background: one short line. -->
+    <string name="notification_summary">%1$s total · %2$s bg</string>
     <string name="notification_started">Started %1$s</string>
 </resources>

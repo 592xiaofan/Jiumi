@@ -25,7 +25,8 @@ two figures in one line (or when it began, without a summary); a stop button at 
             android:layout_marginTop="3dp"
             android:ellipsize="end"
             android:fontFeatureSettings="tnum"
-            android:maxLines="1" />
+            android:maxLines="1"
+            android:textSize="12sp" />
     </LinearLayout>
 
     <ImageButton

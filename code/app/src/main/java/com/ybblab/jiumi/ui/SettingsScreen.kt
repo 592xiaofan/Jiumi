@@ -275,6 +275,7 @@ internal fun SettingsSectionScreen(
                             needsUsb -> R.string.settings_adb_persistence_usb_required
                             state.running && controller.localPortClosePending -> R.string.settings_adb_persistence_close_after_stop
                             persistence && !controller.hasLocalAdbPort -> R.string.settings_adb_persistence_next_start
+                            persistence -> R.string.settings_adb_persistence_verified
                             else -> R.string.settings_adb_persistence_desc
                         }), warning = needsUsb)
                         if (controller.localPortClosePending && !state.running) Card {

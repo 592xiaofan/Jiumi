@@ -53,7 +53,7 @@
     <string name="settings_domain_recording">域名记录</string>
     <string name="settings_connection">连接</string>
     <string name="settings_connection_summary">无线调试、网络调试、Shizuku 与 Root</string>
-    <string name="settings_adb_options">ADB 高级选项</string>
+    <string name="settings_adb_options">备用连接</string>
     <string name="settings_records">日志</string>
     <string name="settings_records_summary">监测记录、导出与缓冲上限</string>
     <string name="settings_management_summary">停用与卸载应用</string>
@@ -546,8 +546,8 @@
     <string name="setup_next">接下来 · %1$d/%2$d</string>
     <string name="setup_privacy">数据只留在本机</string>
     <string name="access_wireless_hint">开启系统「无线调试」，首次输入配对码</string>
-    <string name="access_root_hint">Magisk、KernelSU 或 APatch，以 Root 身份管理应用</string>
-    <string name="access_shizuku_hint">已安装 Shizuku</string>
+    <string name="access_root_hint">手机已 Root？在 Root 管理器里允许揪咪使用</string>
+    <string name="access_shizuku_hint">启动 Shizuku 后，在里面允许揪咪使用</string>
     <string name="setup_step_notify_title">允许通知</string>
     <string name="setup_step_notify_desc">配对码要在揪咪的通知里输入。</string>
     <string name="setup_step_notify_action">允许通知</string>
@@ -573,8 +573,9 @@
     <string name="risk_background">这是没有桌面图标的预装组件，通常在后台支撑手机的某项功能。停用或卸载后，相关功能可能异常。</string>
     <string name="risk_acknowledge">我了解风险，仍要继续</string>
     <string name="risk_note">手机依赖它运行，改动前会先提示风险。</string>
-    <string name="remove_hint">要卸载预装应用，请先在「设置 › 应用管理」中允许。</string>
     <string name="settings_allow_remove_desc">仅影响当前用户，保留数据，可在「应用 › 已卸载」里恢复。</string>
+    <string name="remove_open_app_management">前往应用管理</string>
+    <string name="remove_setting_required">请先在「应用管理」里打开「允许卸载预装应用」。卸载手机自带的应用可能影响系统功能。</string>
     <string name="allow_remove_title">允许卸载预装应用？</string>
     <string name="allow_remove_body">开启后，可以仅为当前用户卸载手机自带的应用。出厂安装包和应用数据会保留，通常可在「应用 › 已卸载」里恢复。卸载某些应用可能影响手机功能，风险由你自行承担。</string>
     <string name="allow_remove_confirm">允许</string>
@@ -600,10 +601,11 @@
     <string name="source_detail_sideloaded">自行安装（非应用商店）</string>
     <string name="source_detail_preinstalled">系统预装</string>
     <string name="settings_usb_debugging_off">USB 调试未开启。系统关闭无线调试时（例如断开或切换 Wi-Fi），正在运行的监测会随之结束。开启 USB 调试可以避免。</string>
-    <string name="settings_adb_persistence">ADB 持久化</string>
-    <string name="settings_adb_persistence_desc">开启后，揪咪会自动检查手机上有没有仅本机可访问的 ADB 端口，并在本次开机期间优先复用。默认关闭。</string>
+    <string name="settings_adb_persistence">使用本机备用连接</string>
+    <string name="settings_adb_persistence_desc">适用于系统已配置本机专用 ADB 端口的手机。连上无线调试时，揪咪会检查这条连接是否可用。</string>
     <string name="settings_adb_persistence_usb_required">需要开启 USB 调试，点此前往开发者选项。</string>
-    <string name="settings_adb_persistence_next_start">下次连上无线调试时，揪咪会自动检查已有的 ADB 端口是否仅本机可访问。</string>
+    <string name="settings_adb_persistence_next_start">尚未验证本机备用连接。下次连上无线调试时，揪咪会检查手机上已有的端口。</string>
+    <string name="settings_adb_persistence_verified">已验证本机备用连接。本次开机期间，Wi‑Fi 断开后如果监测停了，揪咪会先尝试用这条连接恢复。</string>
     <string name="settings_adb_persistence_close_after_stop">旧版打开的 ADB 端口将在停止监测后尝试关闭。</string>
     <string name="settings_close_legacy_adb">关闭旧版打开的 ADB 端口</string>
     <string name="about_not_public">尚未公开</string>
@@ -679,7 +681,7 @@
     <string name="access_wireless">无线调试</string>
     <string name="access_root">Root</string>
     <string name="access_shizuku">Shizuku</string>
-    <string name="access_wireless_desc">手机没预先开启传统 ADB 端口时，可以打开系统的「无线调试」，首次输入配对码。开关打开后，揪咪会自动找到无线调试的端口。</string>
+    <string name="access_wireless_desc">打开手机设置里的「无线调试」，按提示输入配对码。配对有效时，下次连接可以沿用这次授权。</string>
     <string name="access_root_desc">揪咪通过 Root 管理器（Magisk、KernelSU、APatch）切换到 shell 身份启动监测。停用、启用应用，以及卸载、恢复预装应用时使用 Root。</string>
     <string name="access_shizuku_desc">由 Shizuku 替揪咪以 shell 身份启动监测。Shizuku 以 Root 方式启动时，揪咪使用 Root 停用、启用应用，以及卸载、恢复预装应用。</string>
     <string name="action_authorize">授权</string>
@@ -753,8 +755,8 @@
     <string name="toast_enable_developer_first">请先在「关于手机」中连点版本号 7 次开启开发者选项</string>
     <string name="toast_open_developer_manually">系统未允许直接跳转，请在设置中打开「开发者选项 › 无线调试」</string>
     <string name="access_network_debugging">网络调试</string>
-    <string name="access_network_hint">自动查找已开启的 ADB 端口，无需配对码</string>
-    <string name="access_network_desc">适合手机已通过 adb tcpip 等方式开启 ADB 端口的情况。揪咪会自动查找，可以保持系统的「无线调试」关闭。</string>
+    <string name="access_network_hint">手机已开启 ADB 端口？揪咪会自动查找</string>
+    <string name="access_network_desc">手机已开启 ADB 端口时，揪咪会自动查找。端口可以由 adb tcpip 或系统配置开启。需要授权时，请在手机上确认。</string>
     <string name="network_adb_setup_step">查找已开启的 ADB 端口</string>
     <string name="network_adb_configure">配置</string>
     <string name="network_adb_connect">连接</string>
@@ -791,10 +793,11 @@
     <string name="chart_per_day">/天</string>
     <string name="chart_per_hour">/时</string>
     <string name="chart_per_hours">/%1$d 时</string>
+    <string name="chart_per_minute">/分</string>
     <string name="chart_per_minutes">/%1$d 分</string>
     <string name="chart_unit_times">" 次"</string>
     <string name="chart_unit_apps">" 个"</string>
-    <string name="chart_attention_when">关注时段</string>
+    <string name="chart_unit_items">" 项"</string>
     <string name="chart_less">少</string>
     <string name="chart_more">多</string>
     <string name="chart_background">后台</string>
@@ -803,5 +806,6 @@
     <string name="chart_not_monitored">未监测</string>
     <string name="attention_slot_none">没有需要关注的行为</string>
     <string name="attention_slot_apps">%1$d 个应用</string>
+    <string name="notification_summary">访问 %1$s 次 · 后台 %2$s 次</string>
     <string name="notification_started">%1$s 开始</string>
 </resources>

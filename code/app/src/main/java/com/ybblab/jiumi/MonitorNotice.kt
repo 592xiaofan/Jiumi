@@ -151,11 +151,9 @@ object MonitorNotice {
         return runCatching { NotificationManagerCompat.from(context).notify(tag, id, notification) }.isSuccess
     }
 
-    /** "Reads 1,692 · Background 220": the two figures the Monitor tab leads with, short enough for one line. */
-    private fun summaryLine(text: Context, summary: NoticeSummary): String = listOf(
-        text.getString(R.string.stat_accesses) + " " + formatCount(summary.accesses.toLong()) + text.getString(R.string.chart_unit_times),
-        text.getString(R.string.chart_background) + " " + formatCount(summary.background.toLong()) + text.getString(R.string.chart_unit_times),
-    ).joinToString("  ·  ")
+    /** The session's total and its background part, in words short enough for one line in either language. */
+    private fun summaryLine(text: Context, summary: NoticeSummary): String = text.getString(R.string.notification_summary,
+        formatCount(summary.accesses.toLong()), formatCount(summary.background.toLong()))
 
     private fun appList(text: Context, labels: AppLabels, apps: List<AppKey>): String {
         val separator = text.getString(R.string.list_separator)

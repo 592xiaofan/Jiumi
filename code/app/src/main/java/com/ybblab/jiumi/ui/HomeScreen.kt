@@ -133,7 +133,7 @@ fun HomeScreen(
     // The range the report was built for: the picked one runs ahead while it is rebuilt.
     val built = state.shownRange
     val live = state.running && (built != Range.SESSION || state.sessionOpen)
-    var picked by remember(built, state.window.first) { mutableStateOf<Int?>(null) }
+    var picked by remember(built, state.window.first, activity?.buckets?.stepMs) { mutableStateOf<Int?>(null) }
     val layout = remember(entries, shown, toggled.value) { timelineRows(entries, shown, toggled.value) { it.item.t } }
     LoadMoreOnScroll(list, more = view == HomeView.TIMELINE.name && layout.more) { shown += LOG_PAGE }
 
@@ -184,14 +184,13 @@ fun HomeScreen(
         }
 
         if (activity != null) item {
-            Surface(shape = AppShapes.Card, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+            Surface(shape = AppShapes.Card, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth().padding(top = RANGE_GAP)) {
                 ActivityCard(activity, built, live, picked, { picked = it })
             }
         }
 
-        item { GroupTitle(stringResource(R.string.attention_title), Modifier.padding(top = 28.dp)) }
         item {
-            AttentionCard(ledger.attention, onOpenAttention, activity)
+            Box(Modifier.padding(top = RANGE_GAP)) { AttentionCard(ledger.attention, onOpenAttention, activity) }
         }
 
         item {
@@ -306,6 +305,9 @@ fun HomeScreen(
     }
     }
 }
+
+/** Between the range and the cards it governs: close enough to read as one group under it. */
+private val RANGE_GAP = 8.dp
 
 private enum class HomeView(val label: Int) {
     TIMELINE(R.string.view_timeline), APPS(R.string.view_by_app), TYPES(R.string.view_by_type)
@@ -590,9 +592,12 @@ private fun ServiceCard(
 private fun AttentionCard(items: List<Attention>, onOpen: (String) -> Unit, activity: com.ybblab.jiumi.data.Activity? = null) {
     val raised = items.filter { it.apps.isNotEmpty() }
     Card {
-        // When it was raised, over the range, then what was raised.
-        if (activity != null && raised.isNotEmpty() && activity.hits.any { it.total > 0 }) {
-            AttentionStrip(activity, Modifier.padding(horizontal = 16.dp, vertical = 14.dp))
+        // Its title is inside, as the overview's is; then when it was raised, and what.
+        val timed = activity?.takeIf { raised.isNotEmpty() && it.hits.any { hit -> hit.total > 0 } }
+        // 10 and the card's own 4: the title sits as far down as the overview's.
+        AttentionHeader(raised.size, key = timed != null, Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp))
+        if (timed != null) {
+            AttentionStrip(timed, Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 14.dp))
             InsetDivider(start = 16.dp)
         }
         if (raised.isEmpty()) {
