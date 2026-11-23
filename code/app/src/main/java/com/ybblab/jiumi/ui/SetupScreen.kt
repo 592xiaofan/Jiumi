@@ -91,6 +91,7 @@ import com.ybblab.jiumi.ui.theme.StatusWarning
 fun SetupScreen(
     controller: MonitorController,
     onPair: () -> Unit,
+    onEnterPairingCode: () -> Unit,
     onOpenWirelessDebugging: () -> Unit,
     onOpenNetwork: () -> Unit,
     onDone: () -> Unit
@@ -194,6 +195,11 @@ fun SetupScreen(
                     Icon(JiumiIcons.Lock, null, tint = Ink.tertiary, modifier = Modifier.size(12.dp))
                     Spacer(Modifier.width(4.dp))
                     Text(stringResource(R.string.setup_privacy), style = MaterialTheme.typography.labelMedium, color = Ink.tertiary)
+                }
+                if (method == com.ybblab.jiumi.access.AccessMethod.WIRELESS && !paired) {
+                    TextButton(onClick = onEnterPairingCode, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                        Text(stringResource(R.string.action_enter_pairing_code_in_app), color = Ink.primary)
+                    }
                 }
                 if (current < 0) BottomAction(stringResource(R.string.setup_start), onClick = onDone)
                 else BottomAction(stringResource(steps[current].action), enabled = !checkingRoot && !checkingNetwork) {
@@ -448,7 +454,7 @@ private fun PairingProgress(pairing: PairingState, inFlow: Boolean, onCancel: ()
         else CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Ink.secondary)
         Text(stringResource(text), style = MaterialTheme.typography.bodySmall, color = Ink.primary,
             modifier = Modifier.weight(1f))
-        if (pairing != PairingState.CONNECTING) Text(stringResource(R.string.action_cancel),
+        if (pairing == PairingState.DISCOVERING || pairing == PairingState.AWAITING_CODE) Text(stringResource(R.string.action_cancel),
             style = MaterialTheme.typography.labelLarge, color = Ink.secondary,
             modifier = Modifier.clip(CircleShape).clickable(onClick = onCancel).padding(horizontal = 6.dp, vertical = 2.dp))
     }

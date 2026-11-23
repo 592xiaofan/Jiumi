@@ -549,7 +549,7 @@
     <string name="access_root_hint">手机已 Root？在 Root 管理器里允许揪咪使用</string>
     <string name="access_shizuku_hint">启动 Shizuku 后，在里面允许揪咪使用</string>
     <string name="setup_step_notify_title">允许通知</string>
-    <string name="setup_step_notify_desc">配对码要在揪咪的通知里输入。</string>
+    <string name="setup_step_notify_desc">允许通知后可以在通知栏输入配对码，也可以选择「在揪咪内输入」。</string>
     <string name="setup_step_notify_action">允许通知</string>
     <string name="setup_step_notify_settings">去设置里允许通知</string>
     <string name="setup_step_developer_title">打开开发者选项</string>
@@ -560,6 +560,10 @@
     <string name="setup_start">开始使用</string>
     <string name="action_done">完成</string>
     <string name="action_start_pairing">开始配对</string>
+    <string name="action_enter_pairing_code_in_app">在揪咪内输入</string>
+    <string name="pairing_in_app_code_label">6 位配对码</string>
+    <string name="pairing_in_app_window_hint">在最近任务中开启分屏或应用小窗，保持系统配对弹窗打开。</string>
+    <string name="pairing_in_app_ready">输入系统设置显示的配对码，保持系统配对弹窗打开。</string>
     <string name="pairing_steps">步骤</string>
     <string name="pairing_step1_title">打开开发者选项</string>
     <string name="pairing_step1_desc">在“设置 → 关于手机”中连续点击版本号 7 次。</string>

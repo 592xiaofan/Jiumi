@@ -103,7 +103,7 @@ class AirModeNotificationController(
         if (channel == null) {
             return AirPairingNotificationAvailability.POST_FAILED
         }
-        if (channel.importance < NotificationManager.IMPORTANCE_HIGH) {
+        if (channel.importance == NotificationManager.IMPORTANCE_NONE) {
             return AirPairingNotificationAvailability.CHANNEL_DISABLED
         }
         return AirPairingNotificationAvailability.AVAILABLE
@@ -157,8 +157,7 @@ class AirModeNotificationController(
             .addAction(pairingCodeAction(session))
             .build()
 
-        // Clear the silent/previous input before alerting so heads-up presentation triggers reliably.
-        if (alert || failure != null) notificationManager.cancel(NOTIFICATION_ID)
+        // Keep an open reply attached when the search updates the existing notification.
         return post(if (alert) "pairing_request" else "pairing_input_ready", notification).fold(
             onSuccess = {
                 PairingNotificationPostResult(
@@ -251,6 +250,7 @@ class AirModeNotificationController(
         if (allowRetry) {
             // A RemoteInput submission changes the notification's system state. Replace it
             // with a fresh ongoing input notification, rather than updating the submitted one.
+            notificationManager.cancel(NOTIFICATION_ID)
             showPairingRequest(failure)
             return
         }

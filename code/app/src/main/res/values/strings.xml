@@ -557,7 +557,7 @@
     <string name="access_root_hint">Already rooted? Allow Jiumi in your root manager.</string>
     <string name="access_shizuku_hint">Start Shizuku, then let Jiumi use it.</string>
     <string name="setup_step_notify_title">Allow notifications</string>
-    <string name="setup_step_notify_desc">You enter the pairing code in Jiumi\'s notification.</string>
+    <string name="setup_step_notify_desc">Allow notifications to enter the code from the notification shade. You can also enter it in Jiumi.</string>
     <string name="setup_step_notify_action">Allow notifications</string>
     <string name="setup_step_notify_settings">Allow in Settings</string>
     <string name="setup_step_developer_title">Turn on Developer options</string>
@@ -568,6 +568,10 @@
     <string name="setup_start">Get started</string>
     <string name="action_done">Done</string>
     <string name="action_start_pairing">Start pairing</string>
+    <string name="action_enter_pairing_code_in_app">Enter code in Jiumi</string>
+    <string name="pairing_in_app_code_label">6-digit pairing code</string>
+    <string name="pairing_in_app_window_hint">Keep the pairing dialog open. Use split screen or open Jiumi in a floating window from Recents.</string>
+    <string name="pairing_in_app_ready">Enter the code shown in system settings. Keep the pairing dialog open.</string>
     <string name="pairing_steps">Steps</string>
     <string name="pairing_step1_title">Turn on Developer options</string>
     <string name="pairing_step1_desc">In Settings, About phone, tap the build number seven times.</string>

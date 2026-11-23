@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,7 +53,8 @@ fun PairingScreen(
     controller: MonitorController,
     onBack: () -> Unit,
     onPair: () -> Unit,
-    onOpenWirelessDebugging: () -> Unit
+    onOpenWirelessDebugging: () -> Unit,
+    onEnterPairingCode: () -> Unit
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
     val inFlow = state.pairingState in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE, PairingState.PAIRING)
@@ -63,6 +65,7 @@ fun PairingScreen(
         stringResource(R.string.row_pairing), onBack,
         bottomBar = {
             when {
+                state.pairingState == PairingState.PAIRING -> Unit
                 inFlow -> BottomAction(stringResource(R.string.action_cancel), filled = false, onClick = controller::cancelPairing)
                 paired -> BottomAction(stringResource(R.string.action_done), onClick = onBack)
                 else -> BottomAction(stringResource(
@@ -116,6 +119,17 @@ fun PairingScreen(
                 }
             }
             if (!paired) {
+                item {
+                    Spacer(Modifier.height(10.dp))
+                    Card {
+                        ListRow(
+                            title = stringResource(R.string.action_enter_pairing_code_in_app),
+                            subtitle = stringResource(R.string.pairing_in_app_window_hint),
+                            leading = { IconTile(JiumiIcons.Smartphone) },
+                            onClick = onEnterPairingCode
+                        ) { Icon(JiumiIcons.ChevronRight, contentDescription = null, tint = Ink.tertiary) }
+                    }
+                }
                 item { GroupTitle(stringResource(R.string.pairing_steps), Modifier.padding(top = 24.dp)) }
                 item {
                     Card {
