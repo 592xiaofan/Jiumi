@@ -18,10 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.core.util.Consumer
-import androidx.core.app.MultiWindowModeChangedInfo
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingInput
 import com.ybblab.jiumi.data.AppKey
 import com.ybblab.jiumi.data.LogEntry
@@ -115,7 +112,7 @@ class MainActivity : AppCompatActivity() {
                 // A page's state is keyed by its depth too: the same page can be open twice in the stack.
                 fun pageKey(depth: Int) = "$depth|${stack.getOrNull(depth - 1) ?: "home"}"
                 val pop = {
-                    if (stack.lastOrNull() in setOf("pairing-code", "pairing-window")) controller.cancelInAppPairing()
+                    if (stack.lastOrNull() == "pairing-code") controller.cancelInAppPairing()
                     pages.removeState(pageKey(stack.size))
                     stack = stack.dropLast(1)
                 }
@@ -128,7 +125,7 @@ class MainActivity : AppCompatActivity() {
                 LaunchedEffect(route, setupDone) {
                     val r = route ?: return@LaunchedEffect
                     if (!setupDone) return@LaunchedEffect
-                    if (top in setOf("pairing-code", "pairing-window")) controller.cancelInAppPairing()
+                    if (top == "pairing-code") controller.cancelInAppPairing()
                     (1..stack.size).forEach { pages.removeState(pageKey(it)) }
                     tab = Tab.MONITOR
                     stack = if (r == MonitorNotice.ROUTE_MONITOR) emptyList() else listOf(r)
@@ -228,23 +225,9 @@ class MainActivity : AppCompatActivity() {
                     top == "pairing" -> PairingScreen(controller, onBack = pop, onPair = ::pair,
                         onOpenWirelessDebugging = ::openWirelessDebugging, onOpenPairingOptions = openPairingOptions)
                     top == "pairing-options" -> PairingOptionsScreen(onBack = pop,
-                        onOpenWirelessDebugging = ::openWirelessDebugging, onEnterPairingCode = { push("pairing-code") },
-                        onOpenPairingWindow = { push("pairing-window") })
+                        onOpenWirelessDebugging = ::openWirelessDebugging, onEnterPairingCode = { push("pairing-code") })
                     top == "pairing-code" -> PairingCodeScreen(controller, onBack = pop,
                         onOpenWirelessDebugging = ::openPairingSettingsForInAppCode)
-                    top == "pairing-window" -> {
-                        var inMultiWindow by androidx.compose.runtime.remember {
-                            mutableStateOf(isInMultiWindowMode)
-                        }
-                        DisposableEffect(Unit) {
-                            val listener = Consumer<MultiWindowModeChangedInfo> { inMultiWindow = it.isInMultiWindowMode }
-                            addOnMultiWindowModeChangedListener(listener)
-                            onDispose { removeOnMultiWindowModeChangedListener(listener) }
-                        }
-                        PairingCodeScreen(controller, onBack = pop,
-                            onOpenWirelessDebugging = ::openPairingSettingsForInAppCode,
-                            floatingWindow = true, compact = inMultiWindow)
-                    }
                     top == "spool" -> SpoolScreen(controller, onBack = pop)
                     top == "monitoring-exclusions" -> MonitoringExclusionsScreen(controller, labels, onBack = pop)
                     top == "about" -> AboutScreen(labels, onBack = pop, onOpenLicenses = { push("licenses") })

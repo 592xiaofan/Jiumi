@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -44,16 +42,14 @@ import com.ybblab.jiumi.R
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingState
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingTrustState
 import com.ybblab.jiumi.adb.messageRes
-import com.ybblab.jiumi.ui.icons.JiumiIcons
 import com.ybblab.jiumi.ui.theme.AppShapes
 import com.ybblab.jiumi.ui.theme.Ink
 import com.ybblab.jiumi.ui.theme.StatusWarning
 
 @Composable
-internal fun PairingTilePanel(controller: MonitorController, onClose: () -> Unit, onMove: (Boolean) -> Unit) {
+internal fun PairingTilePanel(controller: MonitorController, onClose: () -> Unit) {
     val state by controller.state.collectAsStateWithLifecycle()
     var code by remember { mutableStateOf("") }
-    var atTop by remember { mutableStateOf(false) }
     val pairing = state.pairingState
     val paired = state.trust == PairingTrustState.PAIRED
     val working = pairing == PairingState.PAIRING || pairing == PairingState.CONNECTING
@@ -64,8 +60,7 @@ internal fun PairingTilePanel(controller: MonitorController, onClose: () -> Unit
         pairing == PairingState.PAIRING -> R.string.pairing_in_progress
         pairing == PairingState.CONNECTING -> R.string.pairing_connecting
         paired -> R.string.pairing_paired
-        pairing == PairingState.AWAITING_CODE -> R.string.pairing_in_app_ready
-        else -> R.string.pairing_tile_open_code
+        else -> null
     }
 
     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
@@ -77,80 +72,64 @@ internal fun PairingTilePanel(controller: MonitorController, onClose: () -> Unit
             shadowElevation = 8.dp
         ) {
             Column(
-                Modifier.verticalScroll(rememberScrollState()).padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                Modifier.verticalScroll(rememberScrollState()).padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.pairing_tile_label), Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleLarge, color = Ink.primary)
-                    IconButton(onClick = {
-                        atTop = !atTop
-                        onMove(atTop)
-                    }) {
-                        Icon(
-                            if (atTop) JiumiIcons.ChevronDown else JiumiIcons.ChevronUp,
-                            stringResource(if (atTop) R.string.pairing_tile_move_down else R.string.pairing_tile_move_up),
-                            modifier = Modifier.size(18.dp), tint = Ink.secondary
-                        )
-                    }
-                    IconButton(onClick = onClose) {
-                        Icon(JiumiIcons.Close, stringResource(R.string.action_cancel),
-                            modifier = Modifier.size(18.dp), tint = Ink.secondary)
-                    }
-                }
                 if (!working && !paired) {
                     val codeLabel = stringResource(R.string.pairing_in_app_code_label)
                     Row(
-                        Modifier.widthIn(max = 256.dp).fillMaxWidth().align(Alignment.CenterHorizontally)
-                            .padding(bottom = 4.dp).clearAndSetSemantics {
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            Modifier.weight(1f).clearAndSetSemantics {
                                 contentDescription = if (code.isEmpty()) codeLabel else "$codeLabel, ${code.toList().joinToString(" ")}"
                             },
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        repeat(6) { index ->
-                            val digit = code.getOrNull(index)
-                            val next = editable && index == code.length
-                            Surface(
-                                Modifier.weight(1f).height(34.dp), shape = AppShapes.Small,
-                                color = if (digit == null) Color.Transparent else Ink.fill,
-                                border = BorderStroke(1.dp, if (next) Ink.secondary else MaterialTheme.colorScheme.outlineVariant)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    if (digit != null) Text(digit.toString(), style = MaterialTheme.typography.titleLarge,
-                                        color = Ink.primary)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            repeat(6) { index ->
+                                val digit = code.getOrNull(index)
+                                val next = editable && index == code.length
+                                Surface(
+                                    Modifier.weight(1f).height(34.dp), shape = AppShapes.Small,
+                                    color = if (digit == null) Color.Transparent else Ink.fill,
+                                    border = BorderStroke(1.dp, if (next) Ink.secondary else MaterialTheme.colorScheme.outlineVariant)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        if (digit != null) Text(digit.toString(), style = MaterialTheme.typography.titleLarge,
+                                            color = Ink.primary)
+                                    }
                                 }
                             }
                         }
-                    }
-                    for (row in 0..2) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            for (digit in (row * 3 + 1)..(row * 3 + 3)) {
-                                PairingTileKey(digit.toString(), Modifier.weight(1f), enabled = editable && code.length < 6) {
-                                    if (code.length < 6) code += digit
-                                }
-                            }
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        PairingTileKey(stringResource(R.string.pairing_tile_delete), Modifier.weight(1f),
+                        PairingTileKey(stringResource(R.string.pairing_tile_delete), Modifier,
                             enabled = editable && code.isNotEmpty()) { code = code.dropLast(1) }
-                        PairingTileKey("0", Modifier.weight(1f), enabled = editable && code.length < 6) {
-                            if (code.length < 6) code += "0"
+                    }
+                    for (digits in listOf("12345", "67890")) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            for (digit in digits) {
+                                PairingTileKey(digit.toString(), Modifier.weight(1f), enabled = editable && code.length < 6) {
+                                    code += digit
+                                }
+                            }
                         }
-                        PairingTileKey(stringResource(R.string.pairing_tile_submit), Modifier.weight(1f),
-                            enabled = editable && code.length == 6, primary = true) {
-                            if (controller.submitInAppPairingCode(code)) code = ""
-                        }
+                    }
+                    PairingTileKey(stringResource(R.string.pairing_tile_submit), Modifier.fillMaxWidth(),
+                        enabled = editable && code.length == 6, primary = true) {
+                        if (controller.submitInAppPairingCode(code)) code = ""
                     }
                 }
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 4.dp).semantics { liveRegion = LiveRegionMode.Polite },
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (working) CircularProgressIndicator(Modifier.size(16.dp), color = Ink.secondary, strokeWidth = 2.dp)
-                    Text(stringResource(status), style = MaterialTheme.typography.bodySmall,
-                        color = if (failure == null) Ink.secondary else StatusWarning)
+                if (status != null) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(4.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (working) CircularProgressIndicator(Modifier.size(16.dp), color = Ink.secondary, strokeWidth = 2.dp)
+                        Text(stringResource(status), style = MaterialTheme.typography.bodySmall,
+                            color = if (failure == null) Ink.secondary else StatusWarning)
+                    }
                 }
                 if (paired && !working) {
                     TextButton(onClick = onClose, modifier = Modifier.align(Alignment.End)) {
@@ -181,7 +160,7 @@ private fun PairingTileKey(
             else -> Ink.primary
         }
     ) {
-        Box(Modifier.padding(horizontal = 2.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
             Text(label, style = if (label.length == 1 && label[0] in '0'..'9') MaterialTheme.typography.titleLarge
                 else MaterialTheme.typography.labelLarge)
         }

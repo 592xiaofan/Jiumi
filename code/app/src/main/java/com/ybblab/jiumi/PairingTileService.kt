@@ -66,8 +66,7 @@ class PairingTileService : TileService() {
                 JiumiTheme(isDark = isDark) {
                     PairingTilePanel(
                         controller = controller,
-                        onClose = dialog::dismiss,
-                        onMove = { atTop -> window.setGravity(if (atTop) Gravity.TOP else Gravity.BOTTOM) }
+                        onClose = dialog::dismiss
                     )
                 }
             }
