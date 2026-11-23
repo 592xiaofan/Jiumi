@@ -6,6 +6,10 @@ Versions follow [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+- **Add other ways to enter the pairing code.** When Jiumi’s notification can’t be used with the pairing dialog open, tap “Can’t type in the notification?” in the setup step and pick one way: split screen or a small window, or the “Jiumi pairing” Quick Settings tile. Each way has its own animation and steps.
+- The pairing code page tells you whether Jiumi is sharing the screen, opens Wireless debugging beside Jiumi in split screen, and confirms when pairing succeeds.
+- Fixed reading system access history on Android 17.
+
 ## [0.4.1] - 2026-11-23
 
 - Improved freeze and unfreeze compatibility. Jiumi tries an alternate method after verifying that the primary method left the app state unchanged.
