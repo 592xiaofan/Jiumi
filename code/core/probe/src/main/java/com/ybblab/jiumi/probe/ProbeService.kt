@@ -108,7 +108,7 @@ internal class ProbeService(
         synchronized(discreteLock) {
             val rows = if (offset == 0) {
                 discreteSnapshot = null
-                val dump = readAppOpsDump("Discrete accesses:", "--include-discrete", "0")
+                val dump = readAppOpsDump(discrete = true)
                 DiscreteHistory.parse(dump, watchedOps, fromTime, spool.exclusions)
                     .also { discreteSnapshot = DiscreteSnapshot(fromTime, it) }
             } else {
@@ -128,8 +128,11 @@ internal class ProbeService(
         synchronized(historyLock) {
             val slots = if (skip == 0) {
                 historySnapshot = null
-                val dump = readAppOpsDump("History:", "--history")
-                AppOpsHistory.parse(dump, watchedOps, sinceTime, System.currentTimeMillis(), spool.exclusions, ::isMakerOp)
+                val dump = readAppOpsDump(discrete = false)
+                val discreteDump = if (AppOpsHistoryTable.contains(dump, AppOpsHistoryTable.AGGREGATED))
+                    readAppOpsDump(discrete = true) else null
+                AppOpsHistory.parse(dump, watchedOps, sinceTime, System.currentTimeMillis(),
+                    spool.exclusions, discreteDump, ::isMakerOp)
                     .also { historySnapshot = HistorySnapshot(sinceTime, it) }
             } else {
                 checkNotNull(historySnapshot?.takeIf { it.since == sinceTime }?.slots) { "Missing AppOps snapshot" }
@@ -144,11 +147,26 @@ internal class ProbeService(
 
     private val historyLock = Any()
 
-    private fun readAppOpsDump(section: String, vararg args: String): String {
+    private val hasHistoryLimit by lazy {
+        val help = Shell.run(listOf("dumpsys", "appops", "-h"))
+        check(help.exitCode == 0 && !help.truncated) {
+            "AppOps dump options could not be read"
+        }
+        help.output.lineSequence().any { it.trimStart().startsWith("--history-limit ") }
+    }
+
+    private fun readAppOpsDump(discrete: Boolean): String {
+        val args = when {
+            discrete && hasHistoryLimit -> listOf("--history", "--include-discrete", "0")
+            discrete -> listOf("--include-discrete", "0")
+            hasHistoryLimit -> listOf("--history", "--history-limit", "0")
+            else -> listOf("--history")
+        }
         val result = Shell.run(listOf("dumpsys", "appops") + args, timeoutMs = 30_000)
         val found = result.output.lineSequence().any { raw ->
             val line = raw.trim()
-            line == section || section == "History:" && line.startsWith("History:") &&
+            if (discrete) line == DiscreteHistory.SECTION || line == AppOpsHistoryTable.DISCRETE
+            else line.startsWith(AppOpsHistory.SECTION) &&
                 line.substringAfter(':').trimStart().startsWith("mode=HISTORICAL_MODE_ENABLED")
         }
         check(result.exitCode == 0 && !result.truncated && found && !result.output.contains("DUMP TIMEOUT")) {

@@ -18,10 +18,12 @@ import java.util.Locale
  *   Access [top-s] at 2026-11-08 15:49:29.506 for 60000 milliseconds
  */
 internal object DiscreteHistory {
+    const val SECTION = "Discrete accesses:"
     private val access = Regex("^Access \\[([a-z]+)-([a-z]+)\\] at (\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d(?:\\.\\d{1,3})?)(?: for (\\d+) milliseconds)?")
 
     fun parse(dump: String, ops: Set<String>, fromTime: Long, exclusions: MonitoringExclusions = MonitoringExclusions()): List<JSONObject> {
-        val section = dump.substringAfter("Discrete accesses:", missingDelimiterValue = "")
+        if (AppOpsHistoryTable.contains(dump, AppOpsHistoryTable.DISCRETE)) return readTable(dump, ops, fromTime, exclusions)
+        val section = dump.substringAfter(SECTION, missingDelimiterValue = "")
         val found = ArrayList<JSONObject>()
         var uid = -1
         var pkg: String? = null
@@ -68,6 +70,26 @@ internal object DiscreteHistory {
         // The dump is grouped by app, not time; callers page forward by time.
         return unique.sortedBy { it.getLong("t") }
     }
+
+    private data class AccessKey(val uid: Int, val pkg: String, val op: String, val attr: String?, val time: Long)
+
+    private fun readTable(dump: String, ops: Set<String>, fromTime: Long, exclusions: MonitoringExclusions): List<JSONObject> =
+        AppOpsHistoryTable.read(dump, AppOpsHistoryTable.DISCRETE)
+            .filter { it.op in ops && it.time >= fromTime && (it.accesses > 0 || it.duration > 0) }
+            .filterNot { exclusions.hides(it.uid, it.pkg) }
+            // The system can emit separate rows for starting and finishing an access.
+            .groupBy { AccessKey(it.uid, it.pkg, it.op, it.attr, it.time) }
+            .values.mapNotNull { rows ->
+                val row = rows.maxBy { it.duration }
+                val count = rows.maxOf { it.accesses }
+                val durationEnd = row.time + row.duration
+                if (exclusions.blocks(row.uid, row.pkg, row.time, durationEnd)) return@mapNotNull null
+                // A total duration for several accesses does not establish one continuous span.
+                val end = if (count == 1) durationEnd else row.time
+                JSONObject().put("kind", "history").put("t", row.time).put("end", end)
+                    .put("op", row.op).put("uid", row.uid).put("pkg", row.pkg).put("attr", row.attr)
+                    .put("state", row.state).put("via", row.via).put("count", count.coerceAtLeast(1))
+            }.sortedBy { it.getLong("t") }
 
     /** Index into an immutable dump; a page can end within a timestamp without losing any rows. */
     fun page(rows: List<JSONObject>, offset: Int, max: Int): JSONObject {
