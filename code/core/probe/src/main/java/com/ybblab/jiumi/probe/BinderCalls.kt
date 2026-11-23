@@ -22,7 +22,8 @@ object BinderCalls {
 
     data class Result(val calls: List<Call>, val watermarkNs: Long)
 
-    private val slice = Regex("^B\\|\\d+\\|AIDL::\\w+::([A-Za-z0-9_.$]+)::(\\w+)::(server|cppServer)\\s*$")
+    // Android 11 leaves out the "AIDL::<lang>::" prefix: "<Interface>::<method>::cppServer".
+    private val slice = Regex("^B\\|\\d+\\|(?:AIDL::\\w+::)?([A-Za-z0-9_.$]+)::(\\w+)::(server|cppServer)\\s*$")
 
     private class Transaction(val timestampNs: Long, val clientTid: Int, val toProc: Int, val code: Int)
     private class Received(val timestampNs: Long, val debugId: Long)

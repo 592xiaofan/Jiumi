@@ -370,7 +370,11 @@ internal class ProbeService(
 
     override fun locationProviders(): String {
         enforceOwner()
-        return LocationProviders.parse(Shell.run(listOf("dumpsys", "location"), timeoutMs = 30_000).output).toString()
+        val dump = Shell.run(listOf("dumpsys", "location"), timeoutMs = 30_000).output
+        // Android 11 names a provider's package without its uid.
+        return LocationProviders.parse(dump) { pkg ->
+            runCatching { context.packageManager.getPackageUid(pkg, 0) }.getOrNull()
+        }.toString()
     }
 
     override fun listPackages(): String {

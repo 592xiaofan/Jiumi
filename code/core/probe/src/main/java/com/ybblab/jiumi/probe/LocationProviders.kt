@@ -17,27 +17,47 @@ import org.json.JSONObject
  *       ...
  *       identity=10266/com.oplus.location
  * A provider run by the platform itself names a uid below 10000 and an attribution in brackets.
+ *
+ * Android 11 names only the bound service, without its uid:
+ *   Location Providers:
+ *     network provider:
+ *       ...
+ *       service={com.google.android.gms/com.google.android.location.network.NetworkLocationService}@1[u0]
+ * The uid is then looked up through [uidOf].
  */
 internal object LocationProviders {
-    private val header = Regex("^(\\w+) provider:$")
+    private const val SECTION = "Location Providers:"
+    private val header = Regex("^(\\w+) provider(?: \\[mock])?:$")
     private val identity = Regex("^identity=(\\d+)/([A-Za-z0-9_.]+)(?:\\[[^]]*])?$")
+    private val service = Regex("^service=\\{([A-Za-z0-9_.]+)/[^}]+}@-?\\d+\\[u\\d+]$")
 
     /** JSON array of {"name","uid","pkg"}, one per provider whose identity the dump names. */
-    fun parse(dump: String): JSONArray {
-        val section = dump.substringAfter("Location Providers:", missingDelimiterValue = "")
+    fun parse(dump: String, uidOf: (String) -> Int? = { null }): JSONArray {
         val found = JSONArray()
+        val lines = dump.lineSequence().iterator()
+        var sectionIndent = -1
+        while (lines.hasNext()) {
+            val raw = lines.next()
+            if (raw.trim() == SECTION) { sectionIndent = indentOf(raw); break }
+        }
+        if (sectionIndent < 0) return found
         var name: String? = null
-        for (raw in section.lineSequence()) {
+        for (raw in lines) {
+            if (raw.isBlank()) continue
+            // The providers are listed first; the history and other managers follow at the section's level.
+            if (indentOf(raw) <= sectionIndent) break
             val line = DumpText.normalize(raw)
-            // The providers are listed first; the history and other managers follow at the top level.
-            if (raw.isNotBlank() && !raw.startsWith("    ")) break
             val opened = header.find(line)
             if (opened != null) { name = opened.groupValues[1]; continue }
-            val match = identity.find(line) ?: continue
             val provider = name ?: continue
-            found.put(JSONObject().put("name", provider).put("uid", match.groupValues[1].toInt()).put("pkg", match.groupValues[2]))
+            val named = identity.find(line)?.let { it.groupValues[1].toInt() to it.groupValues[2] }
+                ?: service.find(line)?.let { m -> uidOf(m.groupValues[1])?.let { it to m.groupValues[1] } }
+                ?: continue
+            found.put(JSONObject().put("name", provider).put("uid", named.first).put("pkg", named.second))
             name = null
         }
         return found
     }
+
+    private fun indentOf(line: String) = line.length - line.trimStart().length
 }

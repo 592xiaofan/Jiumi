@@ -26,7 +26,8 @@ internal object AlarmWakeups {
         var lastAgo = 0L
         for (raw in section.lineSequence()) {
             if (raw.isBlank()) continue
-            val line = DumpText.normalize(raw)
+            // An alarm being delivered while the dump is taken is marked "*ACTIVE* " on its app and filter lines.
+            val line = DumpText.normalize(raw).removePrefix(ACTIVE)
             val indent = raw.length - raw.trimStart().length
             if (indent <= 2) {
                 // Each app's header; anything else at this level ends the list.
@@ -50,6 +51,7 @@ internal object AlarmWakeups {
         return JSONObject().put("wakeups", found).put("receivers", JSONArray(sorted))
     }
 
+    private const val ACTIVE = "*ACTIVE* "
     private val appHeader = Regex("^(\\S+):(\\S+) \\+\\S+ running, (\\d+) wakeups:$")
     private val filterLine = Regex("^\\+\\S+ (\\d+) wakes \\d+ alarms, last (-?\\S+):$")
 
