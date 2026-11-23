@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -189,22 +190,14 @@ fun SetupScreen(
     SubScreen(
         "", onBack = null,
         bottomBar = {
-            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
-                Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Icon(JiumiIcons.Lock, null, tint = Ink.tertiary, modifier = Modifier.size(12.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.setup_privacy), style = MaterialTheme.typography.labelMedium, color = Ink.tertiary)
-                }
-                if (method == com.ybblab.jiumi.access.AccessMethod.WIRELESS && !paired) {
-                    TextButton(onClick = onOpenPairingOptions, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                        Text(stringResource(R.string.pairing_options), color = Ink.primary)
-                    }
-                }
+            // The privacy line is the page's last line, under the action; the column takes the
+            // navigation bar inset once for both.
+            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
                 if (current < 0) BottomAction(stringResource(R.string.setup_start), onClick = onDone)
                 else BottomAction(stringResource(steps[current].action), enabled = !checkingRoot && !checkingNetwork) {
                     opened = null; steps[current].run()
                 }
+                PrivacyNote()
             }
         }
     ) { padding ->
@@ -274,6 +267,11 @@ fun SetupScreen(
                             if (i == steps.lastIndex && method == com.ybblab.jiumi.access.AccessMethod.WIRELESS) state.pairingFailure?.let {
                                 Text(stringResource(it.messageRes()), style = MaterialTheme.typography.bodySmall,
                                     color = StatusWarning, modifier = Modifier.padding(top = 8.dp))
+                            }
+                            if (i == steps.lastIndex && method == com.ybblab.jiumi.access.AccessMethod.WIRELESS && !paired) {
+                                Text(stringResource(R.string.pairing_other_way), style = MaterialTheme.typography.labelLarge,
+                                    color = Ink.primary, modifier = Modifier.padding(top = 6.dp).clip(AppShapes.Control)
+                                        .clickable(onClick = onOpenPairingOptions).padding(vertical = 6.dp))
                             }
                         }
                     }

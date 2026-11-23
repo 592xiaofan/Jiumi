@@ -224,8 +224,7 @@ class MainActivity : AppCompatActivity() {
                     top == "network-adb" -> NetworkAdbScreen(controller, onBack = pop)
                     top == "pairing" -> PairingScreen(controller, onBack = pop, onPair = ::pair,
                         onOpenWirelessDebugging = ::openWirelessDebugging, onOpenPairingOptions = openPairingOptions)
-                    top == "pairing-options" -> PairingOptionsScreen(onBack = pop,
-                        onOpenWirelessDebugging = ::openWirelessDebugging, onEnterPairingCode = { push("pairing-code") })
+                    top == "pairing-options" -> PairingOptionsScreen(onBack = pop, onEnterPairingCode = { push("pairing-code") })
                     top == "pairing-code" -> PairingCodeScreen(controller, onBack = pop,
                         onOpenWirelessDebugging = ::openPairingSettingsForInAppCode)
                     top == "spool" -> SpoolScreen(controller, onBack = pop)
