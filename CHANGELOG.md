@@ -6,9 +6,11 @@ Versions follow [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
-- **Add other ways to enter the pairing code.** When Jiumi’s notification can’t be used with the pairing dialog open, tap “Can’t type in the notification?” in the setup step and pick one way: split screen or a small window, or the “Jiumi pairing” Quick Settings tile. Each way has its own animation and steps.
-- The pairing code page tells you whether Jiumi is sharing the screen, opens Wireless debugging beside Jiumi in split screen, and confirms when pairing succeeds.
-- Fixed reading system access history on Android 17.
+- **More ways to enter the wireless pairing code.** If the notification is unavailable, use split screen, a small window, or the “Jiumi pairing” Quick Settings tile. Both setup options include animated guides.
+- The code entry screen guides you through keeping both apps visible, opens Wireless debugging alongside Jiumi in split screen, and confirms successful pairing.
+- Fixed missing permission accesses on Android 11 by checking system records periodically and recognizing location providers.
+- Fixed unreadable text in MIUI dark mode and restored system access history on Android 17.
+- Clarified when removing a preinstalled app for the current user requires Root.
 
 ## [0.4.1] - 2026-11-23
 
