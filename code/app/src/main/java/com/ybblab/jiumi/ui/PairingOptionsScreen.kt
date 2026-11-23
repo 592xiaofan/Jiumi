@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,7 +34,8 @@ import com.ybblab.jiumi.ui.theme.Ink
 internal fun PairingOptionsScreen(
     onBack: () -> Unit,
     onOpenWirelessDebugging: () -> Unit,
-    onEnterPairingCode: () -> Unit
+    onEnterPairingCode: () -> Unit,
+    onOpenPairingWindow: () -> Unit
 ) {
     val context = LocalContext.current
     val label = stringResource(R.string.pairing_tile_label)
@@ -46,6 +48,14 @@ internal fun PairingOptionsScreen(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Card {
+                ListRow(
+                    stringResource(R.string.pairing_window_title),
+                    subtitle = stringResource(R.string.pairing_window_summary),
+                    leading = { IconTile(JiumiIcons.Smartphone) },
+                    onClick = onOpenPairingWindow
+                ) { Icon(JiumiIcons.ChevronRight, null, tint = Ink.tertiary) }
+            }
             Card {
                 ListRow(stringResource(R.string.pairing_tile_title), leading = { IconTile(JiumiIcons.Settings) }) {
                     if (tileAdded) DoneMark()
@@ -82,7 +92,7 @@ internal fun PairingOptionsScreen(
                     subtitle = stringResource(R.string.pairing_in_app_window_hint),
                     leading = { IconTile(JiumiIcons.Smartphone) },
                     onClick = onEnterPairingCode
-                ) { androidx.compose.material3.Icon(JiumiIcons.ChevronRight, null, tint = Ink.tertiary) }
+                ) { Icon(JiumiIcons.ChevronRight, null, tint = Ink.tertiary) }
             }
         }
     }

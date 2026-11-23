@@ -62,7 +62,9 @@ import com.ybblab.jiumi.ui.theme.StatusWarning
 internal fun PairingCodeScreen(
     controller: MonitorController,
     onBack: () -> Unit,
-    onOpenWirelessDebugging: () -> Unit
+    onOpenWirelessDebugging: () -> Unit,
+    floatingWindow: Boolean = false,
+    compact: Boolean = false
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
     // A code is valid for one system dialog, so keep it out of saved instance state.
@@ -92,21 +94,26 @@ internal fun PairingCodeScreen(
             .background(MaterialTheme.colorScheme.background)
             .safeDrawingPadding()
     ) {
-        Row(Modifier.fillMaxWidth().padding(end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(JiumiIcons.ArrowBack, stringResource(R.string.action_back), tint = Ink.primary)
+        if (!compact) {
+            Row(Modifier.fillMaxWidth().padding(end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(JiumiIcons.ArrowBack, stringResource(R.string.action_back), tint = Ink.primary)
+                }
+                Text(
+                    stringResource(if (floatingWindow) R.string.pairing_window_title else R.string.row_pairing),
+                    style = MaterialTheme.typography.titleMedium, color = Ink.primary
+                )
             }
-            Text(stringResource(R.string.row_pairing), style = MaterialTheme.typography.titleMedium, color = Ink.primary)
         }
         Box(
             Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp),
             contentAlignment = Alignment.TopCenter
         ) {
             Column(
-                Modifier.widthIn(max = 400.dp).fillMaxWidth().padding(bottom = 8.dp),
+                Modifier.widthIn(max = 400.dp).fillMaxWidth().padding(top = if (compact) 8.dp else 0.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                if (!working && !paired) {
+                if (!working && !paired && (!floatingWindow || compact)) {
                     Card {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -132,9 +139,17 @@ internal fun PairingCodeScreen(
                                     containerColor = MaterialTheme.colorScheme.onSurface,
                                     contentColor = MaterialTheme.colorScheme.surface
                                 )
-                            ) { Text(stringResource(R.string.action_start_pairing)) }
+                            ) {
+                                Text(stringResource(if (compact) R.string.pairing_tile_submit else R.string.action_start_pairing))
+                            }
                         }
                     }
+                }
+                if (floatingWindow && !compact && !paired && !working) {
+                    Text(stringResource(R.string.pairing_window_instructions), style = MaterialTheme.typography.bodyMedium,
+                        color = Ink.secondary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp))
+                }
+                if (!compact && !working && !paired) {
                     TextButton(onClick = onOpenWirelessDebugging) {
                         Text(stringResource(R.string.action_open_wireless_debugging), color = Ink.primary)
                     }
@@ -148,7 +163,7 @@ internal fun PairingCodeScreen(
                     pairingState == PairingState.AWAITING_CODE -> R.string.pairing_in_app_ready
                     else -> R.string.pairing_in_app_window_hint
                 }
-                Row(
+                if (failure != null || working || paired || !floatingWindow) Row(
                     Modifier.padding(horizontal = 8.dp, vertical = 3.dp).semantics { liveRegion = LiveRegionMode.Polite },
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
