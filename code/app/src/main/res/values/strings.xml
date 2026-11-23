@@ -603,6 +603,9 @@
     <string name="pairing_success_title">Paired</string>
     <string name="pairing_success_desc">You only pair once. No code needed after this.</string>
     <string name="pairing_success_back">Back to Jiumi</string>
+    <string name="pairing_split_needed_title">Use split screen or a small window first</string>
+    <string name="pairing_split_needed_desc">The code dialog and this keypad have to be on screen together. From Recents, put Jiumi or Settings in split screen or a small window.</string>
+    <string name="pairing_split_ready_desc">Tap “Pair device with pairing code” beside Jiumi; keep it open.</string>
     <string name="pairing_way_how">How it works</string>
     <string name="pairing_steps">Steps</string>
     <string name="pairing_step1_title">Turn on Developer options</string>

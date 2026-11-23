@@ -595,6 +595,9 @@
     <string name="pairing_success_title">配对成功</string>
     <string name="pairing_success_desc">配对只需这一次，之后不用再输入配对码。</string>
     <string name="pairing_success_back">回到揪咪</string>
+    <string name="pairing_split_needed_title">先进入分屏或小窗</string>
+    <string name="pairing_split_needed_desc">配对码弹窗和这个输入框要同时在屏幕上。从最近任务里，把揪咪或设置放进分屏或小窗。</string>
+    <string name="pairing_split_ready_desc">在旁边点「使用配对码配对设备」，弹窗别关。</string>
     <string name="pairing_way_how">怎么做</string>
     <string name="pairing_steps">步骤</string>
     <string name="pairing_step1_title">打开开发者选项</string>
