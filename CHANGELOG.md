@@ -4,11 +4,11 @@ Notable changes to Jiumi, newest first. The English in-app update notes come fro
 Chinese in-app notes are supplied when preparing the release.
 Versions follow [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [0.5.0] - 2026-11-23
 
-- **More ways to enter the wireless pairing code.** If the notification is unavailable, use split screen, a small window, or the “Jiumi pairing” Quick Settings tile. Both setup options include animated guides.
-- The code entry screen guides you through keeping both apps visible, opens Wireless debugging alongside Jiumi in split screen, and confirms successful pairing.
-- Fixed missing permission accesses on Android 11 by checking system records periodically and recognizing location providers.
+- **More ways to enter the wireless pairing code.** If notification entry is unavailable, use split screen, a small window, or the “Jiumi pairing” Quick Settings tile. The setup guide includes animations and steps.
+- The code entry screen helps keep both apps visible, can open Wireless debugging alongside Jiumi in split screen, and confirms successful pairing.
+- Fixed missing permission accesses on Android 11 by checking system records periodically. Jiumi now recognizes location providers on Android 11.
 - Fixed unreadable text in MIUI dark mode and restored system access history on Android 17.
 - Clarified when removing a preinstalled app for the current user requires Root.
 
