@@ -61,13 +61,8 @@ internal fun PairingCodeScreen(
             }
             Text(stringResource(R.string.pairing_code_title), style = MaterialTheme.typography.titleMedium,
                 color = Ink.primary, modifier = Modifier.weight(1f))
-            when {
-                paired && !working -> TextButton(onClick = onBack) {
-                    Text(stringResource(R.string.action_done), color = Ink.primary)
-                }
-                !paired && !working -> TextButton(onClick = onOpenWirelessDebugging) {
-                    Text(stringResource(R.string.action_open_wireless_debugging), color = Ink.primary)
-                }
+            if (!paired && !working) TextButton(onClick = onOpenWirelessDebugging) {
+                Text(stringResource(R.string.action_open_wireless_debugging), color = Ink.primary)
             }
         }
         Box(
@@ -75,7 +70,7 @@ internal fun PairingCodeScreen(
             contentAlignment = Alignment.TopCenter
         ) {
             Box(Modifier.widthIn(max = 400.dp).fillMaxWidth().padding(bottom = 12.dp)) {
-                PairingCodePad(controller)
+                PairingCodePad(controller, onDone = onBack)
             }
         }
     }

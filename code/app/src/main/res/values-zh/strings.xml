@@ -592,6 +592,9 @@
     <string name="pairing_tile_added">已添加磁贴</string>
     <string name="pairing_tile_subtitle">输入配对码</string>
     <string name="pairing_tile_waiting">等待配对码</string>
+    <string name="pairing_success_title">配对成功</string>
+    <string name="pairing_success_desc">配对只需这一次，之后不用再输入配对码。</string>
+    <string name="pairing_success_back">回到揪咪</string>
     <string name="pairing_way_how">怎么做</string>
     <string name="pairing_steps">步骤</string>
     <string name="pairing_step1_title">打开开发者选项</string>

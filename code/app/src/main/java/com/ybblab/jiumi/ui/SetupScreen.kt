@@ -60,12 +60,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -321,10 +319,7 @@ private enum class StepStatus { DONE, CURRENT, LATER }
 /** The app's icon, its name, and in a line what it is for: small, at the top left, so the choice below leads. */
 @Composable
 private fun Brand() {
-    val context = LocalContext.current
-    val icon = remember {
-        runCatching { context.packageManager.getApplicationIcon(context.packageName).toBitmap(192, 192).asImageBitmap() }.getOrNull()
-    }
+    val icon = rememberAppIcon()
     Row(verticalAlignment = Alignment.CenterVertically) {
         icon?.let { Image(it, null, Modifier.size(56.dp).clip(AppShapes.Card)) }
         Spacer(Modifier.width(14.dp))

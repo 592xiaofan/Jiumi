@@ -3,6 +3,9 @@
 
 package com.ybblab.jiumi.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -21,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -35,6 +41,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ybblab.jiumi.MonitorController
@@ -51,10 +58,11 @@ import com.ybblab.jiumi.ui.theme.StatusWarning
 /**
  * The pairing code typed inside Jiumi, for split screen, a small window or the Quick Settings tile:
  * a status line, six digit boxes and a phone keypad. The sixth digit sends the code, so there is no
- * separate button; a wrong code clears the boxes for another try.
+ * separate button; a wrong code clears the boxes for another try. Once paired it gives way to a
+ * success mark, with [onDone] as its button where the pad has a page of its own.
  */
 @Composable
-internal fun PairingCodePad(controller: MonitorController, trailing: @Composable () -> Unit = {}) {
+internal fun PairingCodePad(controller: MonitorController, onDone: (() -> Unit)? = null) {
     val state by controller.state.collectAsStateWithLifecycle()
     // A code is valid for one system dialog, so keep it out of saved instance state.
     var code by remember { mutableStateOf("") }
@@ -71,6 +79,11 @@ internal fun PairingCodePad(controller: MonitorController, trailing: @Composable
             controller.submitInAppPairingCode(code)
             code = ""
         }
+    }
+
+    if (paired && !working && failure == null) {
+        PairingSuccess(onDone)
+        return
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -102,7 +115,6 @@ internal fun PairingCodePad(controller: MonitorController, trailing: @Composable
                 color = if (failure == null) Ink.secondary else StatusWarning,
                 modifier = Modifier.weight(1f)
             )
-            trailing()
         }
         if (paired && !working) return@Column
 
@@ -146,6 +158,44 @@ internal fun PairingCodePad(controller: MonitorController, trailing: @Composable
         }
         Text(stringResource(R.string.pairing_code_auto), style = MaterialTheme.typography.labelMedium,
             color = Ink.tertiary, modifier = Modifier.align(Alignment.CenterHorizontally))
+    }
+}
+
+@Composable
+private fun PairingSuccess(onDone: (() -> Unit)?) {
+    val scale = remember { Animatable(0.6f) }
+    LaunchedEffect(Unit) { scale.animateTo(1f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow)) }
+    Column(
+        Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            Modifier.size(76.dp).graphicsLayer { scaleX = scale.value; scaleY = scale.value }
+                .background(StatusSuccess.copy(alpha = 0.12f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(Modifier.size(52.dp).background(StatusSuccess, CircleShape), contentAlignment = Alignment.Center) {
+                Icon(JiumiIcons.Check, null, Modifier.size(28.dp), tint = Color.White)
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(stringResource(R.string.pairing_success_title), style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Medium, color = Ink.primary,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+        Spacer(Modifier.height(6.dp))
+        Text(stringResource(R.string.pairing_success_desc), style = MaterialTheme.typography.bodyMedium,
+            color = Ink.secondary, textAlign = TextAlign.Center)
+        if (onDone != null) {
+            Spacer(Modifier.height(24.dp))
+            Surface(
+                onClick = onDone, modifier = Modifier.fillMaxWidth().height(48.dp), shape = AppShapes.Control,
+                color = MaterialTheme.colorScheme.onSurface, contentColor = MaterialTheme.colorScheme.surface
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(stringResource(R.string.pairing_success_back), style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
     }
 }
 

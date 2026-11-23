@@ -4,6 +4,20 @@
 package com.ybblab.jiumi.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -51,18 +65,33 @@ internal fun PairingTilePanel(controller: MonitorController, onClose: () -> Unit
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             shadowElevation = 8.dp
         ) {
-            Box(Modifier.verticalScroll(rememberScrollState()).padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 12.dp)) {
-                Box(Modifier.padding(end = 8.dp)) {
-                    PairingCodePad(controller) {
-                        IconButton(onClick = onClose, modifier = Modifier.size(32.dp)) {
-                            Icon(JiumiIcons.Close, stringResource(R.string.action_close), Modifier.size(18.dp), tint = Ink.secondary)
-                        }
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 12.dp)) {
+                // Jiumi's own mark and name, so the window over the system dialog is plainly ours.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    rememberAppIcon()?.let { Image(it, null, Modifier.size(24.dp).clip(AppShapes.Small)) }
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.pairing_tile_label), style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium, color = Ink.primary, modifier = Modifier.weight(1f))
+                    IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
+                        Icon(JiumiIcons.Close, stringResource(R.string.action_close), Modifier.size(18.dp), tint = Ink.secondary)
                     }
                 }
+                Spacer(Modifier.height(4.dp))
+                Box(Modifier.padding(end = 8.dp)) { PairingCodePad(controller) }
             }
         }
     }
 }
 
-/** Long enough to read "Paired" before the window goes. */
-private const val CLOSE_DELAY_MS = 1_200L
+/** The launcher icon as a bitmap, for the places Jiumi signs its own UI. */
+@Composable
+internal fun rememberAppIcon(): ImageBitmap? {
+    val context = LocalContext.current
+    return remember {
+        runCatching { context.packageManager.getApplicationIcon(context.packageName).toBitmap(192, 192).asImageBitmap() }
+            .getOrNull()
+    }
+}
+
+/** Long enough to see the success mark before the window goes. */
+private const val CLOSE_DELAY_MS = 1_600L

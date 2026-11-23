@@ -600,6 +600,9 @@
     <string name="pairing_tile_added">Tile added</string>
     <string name="pairing_tile_subtitle">Enter pairing code</string>
     <string name="pairing_tile_waiting">Waiting for code</string>
+    <string name="pairing_success_title">Paired</string>
+    <string name="pairing_success_desc">You only pair once. No code needed after this.</string>
+    <string name="pairing_success_back">Back to Jiumi</string>
     <string name="pairing_way_how">How it works</string>
     <string name="pairing_steps">Steps</string>
     <string name="pairing_step1_title">Turn on Developer options</string>
