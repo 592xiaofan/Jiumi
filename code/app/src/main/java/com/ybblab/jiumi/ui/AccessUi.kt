@@ -99,32 +99,31 @@ fun openAboutPhone(context: Context): Boolean =
  * Opens Developer options (highlighting [highlightKey] where the ROM supports it) without touching
  * SubSettings/WirelessDebuggingFragment directly, which renders blank on several OEM skins.
  */
-fun openDeveloperOptions(context: Context, highlightKey: String = KEY_WIRELESS_DEBUGGING, adjacent: Boolean = false) {
+fun openDeveloperOptions(context: Context, highlightKey: String = KEY_WIRELESS_DEBUGGING) {
     val localized = ContextCompat.getContextForLanguage(context)
     if (!isDeveloperOptionsEnabled(context)) {
         openAboutPhone(context)
         Toast.makeText(localized, localized.getString(R.string.toast_enable_developer_first), Toast.LENGTH_LONG).show()
         return
     }
-    if (startDeveloperIntent(context, Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS, highlightKey, adjacent) ||
-        startDeveloperIntent(context, ACTION_LEGACY_DEVELOPMENT_SETTINGS, highlightKey, adjacent) ||
-        startSettings(context, Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS), adjacent)) {
+    if (startDeveloperIntent(context, Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS, highlightKey) ||
+        startDeveloperIntent(context, ACTION_LEGACY_DEVELOPMENT_SETTINGS, highlightKey) ||
+        startSettings(context, Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))) {
         return
     }
-    startSettings(context, Intent(Settings.ACTION_SETTINGS), adjacent)
+    startSettings(context, Intent(Settings.ACTION_SETTINGS))
     Toast.makeText(localized, localized.getString(R.string.toast_open_developer_manually), Toast.LENGTH_LONG).show()
 }
 
-private fun startDeveloperIntent(context: Context, action: String, highlightKey: String, adjacent: Boolean): Boolean {
+private fun startDeveloperIntent(context: Context, action: String, highlightKey: String): Boolean {
     val args = Bundle().apply { putString(EXTRA_FRAGMENT_ARG_KEY, highlightKey) }
     val intent = Intent(action)
         .putExtra(EXTRA_FRAGMENT_ARG_KEY, highlightKey)
         .putExtra(EXTRA_SHOW_FRAGMENT_ARGS, args)
-    return startSettings(context, intent, adjacent)
+    return startSettings(context, intent)
 }
 
-private fun startSettings(context: Context, intent: Intent, adjacent: Boolean = false): Boolean = runCatching {
-    val windowFlag = if (adjacent) Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT else Intent.FLAG_ACTIVITY_CLEAR_TOP
-    context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or windowFlag))
+private fun startSettings(context: Context, intent: Intent): Boolean = runCatching {
+    context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
     true
 }.getOrDefault(false)

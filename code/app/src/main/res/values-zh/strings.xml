@@ -560,7 +560,7 @@
     <string name="setup_start">开始使用</string>
     <string name="action_done">完成</string>
     <string name="action_start_pairing">开始配对</string>
-    <string name="action_enter_pairing_code_in_app">在揪咪内输入</string>
+    <string name="action_enter_pairing_code_in_app">手动分屏或小窗配对</string>
     <string name="pairing_in_app_code_label">6 位配对码</string>
     <string name="pairing_in_app_window_hint">在最近任务中开启分屏或应用小窗，保持系统配对弹窗打开。</string>
     <string name="pairing_in_app_ready">输入系统设置显示的配对码，保持系统配对弹窗打开。</string>
@@ -569,8 +569,9 @@
     <string name="pairing_tile_title">快捷设置磁贴</string>
     <string name="pairing_tile_label">揪咪配对</string>
     <string name="pairing_tile_add">添加磁贴</string>
+    <string name="pairing_tile_open_settings">打开系统设置，用磁贴配对</string>
     <string name="pairing_tile_manual">下拉快捷设置，编辑磁贴并添加「揪咪配对」。</string>
-    <string name="pairing_tile_steps">打开无线调试并显示配对码。保持弹窗打开，下拉快捷设置，点「揪咪配对」。</string>
+    <string name="pairing_tile_steps">全屏打开无线调试并显示配对码。保持弹窗打开，下拉快捷设置，点「揪咪配对」。</string>
     <string name="pairing_tile_open_code">在无线调试中点「使用配对码配对设备」。</string>
     <string name="pairing_tile_move_up">将面板移到上方</string>
     <string name="pairing_tile_move_down">将面板移到下方</string>

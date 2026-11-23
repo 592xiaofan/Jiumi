@@ -40,7 +40,7 @@ internal fun PairingOptionsScreen(
     var tileAdded by rememberSaveable { mutableStateOf(false) }
     var showManualHelp by rememberSaveable { mutableStateOf(Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) }
     SubScreen(stringResource(R.string.pairing_options), onBack, bottomBar = {
-        BottomAction(stringResource(R.string.action_open_wireless_debugging), onClick = onOpenWirelessDebugging)
+        BottomAction(stringResource(R.string.pairing_tile_open_settings), onClick = onOpenWirelessDebugging)
     }) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),

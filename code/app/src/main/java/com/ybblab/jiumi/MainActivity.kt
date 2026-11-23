@@ -227,7 +227,7 @@ class MainActivity : AppCompatActivity() {
                     top == "pairing-options" -> PairingOptionsScreen(onBack = pop,
                         onOpenWirelessDebugging = ::openWirelessDebugging, onEnterPairingCode = { push("pairing-code") })
                     top == "pairing-code" -> PairingCodeScreen(controller, onBack = pop,
-                        onOpenWirelessDebugging = ::openPairingSettingsInMultiWindow)
+                        onOpenWirelessDebugging = ::openPairingSettingsForInAppCode)
                     top == "spool" -> SpoolScreen(controller, onBack = pop)
                     top == "monitoring-exclusions" -> MonitoringExclusionsScreen(controller, labels, onBack = pop)
                     top == "about" -> AboutScreen(labels, onBack = pop, onOpenLicenses = { push("licenses") })
@@ -273,12 +273,8 @@ class MainActivity : AppCompatActivity() {
         com.ybblab.jiumi.ui.openDeveloperOptions(this)
     }
 
-    private fun openPairingSettingsInMultiWindow() {
-        if (controller.startPairing(PairingInput.APP)) {
-            com.ybblab.jiumi.ui.openDeveloperOptions(
-                this, adjacent = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2 || isInMultiWindowMode
-            )
-        }
+    private fun openPairingSettingsForInAppCode() {
+        if (controller.startPairing(PairingInput.APP)) openWirelessDebugging()
     }
 }
 
