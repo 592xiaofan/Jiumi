@@ -2,4 +2,8 @@
 <resources>
     <!-- The charts' one accent, for views outside Compose (the running notification). Matches ChartPurple. -->
     <color name="chart_purple">#FF6B5FD3</color>
+    <color name="notification_stop_ink">#FF1D1D1F</color>
+    <color name="notification_stop_fill">#FFF0F0F3</color>
+    <color name="notification_stop_outline">#FFB3B3BB</color>
+    <color name="notification_stop_ripple">#241D1D1F</color>
 </resources>

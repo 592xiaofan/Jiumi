@@ -3,6 +3,9 @@
 
 package com.ybblab.jiumi
 
+import android.app.UiModeManager
+import android.content.res.Configuration
+import android.content.res.Resources
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
@@ -42,13 +45,25 @@ class PairingTileService : TileService() {
     private fun openPanel() {
         if (panel?.isShowing == true) return
         val localized = ContextCompat.getContextForLanguage(this)
-        val controller = (application as JiumiApp).controller
+        val app = application as JiumiApp
+        val controller = app.controller
+        // The shade can give the tile window its own configuration. Use Jiumi's appearance.
+        val isDark = when (app.preferences.themeMode.value) {
+            ThemeMode.LIGHT -> false
+            ThemeMode.DARK -> true
+            ThemeMode.SYSTEM -> when (getSystemService(UiModeManager::class.java)?.nightMode) {
+                UiModeManager.MODE_NIGHT_NO -> false
+                UiModeManager.MODE_NIGHT_YES -> true
+                else -> Resources.getSystem().configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                    Configuration.UI_MODE_NIGHT_YES
+            }
+        }
         val dialog = ComponentDialog(localized, R.style.Theme_Jiumi_PairingDialog)
         val window = checkNotNull(dialog.window)
         window.setGravity(Gravity.BOTTOM)
         dialog.setContentView(ComposeView(dialog.context).apply {
             setContent {
-                JiumiTheme {
+                JiumiTheme(isDark = isDark) {
                     PairingTilePanel(
                         controller = controller,
                         onClose = dialog::dismiss,

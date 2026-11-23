@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A soft round backdrop for the stop button; the theme's highlight reads in light and dark shades. -->
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
-    android:color="?android:attr/colorControlHighlight">
+    android:color="@color/notification_stop_ripple">
     <item>
-        <shape android:shape="oval">
-            <solid android:color="?android:attr/colorControlHighlight" />
+        <shape android:shape="rectangle">
+            <corners android:radius="22dp" />
+            <solid android:color="@color/notification_stop_fill" />
+            <stroke android:width="1dp" android:color="@color/notification_stop_outline" />
         </shape>
     </item>
 </ripple>
