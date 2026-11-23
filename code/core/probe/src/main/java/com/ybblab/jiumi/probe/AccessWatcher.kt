@@ -26,7 +26,7 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
     private var finishing = false
 
     private data class NotedKey(
-        val op: String, val uid: Int, val pkg: String?, val attribution: String?, val flags: Int, val result: Int
+        val op: String, val uid: Int, val pkg: String?, val attribution: String?, val flags: Int?, val result: Int
     )
 
     /** Replaces the watched operations; unknown names on this Android version are skipped. */
@@ -69,18 +69,8 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
     private fun watchNoted(ops: List<String>): Any {
         val type = Class.forName("android.app.AppOpsManager\$OnOpNotedListener")
         val listener = proxy(type) { args ->
-            // Android 11: (code, uid, package, flags, result)
-            // Android 12+: (op, uid, package, attributionTag, flags, result)
-            // Android 15+: (op, uid, package, attributionTag, virtualDeviceId, flags, result)
-            // flags and result are always the last two arguments.
-            noted(
-                op = args[0] as? String ?: opName(args[0] as Int),
-                uid = args[1] as Int,
-                pkg = args[2] as String?,
-                attribution = if (args[0] is String) args[3] as String? else null,
-                flags = args[args.size - 2] as Int,
-                result = args[args.size - 1] as Int
-            )
+            val call = NotedCall.parse(args)
+            noted(call.op as? String ?: opName(call.op as Int), call.uid, call.pkg, call.attribution, call.flags, call.result)
         }
         val start = AppOpsManager::class.java.methods.first {
             it.name == "startWatchingNoted" && it.parameterTypes.size == 2 && it.parameterTypes[1] == type
@@ -120,7 +110,7 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
         return listener
     }
 
-    private fun noted(op: String, uid: Int, pkg: String?, attribution: String?, flags: Int, result: Int) {
+    private fun noted(op: String, uid: Int, pkg: String?, attribution: String?, flags: Int?, result: Int) {
         val time = System.currentTimeMillis()
         handler.post {
             if (finishing || spool.exclusions.blocks(uid, pkg, time)) return@post
@@ -131,7 +121,9 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
             bucket?.let { record(it.event()) }
             val first = buckets.isEmpty()
             val event = JSONObject().put("kind", "access").put("op", op).put("uid", uid).put("pkg", pkg)
-                .put("attr", attribution).put("flags", flags).put("result", result)
+                .put("attr", attribution).put("result", result)
+            // Android 11 does not report flags; the record then leaves them out rather than guess.
+            if (flags != null) event.put("flags", flags)
             buckets[key] = ObservationBucket(event, time, observed)
             if (first) handler.postDelayed({ flush(force = false) }, WINDOW_MS)
         }
@@ -176,5 +168,26 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
 
     private companion object {
         const val WINDOW_MS = 60_000L
+    }
+}
+
+/**
+ * The arguments of one OnOpNotedListener call. Their shape depends on the Android release:
+ * - Android 11: (code, uid, package, result), without attribution tag or flags
+ * - Android 12–13: (code, uid, package, attributionTag, flags, result)
+ * - later releases: (op, uid, package, attributionTag, flags, result), and on Android 15+ also
+ *   (op, uid, package, attributionTag, virtualDeviceId, flags, result)
+ * [op] is the operation name, or its code where the release passes a code.
+ */
+internal class NotedCall(
+    val op: Any, val uid: Int, val pkg: String?, val attribution: String?, val flags: Int?, val result: Int
+) {
+    companion object {
+        fun parse(args: Array<Any?>): NotedCall = when {
+            args.size == 4 -> NotedCall(args[0]!!, args[1] as Int, args[2] as String?, null, null, args[3] as Int)
+            args.size >= 6 -> NotedCall(args[0]!!, args[1] as Int, args[2] as String?, args[3] as String?,
+                args[args.size - 2] as Int, args[args.size - 1] as Int)
+            else -> throw IllegalArgumentException("unexpected onOpNoted arity ${args.size}")
+        }
     }
 }
