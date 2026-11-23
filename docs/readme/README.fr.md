@@ -112,6 +112,11 @@ La **journalisation facultative des domaines** utilise un VPN local pour recevoi
 2. Au premier lancement de Jiumi, choisissez un mode de démarrage. Pour le débogage sans fil, qui est le mode recommandé, connectez-vous au Wi-Fi et suivez la procédure pour autoriser les notifications et activer les options pour les développeurs. Saisissez dans la notification de Jiumi le code d’association à six chiffres affiché par le système. Si la notification n’est pas utilisable, touchez “Can’t type in the notification?” à l’étape 3 et saisissez le code en écran partagé, dans une petite fenêtre ou via la vignette des Réglages rapides. Si un port ADB est déjà ouvert, vous pouvez aussi choisir le débogage réseau.
 3. Dans l’écran **Monitor**, appuyez sur **Start monitoring**. Une notification permanente s’affiche tant que la surveillance est active. Vous pouvez arrêter la surveillance depuis la notification ou l’application.
 
+<p align="center">
+  <a href="../images/pairing-split.en.png"><img src="../images/pairing-split.en.png" width="196" alt="Autres façons d’associer : écran partagé ou petite fenêtre" /></a>&nbsp;
+  <a href="../images/pairing-tile.en.png"><img src="../images/pairing-tile.en.png" width="196" alt="Autres façons d’associer : vignette des Réglages rapides" /></a>
+</p>
+
 Après un redémarrage du téléphone, une mise à jour de Jiumi ou une interruption du service de débogage, Jiumi tente de reprendre la même session lorsque la connexion choisie est disponible, puis à nouveau quand vous revenez dans l’application. Si la carte affiche **Monitoring interrupted**, rétablissez la connexion puis appuyez sur **Resume**. Le temps d’interruption n’est pas compté dans la durée de surveillance.
 
 Si le moniteur s’arrête avec le débogage réseau, Jiumi essaie le dernier port utilisé ou recherche à nouveau un port local pour reprendre la session. La carte signale l’absence de port ou le besoin d’une autorisation.

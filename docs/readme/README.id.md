@@ -112,6 +112,11 @@ Keempatnya menjalankan monitor sebagai pengguna shell. Hanya root, atau Shizuku 
 2. Saat pertama membuka Jiumi, pilih metode untuk memulai. Jika menggunakan proses debug nirkabel, yaitu metode yang disarankan, sambungkan ke Wi-Fi dan ikuti panduan untuk mengizinkan notifikasi dan mengaktifkan opsi developer. Masukkan kode penyambungan enam digit yang ditampilkan sistem ke notifikasi Jiumi. Jika notifikasi tidak dapat digunakan, ketuk “Can’t type in the notification?” di langkah 3 lalu masukkan kode lewat layar terpisah, jendela kecil, atau kartu Setelan Cepat. Jika port ADB sudah terbuka, Anda juga dapat memilih proses debug jaringan.
 3. Ketuk **Start monitoring** pada halaman **Monitor**. Selama pemantauan berlangsung, notifikasi tetap muncul. Anda dapat menghentikan pemantauan dari notifikasi atau dari aplikasi.
 
+<p align="center">
+  <a href="../images/pairing-split.en.png"><img src="../images/pairing-split.en.png" width="196" alt="Cara lain menyambungkan: layar terpisah atau jendela kecil" /></a>&nbsp;
+  <a href="../images/pairing-tile.en.png"><img src="../images/pairing-tile.en.png" width="196" alt="Cara lain menyambungkan: kartu Setelan Cepat" /></a>
+</p>
+
 Setelah ponsel dimulai ulang, Jiumi diperbarui, atau layanan debug terputus, Jiumi mencoba melanjutkan sesi yang sama saat koneksi yang dipilih tersedia, dan mencoba lagi saat Anda kembali ke aplikasi. Jika kartu menampilkan **Monitoring interrupted**, pulihkan koneksi lalu ketuk **Resume**. Waktu saat pemantauan terputus tidak dihitung sebagai durasi pemantauan.
 
 Jika monitor berhenti saat memakai proses debug jaringan, Jiumi mencoba port terakhir atau mencari kembali port lokal untuk melanjutkan sesi. Kartu memberi tahu jika port tidak ditemukan atau izin diperlukan.

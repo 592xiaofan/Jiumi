@@ -112,6 +112,11 @@
 2. Jiumi를 처음 열 때 시작 방법을 선택합니다. 권장 방법인 무선 디버깅을 쓰려면 Wi-Fi에 연결하고 설정 안내에 따라 알림을 허용하고 개발자 옵션을 켭니다. Android가 표시하는 6자리 페어링 코드를 Jiumi 알림에 입력합니다. 알림에서 입력할 수 없다면 3단계에서 “Can’t type in the notification?”를 눌러 화면 분할, 작은 창 또는 빠른 설정 타일에서 코드를 입력합니다. ADB 포트가 이미 열려 있다면 네트워크 디버깅도 선택할 수 있습니다.
 3. **Monitor** 화면에서 **Start monitoring**을 누릅니다. 모니터링 중에는 상시 알림이 표시됩니다. 알림이나 앱에서 모니터링을 중지할 수 있습니다.
 
+<p align="center">
+  <a href="../images/pairing-split.en.png"><img src="../images/pairing-split.en.png" width="196" alt="다른 페어링 방법: 화면 분할 또는 작은 창" /></a>&nbsp;
+  <a href="../images/pairing-tile.en.png"><img src="../images/pairing-tile.en.png" width="196" alt="다른 페어링 방법: 빠른 설정 타일" /></a>
+</p>
+
 휴대전화가 재시작되거나 Jiumi가 업데이트되거나 디버깅 서비스가 중단되면, 선택한 연결을 사용할 수 있을 때 Jiumi가 같은 세션을 이어 가려고 시도하며, 앱으로 돌아올 때 다시 시도합니다. 카드에 **Monitoring interrupted**가 표시되면 연결을 복구한 뒤 **Resume**을 누릅니다. 중단된 시간은 모니터링 시간에 포함되지 않습니다.
 
 네트워크 디버깅 중 모니터가 멈추면 Jiumi는 마지막으로 사용한 포트를 시도하거나 로컬 포트를 다시 찾아 세션을 이어 가려고 합니다. 포트가 없거나 허용이 필요하면 카드에 표시됩니다.

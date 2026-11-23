@@ -112,6 +112,11 @@ O **registro opcional de domínios** usa uma VPN local para receber consultas DN
 2. Na primeira vez que abrir o Jiumi, escolha um modo de inicialização. Para usar a depuração sem fio, que é o modo recomendado, conecte-se ao Wi-Fi e siga a configuração para permitir notificações e ativar as opções do desenvolvedor. Digite na notificação do Jiumi o código de pareamento de seis dígitos que o Android exibe. Se não puder usar a notificação, toque em “Can’t type in the notification?” na etapa 3 e digite o código em tela dividida, em uma janela pequena ou pelo bloco das Configurações rápidas. Se já houver uma porta ADB aberta, você também pode escolher a depuração por rede.
 3. Na tela **Monitor**, toque em **Start monitoring**. Uma notificação persistente aparece durante o monitoramento. Você pode interrompê-lo pela notificação ou pelo app.
 
+<p align="center">
+  <a href="../images/pairing-split.en.png"><img src="../images/pairing-split.en.png" width="196" alt="Outras formas de parear: tela dividida ou janela pequena" /></a>&nbsp;
+  <a href="../images/pairing-tile.en.png"><img src="../images/pairing-tile.en.png" width="196" alt="Outras formas de parear: bloco das Configurações rápidas" /></a>
+</p>
+
 Após uma reinicialização do celular, uma atualização do Jiumi ou uma interrupção do serviço de depuração, o Jiumi tenta retomar a mesma sessão quando a conexão escolhida está disponível e de novo quando você volta ao app. Se o cartão exibir **Monitoring interrupted**, restabeleça a conexão e toque em **Resume**. O tempo de interrupção não conta como tempo de monitoramento.
 
 Se o monitor parar com a depuração por rede, o Jiumi tenta a última porta usada ou procura novamente uma porta local para retomar a sessão. O cartão avisa quando não há porta ou quando é preciso autorizar.

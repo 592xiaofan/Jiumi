@@ -112,6 +112,11 @@ Die **optionale Domainerfassung** empfängt DNS-Anfragen über ein lokales VPN u
 2. Wähle beim ersten Öffnen von Jiumi eine Startmethode. Für die empfohlene Methode, drahtloses Debugging, verbinde dich mit dem WLAN und folge der Einrichtung, um Benachrichtigungen zu erlauben und die Entwickleroptionen zu aktivieren. Gib in der Benachrichtigung von Jiumi den sechsstelligen Kopplungscode ein, den Android anzeigt. Lässt sich die Benachrichtigung nicht nutzen, tippe in Schritt 3 auf “Can’t type in the notification?” und gib den Code stattdessen im geteilten Bildschirm, in einem kleinen Fenster oder über die Schnelleinstellungs-Kachel ein. Ist bereits ein ADB-Port offen, kannst du auch Netzwerk-Debugging wählen.
 3. Tippe auf der Seite **Monitor** auf **Start monitoring**. Während der Überwachung erscheint eine dauerhafte Benachrichtigung. Du kannst die Überwachung über die Benachrichtigung oder in der App beenden.
 
+<p align="center">
+  <a href="../images/pairing-split.en.png"><img src="../images/pairing-split.en.png" width="196" alt="Weitere Kopplungswege: geteilter Bildschirm oder kleines Fenster" /></a>&nbsp;
+  <a href="../images/pairing-tile.en.png"><img src="../images/pairing-tile.en.png" width="196" alt="Weitere Kopplungswege: Schnelleinstellungs-Kachel" /></a>
+</p>
+
 Nach einem Neustart, einem Jiumi-Update oder einer Unterbrechung des Debugging-Dienstes versucht Jiumi, dieselbe Sitzung fortzusetzen, sobald die gewählte Verbindung verfügbar ist, und erneut, wenn du zur App zurückkehrst. Wenn die Karte **Monitoring interrupted** anzeigt, stelle die Verbindung wieder her und tippe auf **Resume**. Die Zeit der Unterbrechung zählt nicht zur Überwachungsdauer.
 
 Stoppt der Monitor beim Netzwerk-Debugging, probiert Jiumi den zuletzt genutzten Port oder sucht erneut einen lokalen Port, um die Sitzung fortzusetzen. Die Karte meldet, wenn kein Port gefunden wird oder eine Freigabe nötig ist.
