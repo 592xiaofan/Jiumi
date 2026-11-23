@@ -5,6 +5,7 @@ package com.ybblab.jiumi.adb
 
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
+import java.io.IOException
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.InetSocketAddress
@@ -12,7 +13,7 @@ import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicInteger
-import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLException
 import javax.net.ssl.SSLSocket
 
 class AirAdbClient(
@@ -20,10 +21,11 @@ class AirAdbClient(
     private val port: Int,
     private val adbKey: AirAdbKey,
     private val allowUserAuthorization: Boolean = false,
-    private val legacyOnly: Boolean = false
+    private val legacyOnly: Boolean = false,
+    private val requireTls: Boolean = false
 ) : Closeable {
-    private var socket: Socket? = null
-    private var tlsSocket: SSLSocket? = null
+    private val socket = Socket()
+    @Volatile private var tlsSocket: SSLSocket? = null
     private lateinit var inputStream: DataInputStream
     private lateinit var outputStream: DataOutputStream
     private val nextLocalId = AtomicInteger(1)
@@ -35,7 +37,7 @@ class AirAdbClient(
 
     fun connect() {
         if (connected) return
-        val tcpSocket = Socket().also {
+        val tcpSocket = socket.also {
             it.tcpNoDelay = true
             it.connect(InetSocketAddress(host, port), if (legacyOnly) 750 else CONNECT_TIMEOUT_MS)
             // Give the socket a read timeout. On a half-open connection (the peer's Wi-Fi dropped or it slept without sending RST),
@@ -44,13 +46,15 @@ class AirAdbClient(
             // With soTimeout set, any stuck read throws SocketTimeoutException within seconds; the caller then
             // marks the shell down and reconnects, so the loop is never hung forever by one read.
             it.soTimeout = if (legacyOnly) 1_500 else READ_TIMEOUT_MS
-            socket = it
         }
         inputStream = DataInputStream(tcpSocket.inputStream)
         outputStream = DataOutputStream(tcpSocket.outputStream)
 
         writeMessage(A_CNXN, A_VERSION, A_MAXDATA, "host::".adbPayload())
         var message = readMessage()
+        if (requireTls && message.command != A_STLS) {
+            throw IOException("Expected a Wireless debugging TLS port")
+        }
         when (message.command) {
             A_STLS -> {
                 if (legacyOnly) error("Expected a classic ADB port")
@@ -61,7 +65,11 @@ class AirAdbClient(
                 sslSocket.soTimeout = READ_TIMEOUT_MS
                 try {
                     sslSocket.startHandshake()
-                } catch (error: SSLHandshakeException) {
+                    inputStream = DataInputStream(sslSocket.inputStream)
+                    outputStream = DataOutputStream(sslSocket.outputStream)
+                    // TLS 1.3 can deliver a client-certificate rejection on the first read.
+                    message = readMessage()
+                } catch (error: SSLException) {
                     if (AirAdbConnectionFailurePolicy.isExplicitTlsAuthorizationRejection(error)) {
                         throw AirAdbAuthorizationException(
                             "Wireless debugging rejected the paired ADB certificate",
@@ -70,9 +78,6 @@ class AirAdbClient(
                     }
                     throw error
                 }
-                inputStream = DataInputStream(sslSocket.inputStream)
-                outputStream = DataOutputStream(sslSocket.outputStream)
-                message = readMessage()
             }
             A_AUTH -> {
                 message = authenticate(message)
@@ -154,7 +159,7 @@ class AirAdbClient(
         if (message.command == A_AUTH && allowUserAuthorization) {
             // A TLS-paired key may still need one explicit approval for the classic TCP transport.
             writeMessage(A_AUTH, ADB_AUTH_RSAPUBLICKEY, 0, adbKey.publicKeyBytes)
-            if (legacyOnly) socket?.soTimeout = 25_000
+            if (legacyOnly) socket.soTimeout = 25_000
             message = try {
                 readMessage()
             } catch (error: java.io.IOException) {
@@ -207,14 +212,16 @@ class AirAdbClient(
         return AdbMessage(command, arg0, arg1, payload)
     }
 
-    override fun close() {
+    internal fun abort() {
         connected = false
-        runCatching { if (::inputStream.isInitialized) inputStream.close() }
-        runCatching { if (::outputStream.isInitialized) outputStream.close() }
+        // Unblock any in-flight read or handshake before closing the TLS wrapper.
+        runCatching { socket.close() }
+    }
+
+    override fun close() {
+        abort()
         runCatching { tlsSocket?.close() }
-        runCatching { socket?.close() }
         tlsSocket = null
-        socket = null
     }
 
     private data class AdbMessage(

@@ -256,6 +256,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openWirelessDebugging() {
+        controller.preparePairingSettings()
         com.ybblab.jiumi.ui.openDeveloperOptions(this)
     }
 }

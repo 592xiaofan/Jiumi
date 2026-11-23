@@ -6,6 +6,10 @@ Versions follow [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+- Fix Wireless debugging pairing getting stuck after authorization expires or a pairing attempt is canceled.
+- Resume interrupted monitoring automatically when Wi-Fi and Wireless debugging become available again and the existing pairing is still valid.
+- Bound Wireless debugging discovery, release multicast resources when it ends, and recover from a damaged local key during re-pairing.
+
 ## [0.4.1] - 2026-11-23
 
 - Improved freeze and unfreeze compatibility. Jiumi tries an alternate method after verifying that the primary method left the app state unchanged.

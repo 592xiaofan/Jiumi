@@ -24,6 +24,8 @@ import com.ybblab.jiumi.probe.ProbeClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -31,7 +33,15 @@ class JiumiApp : Application(), AdbPairingHost {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val log by lazy { PairingLog(File(filesDir, "logs/adb.log")) }
     val notifications by lazy { AirModeNotificationController(this, log) }
-    override val pairingManager by lazy { AirModePairingManager(this, appScope, notifications, log) }
+    override val pairingManager: AirModePairingManager by lazy {
+        AirModePairingManager(this, appScope, notifications, log).also { manager ->
+            // A notification reply can recreate this process without opening MainActivity.
+            appScope.launch {
+                manager.state.first { it == AirModePairingManager.PairingState.CONNECTED }
+                controller
+            }
+        }
+    }
     private val networkAdb by lazy { NetworkAdb(this, appScope, log) }
     val probeClient by lazy { ProbeClient(this) }
     val rules by lazy { AccessRules.load(this) }

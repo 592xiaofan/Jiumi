@@ -78,11 +78,16 @@ class AirModeNotificationController(
         val notification = notificationManager.activeNotifications
             .firstOrNull { it.id == NOTIFICATION_ID && it.tag == null }?.notification
             ?: return@runCatching null
-        val boot = Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
-        if (boot < 0 || notification.extras.getInt(KEY_PAIRING_BOOT, -2) != boot ||
-            notification.actions.isNullOrEmpty()) return@runCatching null
+        val boot = bootCount()
+        val notificationBoot = notification.extras.getInt(KEY_PAIRING_BOOT, -1)
+        if (notification.actions.isNullOrEmpty() ||
+            (boot >= 0 && notificationBoot >= 0 && notificationBoot != boot)) return@runCatching null
         notification.extras.getString(KEY_PAIRING_SESSION)
     }.getOrNull()
+
+    private fun bootCount(): Int = runCatching {
+        Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
+    }.getOrDefault(-1)
 
     fun availability(): AirPairingNotificationAvailability {
         if (runCatching { ensureChannel() }.isFailure) {
@@ -152,7 +157,7 @@ class AirModeNotificationController(
             .setPriority(if (alert) NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_HIGH)
             .addExtras(android.os.Bundle().apply {
                 putString(KEY_PAIRING_SESSION, session)
-                putInt(KEY_PAIRING_BOOT, Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1))
+                putInt(KEY_PAIRING_BOOT, bootCount())
             })
             .addAction(pairingCodeAction(session))
             .build()
@@ -209,23 +214,25 @@ class AirModeNotificationController(
 
     private fun logPairingEvent(event: String) = log.event(event)
 
-    fun showPairingSubmitted() {
+    fun showPairingSubmitted(timeoutMs: Long) {
         pairingNotificationActive = true
         showStatus(
             R.string.settings_air_notification_submitted_title,
             R.string.settings_air_notification_submitted_text,
             ongoing = false,
-            indeterminate = true
+            indeterminate = true,
+            timeoutMs = timeoutMs
         )
     }
 
-    fun showPairingWaitingForService() {
+    fun showPairingWaitingForService(timeoutMs: Long) {
         pairingNotificationActive = true
         showStatus(
             R.string.settings_air_notification_submitted_title,
             R.string.settings_air_notification_waiting_text,
             ongoing = false,
-            indeterminate = true
+            indeterminate = true,
+            timeoutMs = timeoutMs
         )
     }
 
@@ -276,15 +283,10 @@ class AirModeNotificationController(
 
     fun showPairingRequired() {
         ensureChannel()
-        val settingsIntent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            .putExtra(":settings:fragment_args_key", "toggle_adb_wireless")
-        val contentIntent = PendingIntent.getActivity(
-            context,
-            1,
-            settingsIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        // Pairing must start in Jiumi before opening the system's code dialog.
+        val contentIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
+            PendingIntent.getActivity(context, 1, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        }
         val notification = builder(
             R.string.settings_air_notification_pairing_required_title,
             R.string.settings_air_notification_pairing_required_text

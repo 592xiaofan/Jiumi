@@ -12,13 +12,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.net.BindException
 import java.net.DatagramPacket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.MulticastSocket
 import java.net.NetworkInterface
 import java.net.ServerSocket
-import java.net.SocketTimeoutException
 import java.nio.ByteBuffer
 import java.util.Locale
 
@@ -51,8 +51,9 @@ class AirMdnsDiscovery(
         }
         override fun onServiceLost(serviceInfo: NsdServiceInfo) {}
         override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-            onDiagnostic("service_found service=$serviceType name=${serviceInfo.serviceName}")
             synchronized(this@AirMdnsDiscovery) {
+                if (!running || discovered) return
+                onDiagnostic("service_found service=$serviceType name=${serviceInfo.serviceName}")
                 resolveQueue.addLast(serviceInfo)
                 processQueue()
             }
@@ -65,10 +66,12 @@ class AirMdnsDiscovery(
     @Volatile private var discovered = false
     @Volatile private var isResolving = false
     @Volatile private var rawMdnsJob: Job? = null
+    private var rawMdnsSocket: MulticastSocket? = null
     @Volatile private var endpointProbeJob: Job? = null
     @Volatile private var endpointProbePort: Int = 0
     @Volatile private var multicastLock: WifiManager.MulticastLock? = null
 
+    @Synchronized
     fun start() {
         if (running) return
         running = true
@@ -86,12 +89,11 @@ class AirMdnsDiscovery(
         startRawMdnsListener()
     }
 
+    @Synchronized
     fun stop() {
         running = false
-        synchronized(this) {
-            resolveQueue.clear()
-            isResolving = false
-        }
+        resolveQueue.clear()
+        isResolving = false
         if (nsdDiscoveryRequested || registered) {
             runCatching { nsdManager.stopServiceDiscovery(discoveryListener) }
                 .onFailure { error ->
@@ -105,6 +107,8 @@ class AirMdnsDiscovery(
         nsdDiscoveryRequested = false
         rawMdnsJob?.cancel()
         rawMdnsJob = null
+        rawMdnsSocket?.close()
+        rawMdnsSocket = null
         endpointProbeJob?.cancel()
         endpointProbeJob = null
         endpointProbePort = 0
@@ -159,6 +163,7 @@ class AirMdnsDiscovery(
                 false
             } else {
                 discovered = true
+                stop()
                 true
             }
         }
@@ -167,6 +172,7 @@ class AirMdnsDiscovery(
         onResolved(host, port)
     }
 
+    @Synchronized
     private fun probeLocalEndpointWhenReady(port: Int) {
         if (port <= 0 || !running || discovered) return
         if (endpointProbePort == port && endpointProbeJob?.isActive == true) return
@@ -195,27 +201,24 @@ class AirMdnsDiscovery(
             var socket: MulticastSocket? = null
             try {
                 val group = InetAddress.getByName(MDNS_ADDR)
-                socket = MulticastSocket(MDNS_PORT).apply {
-                    reuseAddress = true
-                    joinGroup(group)
-                    soTimeout = RAW_MDNS_TIMEOUT_MS
+                socket = MulticastSocket(MDNS_PORT)
+                synchronized(this@AirMdnsDiscovery) {
+                    if (!running) return@launch
+                    rawMdnsSocket = socket
                 }
+                socket.joinGroup(group)
                 val buffer = ByteArray(RAW_MDNS_PACKET_SIZE)
+                val packet = DatagramPacket(buffer, buffer.size)
                 while (running && !discovered) {
-                    try {
-                        val packet = DatagramPacket(buffer, buffer.size)
-                        socket.receive(packet)
-                        val port = parseMdnsResponse(packet.data, packet.length)
-                        if (port > 0) {
-                            probeLocalEndpointWhenReady(port)
-                        }
-                    } catch (_: SocketTimeoutException) {
-                    }
+                    packet.length = buffer.size
+                    socket.receive(packet)
+                    val port = parseMdnsResponse(packet.data, packet.length)
+                    if (port > 0) probeLocalEndpointWhenReady(port)
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Throwable) {
-                onDiagnostic(
+                if (running) onDiagnostic(
                     "raw_listener_failed service=$serviceType ${error::class.java.simpleName}: " +
                         error.message.orEmpty().take(120)
                 )
@@ -262,8 +265,10 @@ class AirMdnsDiscovery(
                 socket.bind(InetSocketAddress(LOCAL_ADB_HOST, port), 1)
             }
             false
-        } catch (_: Exception) {
+        } catch (_: BindException) {
             true
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -294,11 +299,11 @@ class AirMdnsDiscovery(
             if (buffer.remaining() < 10) return -1
             val type = buffer.short.toInt() and 0xffff
             buffer.short
-            buffer.int
+            val ttl = buffer.int
             val dataLength = buffer.short.toInt() and 0xffff
             if (buffer.remaining() < dataLength) return -1
             val dataStart = buffer.position()
-            if (type == DNS_TYPE_SRV && name.endsWith(expectedSuffix) && dataLength >= 6) {
+            if (type == DNS_TYPE_SRV && ttl != 0 && name.endsWith(expectedSuffix) && dataLength >= 6) {
                 buffer.short
                 buffer.short
                 return buffer.short.toInt() and 0xffff
@@ -369,7 +374,6 @@ class AirMdnsDiscovery(
         const val DNS_TYPE_SRV = 33
         const val MAX_DNS_NAME_LABELS = 64
         const val RAW_MDNS_PACKET_SIZE = 1500
-        const val RAW_MDNS_TIMEOUT_MS = 2_000
         const val ENDPOINT_READY_ATTEMPTS = 20
         const val ENDPOINT_READY_RETRY_MS = 150L
         val LOCAL_WIFI_INTERFACE_MARKERS = listOf("wlan", "wifi", "wl")
