@@ -582,7 +582,7 @@
     <string name="pairing_code_waiting">Waiting for the pairing dialog</string>
     <string name="pairing_code_auto">Pairs when all six digits are in</string>
     <string name="pairing_other_way">Can’t use the notification? Try another way</string>
-    <string name="pairing_options_intro">When Jiumi’s notification can’t be used with the pairing dialog open, type the code one of these ways. You pair once.</string>
+    <string name="pairing_options_intro">When Jiumi’s notification can’t be used with the pairing dialog open, pick one way to type the code. You pair once.</string>
     <string name="pairing_method_split">Split screen or small window</string>
     <string name="pairing_method_split_desc">Keep Jiumi beside Settings and type the code in Jiumi</string>
     <string name="pairing_method_split_action">Open keypad</string>
@@ -599,6 +599,7 @@
     <string name="pairing_tile_added">Tile added</string>
     <string name="pairing_tile_subtitle">Enter pairing code</string>
     <string name="pairing_tile_waiting">Waiting for code</string>
+    <string name="pairing_way_how">How it works</string>
     <string name="pairing_steps">Steps</string>
     <string name="pairing_step1_title">Turn on Developer options</string>
     <string name="pairing_step1_desc">In Settings, About phone, tap the build number seven times.</string>

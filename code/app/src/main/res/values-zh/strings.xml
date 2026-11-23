@@ -574,7 +574,7 @@
     <string name="pairing_code_waiting">等待系统配对弹窗</string>
     <string name="pairing_code_auto">输满 6 位自动配对</string>
     <string name="pairing_other_way">通知栏输不了？换一种方式</string>
-    <string name="pairing_options_intro">配对弹窗打开时用不了揪咪的通知，就用下面任一种方式输入配对码。配对只需一次。</string>
+    <string name="pairing_options_intro">配对弹窗打开时用不了揪咪的通知，就选一种方式输入配对码。配对只需一次。</string>
     <string name="pairing_method_split">分屏或小窗</string>
     <string name="pairing_method_split_desc">揪咪和系统设置同屏，在揪咪里输入</string>
     <string name="pairing_method_split_action">打开输入框</string>
@@ -591,6 +591,7 @@
     <string name="pairing_tile_added">已添加磁贴</string>
     <string name="pairing_tile_subtitle">输入配对码</string>
     <string name="pairing_tile_waiting">等待配对码</string>
+    <string name="pairing_way_how">怎么做</string>
     <string name="pairing_steps">步骤</string>
     <string name="pairing_step1_title">打开开发者选项</string>
     <string name="pairing_step1_desc">在“设置 → 关于手机”中连续点击版本号 7 次。</string>
