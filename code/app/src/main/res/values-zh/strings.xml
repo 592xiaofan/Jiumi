@@ -573,7 +573,8 @@
     <string name="pairing_code_found">已找到配对服务</string>
     <string name="pairing_code_waiting">等待系统配对弹窗</string>
     <string name="pairing_code_auto">输满 6 位自动配对</string>
-    <string name="pairing_other_way">通知栏输不了？换一种方式</string>
+    <string name="pairing_other_way">通知栏输不了配对码？</string>
+    <string name="pairing_other_way_desc">改用分屏、小窗或快捷设置磁贴</string>
     <string name="pairing_options_intro">配对弹窗打开时用不了揪咪的通知，就选一种方式输入配对码。配对只需一次。</string>
     <string name="pairing_method_split">分屏或小窗</string>
     <string name="pairing_method_split_desc">揪咪和系统设置同屏，在揪咪里输入</string>

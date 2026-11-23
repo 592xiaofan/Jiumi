@@ -269,14 +269,41 @@ fun SetupScreen(
                                     color = StatusWarning, modifier = Modifier.padding(top = 8.dp))
                             }
                             if (i == steps.lastIndex && method == com.ybblab.jiumi.access.AccessMethod.WIRELESS && !paired) {
-                                Text(stringResource(R.string.pairing_other_way), style = MaterialTheme.typography.labelLarge,
-                                    color = Ink.primary, modifier = Modifier.padding(top = 6.dp).clip(AppShapes.Control)
-                                        .clickable(onClick = onOpenPairingOptions).padding(vertical = 6.dp))
+                                OtherWayEntry(onOpenPairingOptions)
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/** The way out when the notification can't take the code: a quiet outlined row that still reads as a button. */
+@Composable
+private fun OtherWayEntry(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        shape = AppShapes.Control,
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            Modifier.padding(start = 12.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(32.dp).background(Ink.fill, AppShapes.Small), contentAlignment = Alignment.Center) {
+                Icon(JiumiIcons.SplitScreen, null, Modifier.size(18.dp), tint = Ink.primary)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.pairing_other_way), style = MaterialTheme.typography.labelLarge,
+                    color = Ink.primary)
+                Text(stringResource(R.string.pairing_other_way_desc), style = MaterialTheme.typography.bodySmall,
+                    color = Ink.secondary)
+            }
+            Icon(JiumiIcons.ChevronRight, null, Modifier.size(18.dp), tint = Ink.tertiary)
         }
     }
 }
