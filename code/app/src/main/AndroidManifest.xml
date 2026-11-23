@@ -54,6 +54,16 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Shows that a user-started privacy monitoring session is running and lets the user stop it." />
         </service>
+        <service
+            android:name=".PairingTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_pairing_tile"
+            android:label="@string/pairing_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
         <!-- Receives Shizuku's binder when Shizuku runs. -->
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

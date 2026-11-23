@@ -54,7 +54,7 @@ fun PairingScreen(
     onBack: () -> Unit,
     onPair: () -> Unit,
     onOpenWirelessDebugging: () -> Unit,
-    onEnterPairingCode: () -> Unit
+    onOpenPairingOptions: () -> Unit
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
     val inFlow = state.pairingState in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE, PairingState.PAIRING)
@@ -123,10 +123,10 @@ fun PairingScreen(
                     Spacer(Modifier.height(10.dp))
                     Card {
                         ListRow(
-                            title = stringResource(R.string.action_enter_pairing_code_in_app),
-                            subtitle = stringResource(R.string.pairing_in_app_window_hint),
+                            title = stringResource(R.string.pairing_options),
+                            subtitle = stringResource(R.string.pairing_options_hint),
                             leading = { IconTile(JiumiIcons.Smartphone) },
-                            onClick = onEnterPairingCode
+                            onClick = onOpenPairingOptions
                         ) { Icon(JiumiIcons.ChevronRight, contentDescription = null, tint = Ink.tertiary) }
                     }
                 }

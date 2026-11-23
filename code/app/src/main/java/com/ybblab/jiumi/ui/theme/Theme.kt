@@ -102,9 +102,9 @@ fun JiumiTheme(content: @Composable () -> Unit) {
     val colorScheme = if (isDark) DarkColorScheme else LightColorScheme
 
     val view = LocalView.current
-    if (!view.isInEditMode) {
+    val window = (view.context as? Activity)?.window
+    if (window != null && !view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDark
             WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !isDark
         }

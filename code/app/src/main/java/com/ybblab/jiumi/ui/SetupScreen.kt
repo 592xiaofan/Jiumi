@@ -91,7 +91,7 @@ import com.ybblab.jiumi.ui.theme.StatusWarning
 fun SetupScreen(
     controller: MonitorController,
     onPair: () -> Unit,
-    onEnterPairingCode: () -> Unit,
+    onOpenPairingOptions: () -> Unit,
     onOpenWirelessDebugging: () -> Unit,
     onOpenNetwork: () -> Unit,
     onDone: () -> Unit
@@ -197,8 +197,8 @@ fun SetupScreen(
                     Text(stringResource(R.string.setup_privacy), style = MaterialTheme.typography.labelMedium, color = Ink.tertiary)
                 }
                 if (method == com.ybblab.jiumi.access.AccessMethod.WIRELESS && !paired) {
-                    TextButton(onClick = onEnterPairingCode, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                        Text(stringResource(R.string.action_enter_pairing_code_in_app), color = Ink.primary)
+                    TextButton(onClick = onOpenPairingOptions, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                        Text(stringResource(R.string.pairing_options), color = Ink.primary)
                     }
                 }
                 if (current < 0) BottomAction(stringResource(R.string.setup_start), onClick = onDone)

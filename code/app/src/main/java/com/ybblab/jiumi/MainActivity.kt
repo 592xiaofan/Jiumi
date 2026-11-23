@@ -44,6 +44,7 @@ import com.ybblab.jiumi.ui.AboutScreen
 import com.ybblab.jiumi.ui.LicensesScreen
 import com.ybblab.jiumi.ui.PairingScreen
 import com.ybblab.jiumi.ui.PairingCodeScreen
+import com.ybblab.jiumi.ui.PairingOptionsScreen
 import com.ybblab.jiumi.ui.NetworkAdbScreen
 import com.ybblab.jiumi.ui.SetupScreen
 import androidx.lifecycle.Lifecycle
@@ -115,7 +116,7 @@ class MainActivity : AppCompatActivity() {
                     pages.removeState(pageKey(stack.size))
                     stack = stack.dropLast(1)
                 }
-                val openPairingCode = { push("pairing-code") }
+                val openPairingOptions = { push("pairing-options") }
                 val openApp = { key: AppKey -> push("app:${key.uid}|${key.pkg.orEmpty()}") }
                 val openLog = { entry: LogEntry -> push("log:${OpenedLogs.put(entry)}") }
                 val top = stack.lastOrNull()
@@ -147,7 +148,7 @@ class MainActivity : AppCompatActivity() {
                 if (top != null) BackHandler(onBack = pop)
                 pages.SaveableStateProvider(pageKey(stack.size)) { when {
                     top == null && !setupDone -> SetupScreen(controller, onPair = ::pair,
-                        onEnterPairingCode = openPairingCode,
+                        onOpenPairingOptions = openPairingOptions,
                         onOpenWirelessDebugging = ::openWirelessDebugging, onOpenNetwork = { push("network-adb") },
                         onDone = {
                             preferences.finishSetup()
@@ -222,7 +223,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     top == "network-adb" -> NetworkAdbScreen(controller, onBack = pop)
                     top == "pairing" -> PairingScreen(controller, onBack = pop, onPair = ::pair,
-                        onOpenWirelessDebugging = ::openWirelessDebugging, onEnterPairingCode = openPairingCode)
+                        onOpenWirelessDebugging = ::openWirelessDebugging, onOpenPairingOptions = openPairingOptions)
+                    top == "pairing-options" -> PairingOptionsScreen(onBack = pop,
+                        onOpenWirelessDebugging = ::openWirelessDebugging, onEnterPairingCode = { push("pairing-code") })
                     top == "pairing-code" -> PairingCodeScreen(controller, onBack = pop,
                         onOpenWirelessDebugging = ::openPairingSettingsInMultiWindow)
                     top == "spool" -> SpoolScreen(controller, onBack = pop)
