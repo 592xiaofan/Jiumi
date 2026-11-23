@@ -36,6 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import com.ybblab.jiumi.PairingTileService
 import com.ybblab.jiumi.R
@@ -60,9 +62,10 @@ internal fun PairingOptionsScreen(onBack: () -> Unit, onEnterPairingCode: () -> 
                 title = stringResource(R.string.pairing_method_split),
                 subtitle = stringResource(R.string.pairing_method_split_desc),
                 icon = JiumiIcons.SplitScreen,
+                guide = PairingGuide.SPLIT,
                 steps = listOf(R.string.pairing_split_step1, R.string.pairing_split_step2,
                     R.string.pairing_split_step3, R.string.pairing_split_step4)
-            ) { PillButton(stringResource(R.string.pairing_method_split_action), onClick = onEnterPairingCode) }
+            ) { CardAction(stringResource(R.string.pairing_method_split_action), onClick = onEnterPairingCode) }
             TileCard()
         }
     }
@@ -78,13 +81,14 @@ private fun TileCard() {
     MethodCard(
         title = stringResource(R.string.pairing_method_tile),
         subtitle = stringResource(if (manual) R.string.pairing_tile_manual else R.string.pairing_method_tile_desc),
-        icon = JiumiIcons.Tiles,
+        icon = ImageVector.vectorResource(R.drawable.ic_pairing_tile),
+        guide = PairingGuide.TILE,
         steps = listOf(R.string.pairing_tile_step1, R.string.pairing_tile_step2,
             R.string.pairing_tile_step3, R.string.pairing_tile_step4)
     ) {
         when {
-            tileAdded -> DoneMark()
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> PillButton(stringResource(R.string.pairing_tile_add)) {
+            tileAdded -> CardAction(stringResource(R.string.pairing_tile_added), enabled = false) {}
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> CardAction(stringResource(R.string.pairing_tile_add)) {
                 val statusBar = context.getSystemService(StatusBarManager::class.java)
                 manual = statusBar == null || runCatching {
                     statusBar.requestAddTileService(
@@ -102,26 +106,43 @@ private fun TileCard() {
     }
 }
 
-/** One way to pair: what it is and its action, then its steps on the same numbered rail as first setup. */
+/**
+ * One way to pair, read top to bottom: what it is, a sketch of it, its steps on the same numbered
+ * rail as first setup, and only then its action, since the steps happen outside Jiumi.
+ */
 @Composable
 private fun MethodCard(
     title: String,
     subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
+    guide: PairingGuide,
     steps: List<Int>,
     action: @Composable () -> Unit
 ) {
     Card {
-        ListRow(title, subtitle = subtitle, leading = { IconTile(icon) }) {
-            Spacer(Modifier.width(8.dp))
-            action()
-        }
-        InsetDivider(start = 16.dp)
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 6.dp)) {
+        ListRow(title, subtitle = subtitle, leading = { IconTile(icon) })
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp)) {
+            PairingGuideAnimation(guide)
+            Spacer(Modifier.height(16.dp))
             steps.forEachIndexed { index, step ->
                 StepLine(index, stringResource(step), last = index == steps.lastIndex)
             }
+            Spacer(Modifier.height(4.dp))
+            action()
         }
+    }
+}
+
+/** The action that ends a method's card, across its full width. */
+@Composable
+private fun CardAction(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    androidx.compose.material3.Surface(
+        onClick = onClick, enabled = enabled, shape = com.ybblab.jiumi.ui.theme.AppShapes.Control,
+        color = if (enabled) MaterialTheme.colorScheme.onSurface else Ink.fill,
+        contentColor = if (enabled) MaterialTheme.colorScheme.surface else Ink.secondary,
+        modifier = Modifier.fillMaxWidth().height(44.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) { Text(text, style = MaterialTheme.typography.titleSmall) }
     }
 }
 
