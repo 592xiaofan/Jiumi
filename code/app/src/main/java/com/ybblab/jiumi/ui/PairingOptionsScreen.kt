@@ -10,6 +10,13 @@ import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,7 +26,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,63 +40,47 @@ import androidx.compose.ui.unit.dp
 import com.ybblab.jiumi.PairingTileService
 import com.ybblab.jiumi.R
 import com.ybblab.jiumi.ui.icons.JiumiIcons
-import com.ybblab.jiumi.ui.theme.AppShapes
 import com.ybblab.jiumi.ui.theme.Ink
 
 /**
- * The ways to enter a pairing code: Jiumi's notification by default, then for systems where the
- * shade can't be used with the pairing dialog open, split screen or a small window, and the tile.
+ * Other ways to enter a pairing code, for phones where Jiumi's notification can't be used while
+ * the pairing dialog is open: one card per way, each with its action and its own steps.
  */
 @Composable
 internal fun PairingOptionsScreen(onBack: () -> Unit, onEnterPairingCode: () -> Unit) {
-    SubScreen(stringResource(R.string.pairing_methods), onBack, bottomBar = { PrivacyNote() }) { padding ->
+    SubScreen(stringResource(R.string.pairing_options), onBack, bottomBar = { PrivacyNote() }) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(stringResource(R.string.pairing_options_intro), style = MaterialTheme.typography.bodySmall,
-                color = Ink.secondary, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
-            Card {
-                ListRow(
-                    stringResource(R.string.pairing_method_notification),
-                    subtitle = stringResource(R.string.pairing_method_notification_desc),
-                    leading = { IconTile(JiumiIcons.Notifications) }
-                ) { DefaultTag() }
-                InsetDivider()
-                ListRow(
-                    stringResource(R.string.pairing_method_split),
-                    subtitle = stringResource(R.string.pairing_method_split_desc),
-                    leading = { IconTile(JiumiIcons.SplitScreen) }
-                ) { PillButton(stringResource(R.string.pairing_method_split_action), onClick = onEnterPairingCode) }
-                InsetDivider()
-                TileRow()
-            }
-            GroupFooter(stringResource(R.string.pairing_options_why))
-            GroupTitle(stringResource(R.string.pairing_split_how), Modifier.padding(top = 20.dp))
-            Card {
-                Text(stringResource(R.string.pairing_split_steps), style = MaterialTheme.typography.bodySmall,
-                    color = Ink.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
-            }
-            GroupTitle(stringResource(R.string.pairing_tile_how), Modifier.padding(top = 20.dp))
-            Card {
-                Text(stringResource(R.string.pairing_tile_steps), style = MaterialTheme.typography.bodySmall,
-                    color = Ink.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
-            }
+                color = Ink.secondary, modifier = Modifier.padding(horizontal = 16.dp))
+            MethodCard(
+                title = stringResource(R.string.pairing_method_split),
+                subtitle = stringResource(R.string.pairing_method_split_desc),
+                icon = JiumiIcons.SplitScreen,
+                steps = listOf(R.string.pairing_split_step1, R.string.pairing_split_step2,
+                    R.string.pairing_split_step3, R.string.pairing_split_step4)
+            ) { PillButton(stringResource(R.string.pairing_method_split_action), onClick = onEnterPairingCode) }
+            TileCard()
         }
     }
 }
 
 @Composable
-private fun TileRow() {
+private fun TileCard() {
     val context = LocalContext.current
     val label = stringResource(R.string.pairing_tile_label)
     var tileAdded by rememberSaveable { mutableStateOf(false) }
     // Before Android 13 an app can't offer its tile; the shade's own editor is the only way.
     var manual by rememberSaveable { mutableStateOf(Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) }
-    ListRow(
-        stringResource(R.string.pairing_method_tile),
+    MethodCard(
+        title = stringResource(R.string.pairing_method_tile),
         subtitle = stringResource(if (manual) R.string.pairing_tile_manual else R.string.pairing_method_tile_desc),
-        leading = { IconTile(JiumiIcons.Tiles) }
+        icon = JiumiIcons.Tiles,
+        steps = listOf(R.string.pairing_tile_step1, R.string.pairing_tile_step2,
+            R.string.pairing_tile_step3, R.string.pairing_tile_step4)
     ) {
         when {
             tileAdded -> DoneMark()
@@ -112,11 +102,41 @@ private fun TileRow() {
     }
 }
 
+/** One way to pair: what it is and its action, then its steps on the same numbered rail as first setup. */
 @Composable
-private fun DefaultTag() {
-    Surface(shape = AppShapes.Small, color = Ink.fill) {
-        Text(stringResource(R.string.pairing_method_default), style = MaterialTheme.typography.labelMedium,
-            color = Ink.secondary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+private fun MethodCard(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    steps: List<Int>,
+    action: @Composable () -> Unit
+) {
+    Card {
+        ListRow(title, subtitle = subtitle, leading = { IconTile(icon) }) {
+            Spacer(Modifier.width(8.dp))
+            action()
+        }
+        InsetDivider(start = 16.dp)
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 6.dp)) {
+            steps.forEachIndexed { index, step ->
+                StepLine(index, stringResource(step), last = index == steps.lastIndex)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StepLine(index: Int, text: String, last: Boolean) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        Column(Modifier.width(LEADING_SIZE.dp).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.size(22.dp).background(Ink.fill, CircleShape), contentAlignment = Alignment.Center) {
+                Text((index + 1).toString(), style = MaterialTheme.typography.labelMedium, color = Ink.secondary)
+            }
+            if (!last) Box(Modifier.width(1.5.dp).weight(1f).background(Ink.track))
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(text, style = MaterialTheme.typography.bodySmall, color = Ink.primary,
+            modifier = Modifier.weight(1f).padding(top = 2.dp, bottom = if (last) 8.dp else 14.dp))
     }
 }
 
