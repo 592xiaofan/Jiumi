@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -59,12 +60,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -91,6 +90,7 @@ import com.ybblab.jiumi.ui.theme.StatusWarning
 fun SetupScreen(
     controller: MonitorController,
     onPair: () -> Unit,
+    onOpenPairingOptions: () -> Unit,
     onOpenWirelessDebugging: () -> Unit,
     onOpenNetwork: () -> Unit,
     onDone: () -> Unit
@@ -188,17 +188,14 @@ fun SetupScreen(
     SubScreen(
         "", onBack = null,
         bottomBar = {
-            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
-                Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Icon(JiumiIcons.Lock, null, tint = Ink.tertiary, modifier = Modifier.size(12.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.setup_privacy), style = MaterialTheme.typography.labelMedium, color = Ink.tertiary)
-                }
+            // The privacy line is the page's last line, under the action; the column takes the
+            // navigation bar inset once for both.
+            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
                 if (current < 0) BottomAction(stringResource(R.string.setup_start), onClick = onDone)
                 else BottomAction(stringResource(steps[current].action), enabled = !checkingRoot && !checkingNetwork) {
                     opened = null; steps[current].run()
                 }
+                PrivacyNote()
             }
         }
     ) { padding ->
@@ -269,10 +266,42 @@ fun SetupScreen(
                                 Text(stringResource(it.messageRes()), style = MaterialTheme.typography.bodySmall,
                                     color = StatusWarning, modifier = Modifier.padding(top = 8.dp))
                             }
+                            if (i == steps.lastIndex && method == com.ybblab.jiumi.access.AccessMethod.WIRELESS && !paired) {
+                                OtherWayEntry(onOpenPairingOptions)
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/** The way out when the notification can't take the code: a quiet outlined row that still reads as a button. */
+@Composable
+private fun OtherWayEntry(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        shape = AppShapes.Control,
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            Modifier.padding(start = 12.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(32.dp).background(Ink.fill, AppShapes.Small), contentAlignment = Alignment.Center) {
+                Icon(JiumiIcons.SplitScreen, null, Modifier.size(18.dp), tint = Ink.primary)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.pairing_other_way), style = MaterialTheme.typography.labelLarge,
+                    color = Ink.primary)
+                Text(stringResource(R.string.pairing_other_way_desc), style = MaterialTheme.typography.bodySmall,
+                    color = Ink.secondary)
+            }
+            Icon(JiumiIcons.ChevronRight, null, Modifier.size(18.dp), tint = Ink.tertiary)
         }
     }
 }
@@ -290,10 +319,7 @@ private enum class StepStatus { DONE, CURRENT, LATER }
 /** The app's icon, its name, and in a line what it is for: small, at the top left, so the choice below leads. */
 @Composable
 private fun Brand() {
-    val context = LocalContext.current
-    val icon = remember {
-        runCatching { context.packageManager.getApplicationIcon(context.packageName).toBitmap(192, 192).asImageBitmap() }.getOrNull()
-    }
+    val icon = rememberAppIcon()
     Row(verticalAlignment = Alignment.CenterVertically) {
         icon?.let { Image(it, null, Modifier.size(56.dp).clip(AppShapes.Card)) }
         Spacer(Modifier.width(14.dp))
@@ -448,7 +474,7 @@ private fun PairingProgress(pairing: PairingState, inFlow: Boolean, onCancel: ()
         else CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Ink.secondary)
         Text(stringResource(text), style = MaterialTheme.typography.bodySmall, color = Ink.primary,
             modifier = Modifier.weight(1f))
-        if (pairing != PairingState.CONNECTING) Text(stringResource(R.string.action_cancel),
+        if (pairing == PairingState.DISCOVERING || pairing == PairingState.AWAITING_CODE) Text(stringResource(R.string.action_cancel),
             style = MaterialTheme.typography.labelLarge, color = Ink.secondary,
             modifier = Modifier.clip(CircleShape).clickable(onClick = onCancel).padding(horizontal = 6.dp, vertical = 2.dp))
     }

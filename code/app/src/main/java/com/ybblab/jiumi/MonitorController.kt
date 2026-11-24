@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.util.AtomicFile
 import com.ybblab.jiumi.adb.AirModePairingManager
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingState
+import com.ybblab.jiumi.adb.AirModePairingManager.PairingInput
 import com.ybblab.jiumi.adb.AirModePairingManager.PairingTrustState
 import com.ybblab.jiumi.adb.AirPairingFailure
 import com.ybblab.jiumi.adb.NetworkAdb
@@ -801,14 +802,18 @@ class MonitorController(
     /** Paired now, read straight from pairing rather than from [state], which may not have caught up. */
     val isPaired: Boolean get() = pairing.pairingTrustState.value == PairingTrustState.PAIRED
 
-    fun startPairing(): Boolean {
+    fun startPairing(input: PairingInput): Boolean {
         local.update { it.copy(problem = null) }
-        return pairing.startRequiredPairing()
+        return pairing.startRequiredPairing(input)
     }
 
     fun cancelPairing() = pairing.stopDiscovery()
 
     fun preparePairingSettings() = pairing.preparePairingSettings()
+
+    fun cancelInAppPairing() = pairing.stopInAppPairing()
+
+    fun submitInAppPairingCode(code: String): Boolean = pairing.submitInAppPairingCode(code)
 
     /**
      * When a session is still open but no monitor is connected (after an app update, a restart of the

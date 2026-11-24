@@ -19,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import com.ybblab.jiumi.adb.AirModePairingManager.PairingInput
 import com.ybblab.jiumi.data.AppKey
 import com.ybblab.jiumi.data.LogEntry
 import com.ybblab.jiumi.ui.LogDetailScreen
@@ -42,6 +43,8 @@ import com.ybblab.jiumi.ui.SystemModuleScreen
 import com.ybblab.jiumi.ui.AboutScreen
 import com.ybblab.jiumi.ui.LicensesScreen
 import com.ybblab.jiumi.ui.PairingScreen
+import com.ybblab.jiumi.ui.PairingCodeScreen
+import com.ybblab.jiumi.ui.PairingOptionsScreen
 import com.ybblab.jiumi.ui.NetworkAdbScreen
 import com.ybblab.jiumi.ui.SetupScreen
 import androidx.lifecycle.Lifecycle
@@ -108,7 +111,12 @@ class MainActivity : AppCompatActivity() {
                 val push = { route: String -> stack = stack + route }
                 // A page's state is keyed by its depth too: the same page can be open twice in the stack.
                 fun pageKey(depth: Int) = "$depth|${stack.getOrNull(depth - 1) ?: "home"}"
-                val pop = { pages.removeState(pageKey(stack.size)); stack = stack.dropLast(1) }
+                val pop = {
+                    if (stack.lastOrNull() == "pairing-code") controller.cancelInAppPairing()
+                    pages.removeState(pageKey(stack.size))
+                    stack = stack.dropLast(1)
+                }
+                val openPairingOptions = { push("pairing-options") }
                 val openApp = { key: AppKey -> push("app:${key.uid}|${key.pkg.orEmpty()}") }
                 val openLog = { entry: LogEntry -> push("log:${OpenedLogs.put(entry)}") }
                 val top = stack.lastOrNull()
@@ -117,6 +125,7 @@ class MainActivity : AppCompatActivity() {
                 LaunchedEffect(route, setupDone) {
                     val r = route ?: return@LaunchedEffect
                     if (!setupDone) return@LaunchedEffect
+                    if (top == "pairing-code") controller.cancelInAppPairing()
                     (1..stack.size).forEach { pages.removeState(pageKey(it)) }
                     tab = Tab.MONITOR
                     stack = if (r == MonitorNotice.ROUTE_MONITOR) emptyList() else listOf(r)
@@ -139,6 +148,7 @@ class MainActivity : AppCompatActivity() {
                 if (top != null) BackHandler(onBack = pop)
                 pages.SaveableStateProvider(pageKey(stack.size)) { when {
                     top == null && !setupDone -> SetupScreen(controller, onPair = ::pair,
+                        onOpenPairingOptions = openPairingOptions,
                         onOpenWirelessDebugging = ::openWirelessDebugging, onOpenNetwork = { push("network-adb") },
                         onDone = {
                             preferences.finishSetup()
@@ -213,7 +223,10 @@ class MainActivity : AppCompatActivity() {
                     }
                     top == "network-adb" -> NetworkAdbScreen(controller, onBack = pop)
                     top == "pairing" -> PairingScreen(controller, onBack = pop, onPair = ::pair,
-                        onOpenWirelessDebugging = ::openWirelessDebugging)
+                        onOpenWirelessDebugging = ::openWirelessDebugging, onOpenPairingOptions = openPairingOptions)
+                    top == "pairing-options" -> PairingOptionsScreen(onBack = pop, onEnterPairingCode = { push("pairing-code") })
+                    top == "pairing-code" -> PairingCodeScreen(controller, onBack = pop,
+                        onOpenWirelessDebugging = ::openPairingSettingsForInAppCode)
                     top == "spool" -> SpoolScreen(controller, onBack = pop)
                     top == "monitoring-exclusions" -> MonitoringExclusionsScreen(controller, labels, onBack = pop)
                     top == "about" -> AboutScreen(labels, onBack = pop, onOpenLicenses = { push("licenses") })
@@ -252,12 +265,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun beginPairing() {
-        if (controller.startPairing()) openWirelessDebugging()
+        if (controller.startPairing(PairingInput.NOTIFICATION)) openWirelessDebugging()
     }
 
     private fun openWirelessDebugging() {
         controller.preparePairingSettings()
         com.ybblab.jiumi.ui.openDeveloperOptions(this)
+    }
+
+    private fun openPairingSettingsForInAppCode() {
+        if (controller.startPairing(PairingInput.APP)) {
+            controller.preparePairingSettings()
+            com.ybblab.jiumi.ui.openDeveloperOptions(this, adjacent = isInMultiWindowMode)
+        }
     }
 }
 

@@ -109,8 +109,13 @@ El **registro opcional de dominios** usa una VPN local para recibir consultas DN
 ## Descargar e iniciar la monitorización
 
 1. En un teléfono con Android 11 o posterior, descarga e instala el APK desde [GitHub Releases](https://github.com/ybblab/Jiumi/releases/latest).
-2. La primera vez que abras Jiumi, elige cómo iniciarlo. Si usas la depuración inalámbrica, que es el método recomendado, conéctate a Wi-Fi y sigue las indicaciones para permitir las notificaciones y activar las opciones de desarrollador. Introduce el código de emparejamiento de seis dígitos que muestra el sistema en la notificación de Jiumi. Si ya hay un puerto ADB abierto, también puedes elegir la depuración por red.
+2. La primera vez que abras Jiumi, elige cómo iniciarlo. Si usas la depuración inalámbrica, que es el método recomendado, conéctate a Wi-Fi y sigue las indicaciones para permitir las notificaciones y activar las opciones de desarrollador. Introduce el código de emparejamiento de seis dígitos que muestra el sistema en la notificación de Jiumi. Si no puedes usar la notificación, toca “Can’t type in the notification?” en el paso 3 e introduce el código en pantalla dividida, en una ventana pequeña o desde el mosaico de Ajustes rápidos. Si ya hay un puerto ADB abierto, también puedes elegir la depuración por red.
 3. Pulsa **Start monitoring** en la pantalla **Monitor**. Mientras la monitorización esté activa, aparecerá una notificación persistente. Puedes detenerla desde la notificación o desde la aplicación.
+
+<p align="center">
+  <a href="../images/pairing-split.en.png"><img src="../images/pairing-split.en.png" width="196" alt="Otras formas de emparejar: pantalla dividida o ventana pequeña" /></a>&nbsp;
+  <a href="../images/pairing-tile.en.png"><img src="../images/pairing-tile.en.png" width="196" alt="Otras formas de emparejar: mosaico de Ajustes rápidos" /></a>
+</p>
 
 Después de reiniciar el teléfono, actualizar Jiumi o sufrir una interrupción del servicio de depuración, Jiumi intenta reanudar la misma sesión cuando la conexión seleccionada está disponible, y de nuevo cuando vuelves a la aplicación. Si la tarjeta muestra **Monitoring interrupted**, restablece la conexión y pulsa **Resume**. El tiempo de interrupción no cuenta como tiempo de monitorización.
 

@@ -46,6 +46,7 @@ class AirModePairingManager(
 ) {
     enum class PairingState { IDLE, DISCOVERING, AWAITING_CODE, PAIRING, CONNECTING, CONNECTED }
     enum class PairingTrustState { UNPAIRED, PAIRED, PAIRING_REQUIRED }
+    enum class PairingInput { NOTIFICATION, APP }
 
     data class ActiveAirEndpoint(val host: String, val port: Int, val source: String)
 
@@ -120,6 +121,7 @@ class AirModePairingManager(
     private var pairingTimeoutJob: Job? = null
     private var discoveryTimeoutJob: Job? = null
     private var queuedPairCode: String? = null
+    @Volatile private var pairingInput = PairingInput.NOTIFICATION
     // A callback has not established Wi-Fi availability at process startup.
     @Volatile private var wifiTransportAvailable: Boolean? = null
     private val _wirelessTransportReady = MutableStateFlow(false)
@@ -163,38 +165,69 @@ class AirModePairingManager(
     private fun loadOrCreateAdbKey(replaceInvalidKey: Boolean = false): AirAdbKey =
         AirAdbKey.loadOrCreate(privateKeyFile(), publicKeyFile(), replaceInvalidKey)
 
-    fun notificationAvailability(): AirPairingNotificationAvailability = notificationController.availability()
-
+    /**
+     * Starts looking for the system's pairing dialog, or switches an ongoing search to [input]. An
+     * ongoing search keeps its endpoint; one that went quiet is started again.
+     */
     @Synchronized
-    fun startDiscovery(): Boolean {
-        if (_state.value in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE) && queuedPairCode == null) {
-            return refreshPairingNotificationIfAwaiting()
+    private fun startDiscovery(input: PairingInput): Boolean {
+        if (_state.value in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE)) {
+            if (input == PairingInput.APP) {
+                if (pairingInput != input) {
+                    pairingInput = input
+                    notificationController.cancel()
+                    _failure.value = null
+                }
+            } else {
+                if (!showPairingCodeNotification(alert = false)) return false
+                pairingInput = input
+            }
+            resumeIdleSearch()
+            return true
         }
         if (_state.value != PairingState.IDLE) return false
-        val availability = notificationController.availability()
-        if (availability != AirPairingNotificationAvailability.AVAILABLE) {
-            _failure.value = pairingNotificationFailure(availability)
-            log.event("pairing discovery withheld: notification=${availability.name.lowercase()}")
-            return false
+        if (input == PairingInput.NOTIFICATION) {
+            val availability = notificationController.availability()
+            if (availability != AirPairingNotificationAvailability.AVAILABLE) {
+                _failure.value = pairingNotificationFailure(availability)
+                log.event("pairing discovery withheld: notification=${availability.name.lowercase()}")
+                return false
+            }
         }
         automaticReconnectSuspended = false
         _failure.value = null
         queuedPairCode = null
         pendingPairingEndpoint = null
         stopConnectAttempt()
+        pairingInput = input
         _state.value = PairingState.DISCOVERING
         log.event(
-            "pairing discovery started manufacturer=${android.os.Build.MANUFACTURER} " +
+            "pairing discovery started input=${input.name.lowercase()} manufacturer=${android.os.Build.MANUFACTURER} " +
                 "model=${android.os.Build.MODEL} sdk=${android.os.Build.VERSION.SDK_INT} " +
                 "wireless=${isWirelessDebuggingEnabled()}"
         )
-        // Prepare a silent RemoteInput while foreground so it remains usable if frozen.
-        // Alert only after discovering the service opened by the system pairing-code dialog.
-        if (!showPairingCodeNotification(alert = false)) return false
+        if (input == PairingInput.APP) {
+            notificationController.cancel()
+        } else if (!showPairingCodeNotification(alert = false)) {
+            // Prepare a silent RemoteInput while foreground so it remains usable if frozen.
+            // Alert only after discovering the service opened by the system pairing-code dialog.
+            return false
+        }
         // Connecting before pairing grants trust can reject the new key and reset this flow.
         startPairingDiscovery()
         return true
     }
+
+    /** A search that went quiet (see [startPairingDiscovery]) listens again; a running one carries on. */
+    private fun resumeIdleSearch() {
+        if (_state.value == PairingState.DISCOVERING && queuedPairCode == null &&
+            pairingDiscoveryRefreshJob?.isActive != true) startPairingDiscovery()
+    }
+
+    /** No endpoint yet: looking for the dialog, or holding a submitted code until the dialog appears. */
+    private fun isSearchingForPairingEndpoint(): Boolean =
+        pendingPairingEndpoint == null && (_state.value == PairingState.DISCOVERING ||
+            (_state.value == PairingState.PAIRING && queuedPairCode != null))
 
     private fun startPairingDiscovery() {
         pairingDiscoveryRefreshJob?.cancel()
@@ -203,22 +236,24 @@ class AirModePairingManager(
             repeat(PAIRING_DISCOVERY_RESTARTS) {
                 delay(PAIRING_DISCOVERY_REFRESH_MS)
                 synchronized(this@AirModePairingManager) {
-                    if (!isActive || _state.value != PairingState.DISCOVERING) return@launch
+                    if (!isActive || !isSearchingForPairingEndpoint()) return@launch
                     pairingDiscoveryGeneration++
                     pairingDiscovery?.stop()
                     pairingDiscovery = null
                 }
                 delay(PAIRING_DISCOVERY_RESTART_GAP_MS)
                 synchronized(this@AirModePairingManager) {
-                    if (!isActive || _state.value != PairingState.DISCOVERING) return@launch
+                    if (!isActive || !isSearchingForPairingEndpoint()) return@launch
                     installPairingDiscovery()
                 }
             }
             delay(PAIRING_DISCOVERY_REFRESH_MS)
             synchronized(this@AirModePairingManager) {
+                // Stop listening and release the multicast lock. The state stays DISCOVERING, since the dialog
+                // was not found; opening Wireless debugging again or submitting a code listens again.
                 if (isActive && _state.value == PairingState.DISCOVERING && queuedPairCode == null) {
                     stopPairingDiscovery()
-                    _state.value = PairingState.AWAITING_CODE
+                    log.event("pairing discovery paused without an endpoint")
                 }
             }
         }
@@ -233,7 +268,7 @@ class AirModePairingManager(
             serviceType = TLS_PAIRING_SERVICE,
             onResolved = { host, port ->
                 synchronized(this) {
-                    if (_state.value != PairingState.DISCOVERING || generation != pairingDiscoveryGeneration) {
+                    if (generation != pairingDiscoveryGeneration || !isSearchingForPairingEndpoint()) {
                         return@AirMdnsDiscovery
                     }
                     val endpoint = InetSocketAddress.createUnresolved(host, port)
@@ -261,9 +296,14 @@ class AirModePairingManager(
     private fun pairingInProgress(): Boolean =
         _state.value in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE, PairingState.PAIRING)
 
+    /**
+     * Called as Wireless debugging is opened for pairing. The system gives its code dialog a new port
+     * each time it opens, so a found endpoint is dropped and the search starts again.
+     */
     @Synchronized
     fun preparePairingSettings() {
-        if (_state.value != PairingState.AWAITING_CODE || !showPairingCodeNotification(alert = false)) return
+        if (_state.value !in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE) || queuedPairCode != null) return
+        if (pairingInput == PairingInput.NOTIFICATION && !showPairingCodeNotification(alert = false)) return
         pendingPairingEndpoint = null
         _state.value = PairingState.DISCOVERING
         startPairingDiscovery()
@@ -277,6 +317,13 @@ class AirModePairingManager(
         _failure.value = AirPairingFailure.PAIRING_REQUIRED.takeIf { isPairingRequired }
         notificationController.cancel()
         _state.value = PairingState.IDLE
+    }
+
+    /** Leaving the in-app code pad ends a search it started, but not a code already submitted. */
+    @Synchronized
+    fun stopInAppPairing() {
+        if (pairingInput == PairingInput.APP && queuedPairCode == null &&
+            _state.value in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE)) stopDiscovery()
     }
 
     private fun clearPairingAttempt() {
@@ -359,18 +406,20 @@ class AirModePairingManager(
         fun record(result: String) = log.event(
             "pairing notification input result=$result has_results=$hasResults input_length=${input?.length ?: -1}"
         )
-        if (session == null || session != notificationController.currentPairingSession()) {
+        if (pairingInput != PairingInput.NOTIFICATION || session == null ||
+            session != notificationController.currentPairingSession()) {
             record("stale_session")
             return
         }
-        if (_state.value in setOf(PairingState.PAIRING, PairingState.CONNECTING, PairingState.CONNECTED)) {
+        if (queuedPairCode != null ||
+            _state.value in setOf(PairingState.PAIRING, PairingState.CONNECTING, PairingState.CONNECTED)) {
             record("already_in_progress")
             return
         }
         val code = input?.trim()
         val failure = when {
             input == null -> AirPairingFailure.NOTIFICATION_INPUT_MISSING
-            code == null || code.length != 6 || !code.all { it in '0'..'9' } -> AirPairingFailure.INVALID_PAIRING_CODE
+            code == null || !isPairingCode(code) -> AirPairingFailure.INVALID_PAIRING_CODE
             else -> null
         }
         if (failure != null) {
@@ -389,6 +438,20 @@ class AirModePairingManager(
         }
         requestPairing(checkNotNull(code))
     }
+
+    @Synchronized
+    fun submitInAppPairingCode(code: String): Boolean {
+        if (pairingInput != PairingInput.APP ||
+            _state.value !in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE)) return false
+        if (!isPairingCode(code)) {
+            _failure.value = AirPairingFailure.INVALID_PAIRING_CODE
+            return false
+        }
+        requestPairing(code)
+        return true
+    }
+
+    private fun isPairingCode(code: String) = code.length == 6 && code.all { it in '0'..'9' }
 
     private fun requestPairing(code: String) {
         if (_state.value !in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE)) {
@@ -410,15 +473,17 @@ class AirModePairingManager(
         queuedPairCode = code
         pendingPairingEndpoint = null
         val attemptGeneration = pairingAttemptGeneration
-        runCatching { notificationController.showPairingWaitingForService(PAIRING_SERVICE_TIMEOUT_MS) }
-        _state.value = PairingState.DISCOVERING
+        if (pairingInput == PairingInput.NOTIFICATION) {
+            runCatching { notificationController.showPairingWaitingForService(PAIRING_SERVICE_TIMEOUT_MS) }
+        }
+        // The code is in: show it as pairing while the dialog's endpoint is still being looked for.
+        _state.value = PairingState.PAIRING
         if (pairingDiscoveryRefreshJob?.isActive != true) startPairingDiscovery()
         discoveryTimeoutJob?.cancel()
         discoveryTimeoutJob = appScope.launch {
             delay(PAIRING_SERVICE_TIMEOUT_MS)
             synchronized(this@AirModePairingManager) {
-                if (pairingAttemptGeneration == attemptGeneration &&
-                    _state.value == PairingState.DISCOVERING && queuedPairCode != null) {
+                if (pairingAttemptGeneration == attemptGeneration && queuedPairCode != null) {
                     awaitNewPairingCode(
                         AirPairingFailure.PAIRING_SERVICE_NOT_FOUND,
                         "pairing endpoint discovery timed out after code submission"
@@ -429,10 +494,9 @@ class AirModePairingManager(
     }
 
     private fun moveToAwaitingCode() {
-        if (showPairingCodeNotification(alert = true)) {
-            stopPairingDiscovery()
-            _state.value = PairingState.AWAITING_CODE
-        }
+        if (pairingInput == PairingInput.NOTIFICATION && !showPairingCodeNotification(alert = true)) return
+        stopPairingDiscovery()
+        _state.value = PairingState.AWAITING_CODE
     }
 
     private fun showPairingCodeNotification(alert: Boolean): Boolean {
@@ -444,13 +508,6 @@ class AirModePairingManager(
         return false
     }
 
-    private fun refreshPairingNotificationIfAwaiting(): Boolean {
-        if (_state.value !in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE) || queuedPairCode != null) return false
-        // Discovery can remain active after rejection or an invalid code. Restore RemoteInput
-        // immediately without requiring another settings navigation or reusing a stale endpoint.
-        return showPairingCodeNotification(alert = false)
-    }
-
     private fun pairingNotificationFailure(availability: AirPairingNotificationAvailability): AirPairingFailure =
         when (availability) {
             AirPairingNotificationAvailability.PERMISSION_REQUIRED -> AirPairingFailure.NOTIFICATION_PERMISSION_REQUIRED
@@ -460,19 +517,25 @@ class AirModePairingManager(
             AirPairingNotificationAvailability.AVAILABLE -> AirPairingFailure.NOTIFICATION_POST_FAILED
         }
 
+    /**
+     * Ends a failed attempt and waits for a new code. The endpoint is dropped, since a new code means a
+     * new dialog and port, so the state is DISCOVERING; the next code or settings visit listens again.
+     */
     private fun awaitNewPairingCode(failure: AirPairingFailure, diagnostic: String) {
         clearPairingAttempt()
         _failure.value = failure
-        _state.value = PairingState.AWAITING_CODE
+        _state.value = PairingState.DISCOVERING
         log.event(diagnostic)
-        showPairingCodeNotification(alert = true)
+        if (pairingInput == PairingInput.NOTIFICATION) showPairingCodeNotification(alert = true)
     }
 
     private fun doExecutePairing(endpoint: InetSocketAddress, code: String, rediscoverOnEndpointFailure: Boolean) {
         clearPairingAttempt()
         val attemptGeneration = pairingAttemptGeneration
         _failure.value = null
-        runCatching { notificationController.showPairingSubmitted(PAIRING_TIMEOUT_MS) }
+        if (pairingInput == PairingInput.NOTIFICATION) {
+            runCatching { notificationController.showPairingSubmitted(PAIRING_TIMEOUT_MS) }
+        }
         _state.value = PairingState.PAIRING
         pairingTimeoutJob = appScope.launch {
             delay(PAIRING_TIMEOUT_MS)
@@ -501,7 +564,9 @@ class AirModePairingManager(
                     result.getOrNull() == true -> {
                         clearPairingAttempt()
                         markPairingTrusted()
-                        runCatching { notificationController.showPairingSucceeded() }
+                        if (pairingInput == PairingInput.NOTIFICATION) {
+                            runCatching { notificationController.showPairingSucceeded() }
+                        }
                         _state.value = PairingState.CONNECTING
                         startConnectDiscovery(restoreWirelessDebugging = false, afterPairing = true)
                     }
@@ -887,15 +952,9 @@ class AirModePairingManager(
     }
 
     @Synchronized
-    fun startRequiredPairing(): Boolean {
-        if (pairingInProgress()) return refreshPairingNotificationIfAwaiting()
-        if (!isPairingRequired) return startDiscovery()
-        val availability = notificationController.availability()
-        if (availability != AirPairingNotificationAvailability.AVAILABLE) {
-            _failure.value = pairingNotificationFailure(availability)
-            return false
-        }
-        disconnect()
-        return startDiscovery()
+    fun startRequiredPairing(input: PairingInput): Boolean {
+        if (pairingInProgress()) return startDiscovery(input)
+        if (isPairingRequired) disconnect()
+        return startDiscovery(input)
     }
 }

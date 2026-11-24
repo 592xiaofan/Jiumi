@@ -2,4 +2,8 @@
 <resources>
     <!-- Matches ChartPurpleDark: brighter on a dark shade. -->
     <color name="chart_purple">#FFA79DFF</color>
+    <color name="notification_stop_ink">#FFF5F5F7</color>
+    <color name="notification_stop_fill">#FF353538</color>
+    <color name="notification_stop_outline">#FF69696F</color>
+    <color name="notification_stop_ripple">#33FFFFFF</color>
 </resources>

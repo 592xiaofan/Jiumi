@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Jiumi's cat head with the six digits of a pairing code cut out of it. Quick Settings draws only
+     the shape, so the ears are what tell this tile apart from the system's. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M3.6,4.1C3.6,3.1 4.7,2.6 5.5,3.2L9,5.9C10,5.6 11,5.5 12,5.5C13,5.5 14,5.6 15,5.9L18.5,3.2C19.3,2.6 20.4,3.1 20.4,4.1L20.4,11.5C20.4,17 16.6,20.8 12,20.8C7.4,20.8 3.6,17 3.6,11.5Z
+            M7.2,11.6a1.25,1.25 0,1 0,2.5 0a1.25,1.25 0,1 0,-2.5 0Z
+            M10.75,11.6a1.25,1.25 0,1 0,2.5 0a1.25,1.25 0,1 0,-2.5 0Z
+            M14.3,11.6a1.25,1.25 0,1 0,2.5 0a1.25,1.25 0,1 0,-2.5 0Z
+            M7.2,15.4a1.25,1.25 0,1 0,2.5 0a1.25,1.25 0,1 0,-2.5 0Z
+            M10.75,15.4a1.25,1.25 0,1 0,2.5 0a1.25,1.25 0,1 0,-2.5 0Z
+            M14.3,15.4a1.25,1.25 0,1 0,2.5 0a1.25,1.25 0,1 0,-2.5 0Z" />
+</vector>

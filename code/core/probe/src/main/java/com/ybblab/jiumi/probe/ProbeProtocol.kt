@@ -31,9 +31,13 @@ enum class PackageChangeFailure {
             """^(?:Error:\s*)?(?:(?:java\.lang\.)?Security\s*Exception|Permission Denial|Permission denied)(?::|\.|$)""",
             RegexOption.IGNORE_CASE
         )
+        private const val ROOT_ONLY_REMOVAL = "Failure [only root can delete system app for a particular user]"
 
         fun fromCommandOutput(output: String): PackageChangeFailure? = PERMISSION_DENIED.takeIf {
-            output.lineSequence().any { line -> permissionDenial.containsMatchIn(line.trimStart()) }
+            output.lineSequence().any { line ->
+                val message = line.trim()
+                message.equals(ROOT_ONLY_REMOVAL, ignoreCase = true) || permissionDenial.containsMatchIn(message)
+            }
         }
     }
 }

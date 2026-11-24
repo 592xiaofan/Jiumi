@@ -63,6 +63,7 @@ object MonitorNotice {
             setTextViewText(R.id.notification_title, title)
             setChronometer(R.id.notification_elapsed, running.chronometerBase, null, true)
             setOnClickPendingIntent(R.id.notification_stop, stop)
+            setTextViewText(R.id.notification_stop, text.getString(R.string.action_stop))
             setContentDescription(R.id.notification_stop, text.getString(R.string.action_stop_monitoring))
             setTextViewText(R.id.notification_text, line)
         }

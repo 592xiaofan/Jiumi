@@ -5,6 +5,7 @@ package com.ybblab.jiumi.probe
 
 import android.app.AppOpsManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.HandlerThread
 import org.json.JSONObject
@@ -15,6 +16,10 @@ import java.util.concurrent.Executor
  * Receives the access events AppOps already reports to watchers. Repeated identical accesses
  * within [WINDOW_MS] are folded into one record with a count, so a chatty caller costs one line
  * a minute. Nothing here changes how the system or the caller behaves.
+ *
+ * Where the shell may not watch other apps (Android 11 grants it no WATCH_APPOPS; the system then
+ * reports only the shell's own accesses), the same records come from reading AppOps every
+ * [POLL_MS] instead ([AccessPolls]).
  */
 internal class AccessWatcher(context: Context, private val spool: EventSpool, private val states: UidStates) {
     private val thread = HandlerThread("access-watch").apply { start() }
@@ -24,9 +29,22 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
     private val buckets = LinkedHashMap<NotedKey, ObservationBucket>()
     private var listeners: List<Any> = emptyList()
     private var finishing = false
+    private val watchesOthers =
+        context.checkSelfPermission(WATCH_APPOPS) == PackageManager.PERMISSION_GRANTED
+    private var polledOps: Array<String> = emptyArray()
+    private var polls: AccessPolls? = null
+    private val poll = object : Runnable {
+        override fun run() {
+            val current = polls ?: return
+            runCatching { readSnapshot() }
+                .onSuccess { entries -> current.diff(entries, System.currentTimeMillis()).forEach(::polled) }
+                .onFailure { ProbeMain.log("AppOps poll failed: ${it.javaClass.simpleName}: ${it.message}") }
+            handler.postDelayed(this, POLL_MS)
+        }
+    }
 
     private data class NotedKey(
-        val op: String, val uid: Int, val pkg: String?, val attribution: String?, val flags: Int, val result: Int
+        val op: String, val uid: Int, val pkg: String?, val attribution: String?, val flags: Int?, val result: Int
     )
 
     /** Replaces the watched operations; unknown names on this Android version are skipped. */
@@ -35,6 +53,13 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
         stop()
         val supported = ops.filter { op -> runCatching { opCode(op) >= 0 }.getOrDefault(false) }
         if (supported.isEmpty()) return@post
+        if (!watchesOthers) {
+            polledOps = supported.toTypedArray()
+            polls = AccessPolls(System.currentTimeMillis())
+            handler.post(poll)
+            ProbeMain.log("polling ${supported.size} operations (no WATCH_APPOPS)")
+            return@post
+        }
         listeners = listOfNotNull(
             runCatching { watchNoted(supported) }.onFailure { ProbeMain.log("noted watch failed: ${it.javaClass.simpleName}") }.getOrNull(),
             runCatching { watchActive(supported) }.onFailure { ProbeMain.log("active watch failed: ${it.javaClass.simpleName}") }.getOrNull()
@@ -55,6 +80,8 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
     }
 
     private fun stop() {
+        handler.removeCallbacks(poll)
+        polls = null
         flush(force = true)
         listeners.forEach { listener ->
             runCatching {
@@ -69,18 +96,8 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
     private fun watchNoted(ops: List<String>): Any {
         val type = Class.forName("android.app.AppOpsManager\$OnOpNotedListener")
         val listener = proxy(type) { args ->
-            // Android 11: (code, uid, package, flags, result)
-            // Android 12+: (op, uid, package, attributionTag, flags, result)
-            // Android 15+: (op, uid, package, attributionTag, virtualDeviceId, flags, result)
-            // flags and result are always the last two arguments.
-            noted(
-                op = args[0] as? String ?: opName(args[0] as Int),
-                uid = args[1] as Int,
-                pkg = args[2] as String?,
-                attribution = if (args[0] is String) args[3] as String? else null,
-                flags = args[args.size - 2] as Int,
-                result = args[args.size - 1] as Int
-            )
+            val call = NotedCall.parse(args)
+            noted(call.op as? String ?: opName(call.op as Int), call.uid, call.pkg, call.attribution, call.flags, call.result)
         }
         val start = AppOpsManager::class.java.methods.first {
             it.name == "startWatchingNoted" && it.parameterTypes.size == 2 && it.parameterTypes[1] == type
@@ -96,32 +113,72 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
             val active = args.firstOrNull { it is Boolean } as Boolean? ?: return@proxy
             val attribution = args.getOrNull(3) as? String
             val t = System.currentTimeMillis()
-            handler.post {
-                if (finishing) return@post
-                val op = args[0] as String
-                val uid = args[1] as Int
-                val pkg = args[2] as String?
-                if (spool.exclusions.blocks(uid, pkg, t)) return@post
-                record(JSONObject()
-                    .put("kind", "active")
-                    .put("t", t)
-                    .put("op", op)
-                    .put("uid", uid)
-                    .put("pkg", pkg)
-                    .put("attr", attribution)
-                    .put("active", active)
-                    // A start carries the state AppOps recorded; an end, the state at the time it ended.
-                    .put("state", if (active) states.accessState(op, uid, pkg, t) else states.stateAt(uid, t))
-                    .put("screen", states.screenAt(t)))
-            }
+            handler.post { active(args[0] as String, args[1] as Int, args[2] as String?, attribution, active, t) }
         }
         AppOpsManager::class.java.getMethod("startWatchingActive", Array<String>::class.java, Executor::class.java, type)
             .invoke(appOps, ops.toTypedArray(), executor, listener)
         return listener
     }
 
-    private fun noted(op: String, uid: Int, pkg: String?, attribution: String?, flags: Int, result: Int) {
-        val time = System.currentTimeMillis()
+    private fun active(op: String, uid: Int, pkg: String?, attribution: String?, active: Boolean, t: Long) {
+        if (finishing || spool.exclusions.blocks(uid, pkg, t)) return
+        record(JSONObject()
+            .put("kind", "active")
+            .put("t", t)
+            .put("op", op)
+            .put("uid", uid)
+            .put("pkg", pkg)
+            .put("attr", attribution)
+            .put("active", active)
+            // A start carries the state AppOps recorded; an end, the state at the time it ended.
+            .put("state", if (active) states.accessState(op, uid, pkg, t) else states.stateAt(uid, t))
+            .put("screen", states.screenAt(t)))
+    }
+
+    private fun polled(event: AccessPolls.Event) = when (event) {
+        is AccessPolls.Event.Noted -> noted(event.op, event.uid, event.pkg, event.attr, event.flags, event.result, event.t)
+        is AccessPolls.Event.Active -> active(event.op, event.uid, event.pkg, event.attr, event.active, event.t)
+    }
+
+    /** Every app's entries for the polled operations, one per attribution tag. */
+    private fun readSnapshot(): List<AccessPolls.Entry> {
+        val forOps = AppOpsManager::class.java.getMethod("getPackagesForOps", Array<String>::class.java)
+        val packages = forOps.invoke(appOps, polledOps) as? List<*> ?: return emptyList()
+        val flagsArg = Int::class.javaPrimitiveType
+        val entries = ArrayList<AccessPolls.Entry>()
+        for (p in packages) {
+            val packageOps = p ?: continue
+            val type = packageOps.javaClass
+            val uid = type.getMethod("getUid").invoke(packageOps) as Int
+            val pkg = type.getMethod("getPackageName").invoke(packageOps) as String?
+            for (opEntry in type.getMethod("getOps").invoke(packageOps) as List<*>) {
+                val entry = opEntry ?: continue
+                val op = entry.javaClass.getMethod("getOpStr").invoke(entry) as String
+                val attributed = entry.javaClass.getMethod("getAttributedOpEntries").invoke(entry) as Map<*, *>
+                for ((tag, a) in attributed) {
+                    val attributedEntry = a ?: continue
+                    val t = attributedEntry.javaClass
+                    val access = t.getMethod("getLastAccessTime", flagsArg)
+                    val reject = t.getMethod("getLastRejectTime", flagsArg)
+                    val duration = t.getMethod("getLastDuration", flagsArg)
+                    fun times(flags: Int) = AccessPolls.Times(
+                        access.invoke(attributedEntry, flags) as Long,
+                        reject.invoke(attributedEntry, flags) as Long,
+                        duration.invoke(attributedEntry, flags) as Long
+                    )
+                    entries += AccessPolls.Entry(op, uid, pkg, tag as String?,
+                        times(AccessPolls.SELF_FLAGS), times(AccessPolls.PROXIED_FLAGS),
+                        t.getMethod("isRunning").invoke(attributedEntry) as Boolean)
+                }
+            }
+        }
+        return entries
+    }
+
+    private fun noted(
+        op: String, uid: Int, pkg: String?, attribution: String?, flags: Int?, result: Int,
+        time: Long = System.currentTimeMillis()
+    ) {
         handler.post {
             if (finishing || spool.exclusions.blocks(uid, pkg, time)) return@post
             val key = NotedKey(op, uid, pkg, attribution, flags, result)
@@ -131,7 +188,9 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
             bucket?.let { record(it.event()) }
             val first = buckets.isEmpty()
             val event = JSONObject().put("kind", "access").put("op", op).put("uid", uid).put("pkg", pkg)
-                .put("attr", attribution).put("flags", flags).put("result", result)
+                .put("attr", attribution).put("result", result)
+            // Android 11 does not report flags; the record then leaves them out rather than guess.
+            if (flags != null) event.put("flags", flags)
             buckets[key] = ObservationBucket(event, time, observed)
             if (first) handler.postDelayed({ flush(force = false) }, WINDOW_MS)
         }
@@ -176,5 +235,29 @@ internal class AccessWatcher(context: Context, private val spool: EventSpool, pr
 
     private companion object {
         const val WINDOW_MS = 60_000L
+        /** One AppOps read every few seconds; an access shows up at its own time, at most this late. */
+        const val POLL_MS = 5_000L
+        const val WATCH_APPOPS = "android.permission.WATCH_APPOPS"
+    }
+}
+
+/**
+ * The arguments of one OnOpNotedListener call. Their shape depends on the Android release:
+ * - Android 11: (code, uid, package, result), without attribution tag or flags
+ * - Android 12–13: (code, uid, package, attributionTag, flags, result)
+ * - later releases: (op, uid, package, attributionTag, flags, result), and on Android 15+ also
+ *   (op, uid, package, attributionTag, virtualDeviceId, flags, result)
+ * [op] is the operation name, or its code where the release passes a code.
+ */
+internal class NotedCall(
+    val op: Any, val uid: Int, val pkg: String?, val attribution: String?, val flags: Int?, val result: Int
+) {
+    companion object {
+        fun parse(args: Array<Any?>): NotedCall = when {
+            args.size == 4 -> NotedCall(args[0]!!, args[1] as Int, args[2] as String?, null, null, args[3] as Int)
+            args.size >= 6 -> NotedCall(args[0]!!, args[1] as Int, args[2] as String?, args[3] as String?,
+                args[args.size - 2] as Int, args[args.size - 1] as Int)
+            else -> throw IllegalArgumentException("unexpected onOpNoted arity ${args.size}")
+        }
     }
 }

@@ -21,6 +21,7 @@ import java.util.Locale
  *   [bg-s] = access=3, reject=1688, duration=+1s653ms
  */
 internal object AppOpsHistory {
+    const val SECTION = "History:"
     private val stamp = Regex("^(begin|end) = (\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d(?:\\.\\d{1,3})?)")
     private val counts = Regex("^\\[([a-z]+)-([a-z]+)\\] = (.*)$")
     private val duration = Regex("(\\d+)(d|h|ms|m|s)")
@@ -29,7 +30,9 @@ internal object AppOpsHistory {
     private val UNATTENDED = setOf("fgsvc", "bg", "cch", "gone")
 
     private class Totals { var fg = 0L; var bg = 0L; var fgRejected = 0L; var bgRejected = 0L; var durationMs = 0L }
-    private class Slot(val from: Long, val to: Long, val ops: LinkedHashMap<Triple<Int, String, String>, Totals>)
+    private class Slot(val from: Long, val to: Long) {
+        val ops = LinkedHashMap<Triple<Int, String, String>, Totals>()
+    }
 
     /**
      * Slots that ended after [since] and began before [now], newest first, of the operations in [ops]
@@ -41,7 +44,8 @@ internal object AppOpsHistory {
      */
     fun parse(
         dump: String, ops: Set<String>, since: Long, now: Long,
-        exclusions: MonitoringExclusions = MonitoringExclusions(), isMakerOp: (String) -> Boolean = { false }
+        exclusions: MonitoringExclusions = MonitoringExclusions(), discreteDump: String? = null,
+        isMakerOp: (String) -> Boolean = { false }
     ): JSONArray {
         val makerOps = HashMap<String, String?>()
         fun named(op: String?): String? = when {
@@ -50,7 +54,59 @@ internal object AppOpsHistory {
                 if (isMakerOp(op)) DumpText.VENDOR_PREFIX + op.removePrefix("android:").uppercase(Locale.US) else null
             }
         }
-        val section = dump.substringAfter("History:", missingDelimiterValue = "")
+        val slots = if (AppOpsHistoryTable.contains(dump, AppOpsHistoryTable.AGGREGATED)) {
+            readTables(dump, checkNotNull(discreteDump), since, now, exclusions, ::named)
+        } else {
+            readSnapshots(dump, since, now, exclusions, ::named)
+        }
+        val out = JSONArray()
+        for (slot in slots.sortedByDescending { it.from }) {
+            val list = JSONArray()
+            for ((k, v) in slot.ops) {
+                if (v.fg + v.bg + v.fgRejected + v.bgRejected == 0L) continue
+                list.put(JSONObject().put("uid", k.first).put("pkg", k.second).put("op", k.third)
+                    .put("fg", v.fg).put("bg", v.bg).put("fgRejected", v.fgRejected).put("bgRejected", v.bgRejected)
+                    .put("durationMs", v.durationMs))
+            }
+            out.put(JSONObject().put("from", slot.from).put("to", slot.to).put("ops", list))
+        }
+        return out
+    }
+
+    private fun readTables(
+        dump: String, discreteDump: String, since: Long, now: Long,
+        exclusions: MonitoringExclusions, nameOf: (String) -> String?
+    ): Collection<Slot> {
+        val interval = AppOpsHistoryTable.interval(dump)
+        val slots = HashMap<Long, Slot>()
+        // The system assigns each access to either its short- or long-interval table.
+        val rows = AppOpsHistoryTable.read(dump, AppOpsHistoryTable.AGGREGATED) +
+            AppOpsHistoryTable.read(discreteDump, AppOpsHistoryTable.DISCRETE)
+        for (row in rows) {
+            if (row.time !in 0..now || row.via.endsWith('d')) continue
+            val name = nameOf(row.op) ?: continue
+            val from = row.time / interval * interval
+            val to = minOf(from + interval, now + 1)
+            if (to <= since) continue
+            val slot = slots.getOrPut(from) { Slot(from, to) }
+            if (exclusions.hides(row.uid, row.pkg) || exclusions.blocks(row.uid, row.pkg, from, to - 1)) continue
+            val totals = slot.ops.getOrPut(Triple(row.uid, row.pkg, name)) { Totals() }
+            if (row.state in UNATTENDED) {
+                totals.bg += row.accesses
+                totals.bgRejected += row.rejects
+            } else {
+                totals.fg += row.accesses
+                totals.fgRejected += row.rejects
+            }
+            totals.durationMs += row.duration
+        }
+        return slots.values
+    }
+
+    private fun readSnapshots(
+        dump: String, since: Long, now: Long, exclusions: MonitoringExclusions, nameOf: (String) -> String?
+    ): List<Slot> {
+        val section = dump.substringAfter(SECTION, missingDelimiterValue = "")
         val slots = ArrayList<Slot>()
         val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
         val formatSeconds = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
@@ -83,7 +139,7 @@ internal object AppOpsHistory {
                         endRead = true
                         // Skip slots outside the window or affected by a clock change.
                         if (start in 0..now && t > since && t >= start) {
-                            current = Slot(start, t, LinkedHashMap()).also { slots += it }
+                            current = Slot(start, t).also { slots += it }
                         }
                     }
                 }
@@ -95,7 +151,7 @@ internal object AppOpsHistory {
                     val owner = pkg ?: continue
                     if (exclusions.hides(uid, owner) || exclusions.blocks(uid, owner, slot.from, slot.to - 1)) continue
                     val m = counts.find(line) ?: continue
-                    val name = named(op) ?: continue
+                    val name = nameOf(op ?: continue) ?: continue
                     if (uid < 0 || m.groupValues[2].endsWith("d")) continue
                     val totals = slot.ops.getOrPut(Triple(uid, owner, name)) { Totals() }
                     val background = DumpText.state(m.groupValues[1]) in UNATTENDED
@@ -115,18 +171,7 @@ internal object AppOpsHistory {
             }
         }
         check(endRead) { "Incomplete AppOps snapshot" }
-        val out = JSONArray()
-        for (slot in slots.sortedByDescending { it.from }) {
-            val list = JSONArray()
-            for ((k, v) in slot.ops) {
-                if (v.fg + v.bg + v.fgRejected + v.bgRejected == 0L) continue
-                list.put(JSONObject().put("uid", k.first).put("pkg", k.second).put("op", k.third)
-                    .put("fg", v.fg).put("bg", v.bg).put("fgRejected", v.fgRejected).put("bgRejected", v.bgRejected)
-                    .put("durationMs", v.durationMs))
-            }
-            out.put(JSONObject().put("from", slot.from).put("to", slot.to).put("ops", list))
-        }
-        return out
+        return slots
     }
 
     /** "+1h2m3s456ms" as milliseconds. */

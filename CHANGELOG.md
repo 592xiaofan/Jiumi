@@ -10,6 +10,14 @@ Versions follow [Semantic Versioning](https://semver.org).
 - Resume interrupted monitoring automatically when Wi-Fi and Wireless debugging become available again and the existing pairing is still valid.
 - Bound Wireless debugging discovery, release multicast resources when it ends, and recover from a damaged local key during re-pairing.
 
+## [0.5.0] - 2026-11-23
+
+- **More ways to enter the wireless pairing code.** If notification entry is unavailable, use split screen, a small window, or the “Jiumi pairing” Quick Settings tile. The setup guide includes animations and steps.
+- The code entry screen helps keep both apps visible, can open Wireless debugging alongside Jiumi in split screen, and confirms successful pairing.
+- Fixed missing permission accesses on Android 11 by checking system records periodically. Jiumi now recognizes location providers on Android 11.
+- Fixed unreadable text in MIUI dark mode and restored system access history on Android 17.
+- Clarified when removing a preinstalled app for the current user requires Root.
+
 ## [0.4.1] - 2026-11-23
 
 - Improved freeze and unfreeze compatibility. Jiumi tries an alternate method after verifying that the primary method left the app state unchanged.

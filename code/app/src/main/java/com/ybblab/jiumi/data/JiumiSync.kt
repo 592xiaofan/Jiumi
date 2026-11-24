@@ -62,7 +62,7 @@ class JiumiSync(private val store: JiumiStore, private val rules: AccessRules) {
                     if (rules.categoryOf(e.getString("op")) == null) continue
                     val inserted = store.insertAccess(db, JiumiStore.Access(
                         t = e.getLong("t"), end = e.getLong("end"), op = e.getString("op"), uid = uid,
-                        pkg = pkg, attr = e.str("attr"), count = 1, state = e.str("state"), screen = null,
+                        pkg = pkg, attr = e.str("attr"), count = e.optInt("count", 1), state = e.str("state"), screen = null,
                         result = 0, proxied = e.optString("via").endsWith("d"), source = "system"
                     ))
                     changed = changed || inserted

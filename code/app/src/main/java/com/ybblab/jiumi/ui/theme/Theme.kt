@@ -95,16 +95,15 @@ private val LightColorScheme = lightColorScheme(
  */
 val LocalAppIsDark = staticCompositionLocalOf { false }
 
-/** Follows the system light/dark setting. */
+/** Uses the window's theme unless the caller supplies its own appearance. */
 @Composable
-fun JiumiTheme(content: @Composable () -> Unit) {
-    val isDark = isSystemInDarkTheme()
+fun JiumiTheme(isDark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val colorScheme = if (isDark) DarkColorScheme else LightColorScheme
 
     val view = LocalView.current
-    if (!view.isInEditMode) {
+    val window = (view.context as? Activity)?.window
+    if (window != null && !view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDark
             WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !isDark
         }

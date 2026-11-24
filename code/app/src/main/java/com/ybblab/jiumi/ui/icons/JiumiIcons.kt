@@ -174,6 +174,34 @@ internal object JiumiIcons {
         )
     }
 
+    // Lucide: delete.
+    val Backspace: ImageVector by lazy {
+        outlineIcon("Backspace",
+            "M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z",
+            "m12 9 6 6",
+            "m18 9-6 6",
+            autoMirror = true
+        )
+    }
+
+    // Lucide: layout-grid.
+    val Tiles: ImageVector by lazy {
+        outlineIcon("Tiles",
+            "M4 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z",
+            "M15 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z",
+            "M15 14h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z",
+            "M4 14h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z",
+        )
+    }
+
+    // Lucide: rows-2.
+    val SplitScreen: ImageVector by lazy {
+        outlineIcon("SplitScreen",
+            "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+            "M3 12h18",
+        )
+    }
+
     // Lucide: cloud-off.
     val CloudOff: ImageVector by lazy {
         outlineIcon("CloudOff",

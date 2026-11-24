@@ -109,8 +109,13 @@ All four run the monitor as the shell user. Only root, or Shizuku started with r
 ## Download and start monitoring
 
 1. On a phone running Android 11 or later, download and install the APK from [GitHub Releases](https://github.com/ybblab/Jiumi/releases/latest).
-2. Choose a launch method on first opening Jiumi. For wireless debugging, the recommended method, connect to Wi-Fi and follow the setup to allow notifications, turn on Developer options and enter the six-digit system pairing code in Jiumi's notification. If an ADB port is already open, you can choose network debugging instead.
+2. Choose a launch method on first opening Jiumi. For wireless debugging, the recommended method, connect to Wi-Fi and follow the setup to allow notifications, turn on Developer options and enter the six-digit system pairing code in Jiumi's notification. If the notification can’t be used, tap “Can’t type in the notification?” in step 3 and enter the code in split screen, a small window or the Quick Settings tile instead. If an ADB port is already open, you can choose network debugging instead.
 3. Tap Start monitoring on the Monitor page. A persistent notification appears while monitoring is running. You can stop monitoring from the notification or the app.
+
+<p align="center">
+  <a href="../images/pairing-split.en.png"><img src="../images/pairing-split.en.png" width="196" alt="Other ways to pair: split screen or a small window" /></a>&nbsp;
+  <a href="../images/pairing-tile.en.png"><img src="../images/pairing-tile.en.png" width="196" alt="Other ways to pair: the Quick Settings tile" /></a>
+</p>
 
 After a phone restart, a Jiumi update or an interruption to the debugging service, Jiumi tries to resume the same session when the selected connection is available, and again when you return to the app. If the card shows Monitoring interrupted, restore the connection and tap Resume. Interrupted time does not count toward monitored time.
 

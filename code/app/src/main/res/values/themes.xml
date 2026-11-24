@@ -2,6 +2,15 @@
 <resources>
     <style name="Theme.Jiumi" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/canvas</item>
+        <!-- The app draws its own light and dark colors; a system "force dark" (MIUI's dark mode)
+             would otherwise recolor its text, e.g. turning dark text on a light chip white. -->
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+    <style name="Theme.Jiumi.PairingDialog">
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
     </style>
     <color name="canvas">#FFF0F0F3</color>
 </resources>
