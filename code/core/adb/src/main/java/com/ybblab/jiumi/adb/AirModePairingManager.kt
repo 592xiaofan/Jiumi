@@ -494,6 +494,8 @@ class AirModePairingManager(
     }
 
     private fun moveToAwaitingCode() {
+        // A new dialog was found: an earlier attempt's failure no longer applies.
+        _failure.value = null
         if (pairingInput == PairingInput.NOTIFICATION && !showPairingCodeNotification(alert = true)) return
         stopPairingDiscovery()
         _state.value = PairingState.AWAITING_CODE
