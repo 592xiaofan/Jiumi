@@ -61,7 +61,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.stateIn
@@ -738,8 +740,24 @@ class MonitorController(
         // A fresh pairing connects automatically; continue straight into starting the monitor.
         scope.launch {
             pairing.state.collect { s ->
-                if (s == PairingState.CONNECTED && probe.service.value == null && local.value.busy == null &&
-                    access.method.value == com.ybblab.jiumi.access.AccessMethod.WIRELESS) startMonitor()
+                if (s != PairingState.CONNECTED || local.value.busy != null) return@collect
+                if (probe.service.value == null && access.method.value == AccessMethod.WIRELESS) {
+                    startMonitor()
+                } else {
+                    pairing.disconnect(keepPairingInProgress = true)
+                }
+            }
+        }
+        scope.launch {
+            // Startup recovery already covers the current transport state.
+            pairing.wirelessTransportReady.drop(1).collectLatest { ready ->
+                if (!ready || access.method.value != AccessMethod.WIRELESS || !isPaired ||
+                    probe.service.value != null) return@collectLatest
+                // A previous attempt may still be settling after the network was lost.
+                local.first { it.busy == null }
+                withContext(Dispatchers.IO) {
+                    resumeInterruptedNow("wireless debugging available", requireWirelessTransport = true)
+                }
             }
         }
         // Restarting adbd ends every process it started, the monitor among them; ADB persistence waits.
@@ -791,6 +809,8 @@ class MonitorController(
 
     fun cancelPairing() = pairing.stopDiscovery()
 
+    fun preparePairingSettings() = pairing.preparePairingSettings()
+
     fun cancelInAppPairing() = pairing.stopInAppPairing()
 
     fun submitInAppPairingCode(code: String): Boolean = pairing.submitInAppPairingCode(code)
@@ -803,10 +823,17 @@ class MonitorController(
      * Wireless debugging is not turned on unasked, and a root or Shizuku prompt is not opened.
      * [launched] is given by a receiver holding its broadcast open, and runs once that may be let go.
      */
-    fun resumeInterrupted(trigger: String, launched: (() -> Unit)? = null): kotlinx.coroutines.Job = scope.launch(Dispatchers.IO) {
+    fun resumeInterrupted(trigger: String, launched: (() -> Unit)? = null): Job = scope.launch(Dispatchers.IO) {
+        resumeInterruptedNow(trigger, launched)
+    }
+
+    private suspend fun resumeInterruptedNow(
+        trigger: String,
+        launched: (() -> Unit)? = null,
+        requireWirelessTransport: Boolean = false
+    ) {
         // Shown as under way from the first moment, not only once a start goes out.
-        var waiting = probe.service.value == null && local.value.busy == null && store.sessions().any { it.end == null }
-        if (waiting) local.update { it.copy(awaiting = it.awaiting + 1) }
+        var waiting = false
         val stopWaiting = {
             if (waiting) {
                 waiting = false
@@ -814,6 +841,9 @@ class MonitorController(
             }
         }
         try {
+            if (probe.service.value != null || !store.hasOpenSession()) return
+            waiting = local.value.busy == null
+            if (waiting) local.update { it.copy(awaiting = it.awaiting + 1) }
             // A monitor restarted by its supervisor, or still offering itself, gets there first. Not while
             // a broadcast is held ([launched]): until it is let go no offer reaches this process, so the
             // start goes out at once and lets it go.
@@ -821,13 +851,20 @@ class MonitorController(
             val skip = when {
                 probe.service.value != null -> "monitor running"
                 local.value.busy != null -> "busy ${local.value.busy}"
-                store.sessions().none { it.end == null } -> "no open session"
+                !store.hasOpenSession() -> "no open session"
+                requireWirelessTransport && (!pairing.wirelessTransportReady.value ||
+                    access.method.value != AccessMethod.WIRELESS) -> "wireless debugging unavailable"
                 !canStartUnattended() -> "${access.method.value} not ready"
                 else -> null
             }
             android.util.Log.i(TAG, "resume ($trigger): ${skip ?: "starting"}")
-            if (skip != null) return@launch
-            startMonitor(restoreWirelessDebugging = false, launched = launched ?: {})
+            if (skip != null) return
+            beginMonitorStart(
+                restoreWirelessDebugging = false,
+                launched = launched ?: {},
+                resumeOpenSession = true,
+                requireWirelessTransport = requireWirelessTransport
+            )
             // The start shows itself from here on.
             stopWaiting()
             // Held until the start is settled, so the process is not let go halfway.
@@ -844,7 +881,15 @@ class MonitorController(
      * broadcast open must let it go then, since the monitor answers with a broadcast of its own, which
      * the system delivers to this process only after the one held.
      */
-    fun startMonitor(restoreWirelessDebugging: Boolean = true, launched: () -> Unit = {}) {
+    fun startMonitor(restoreWirelessDebugging: Boolean = true, launched: () -> Unit = {}) =
+        beginMonitorStart(restoreWirelessDebugging, launched)
+
+    private fun beginMonitorStart(
+        restoreWirelessDebugging: Boolean,
+        launched: () -> Unit,
+        resumeOpenSession: Boolean = false,
+        requireWirelessTransport: Boolean = false
+    ) {
         // Claimed in one step: a resume and a tap arriving together must not both start one.
         var claimed = false
         local.update { l -> (l.busy == null).also { claimed = it }.let { if (it) l.copy(busy = Busy.STARTING, problem = null) else l } }
@@ -852,11 +897,16 @@ class MonitorController(
         scope.launch(Dispatchers.IO) {
             var problem: Problem? = null
             try {
+                val method = access.method.value
+                // Recheck after claiming Busy.STARTING so a finished session cannot be reopened.
+                if (resumeOpenSession && (!store.hasOpenSession() || !canStartUnattended(method) ||
+                    (requireWirelessTransport && (method != AccessMethod.WIRELESS ||
+                        !pairing.wirelessTransportReady.value)))) return@launch
                 if (probe.service.value != null) {
                     openSessionIfNone()
                     return@launch
                 }
-                problem = when (access.method.value) {
+                problem = when (method) {
                     com.ybblab.jiumi.access.AccessMethod.WIRELESS -> startOverWireless(restoreWirelessDebugging, launched)
                     AccessMethod.NETWORK -> startOverNetwork(launched)
                     com.ybblab.jiumi.access.AccessMethod.ROOT -> startOverRoot(launched)
@@ -883,17 +933,19 @@ class MonitorController(
                 // Not set off (Wi-Fi gone, pairing under way): nothing will connect, so do not wait for it.
                 if (!pairing.reconnect(restoreWirelessDebugging = restoreWirelessDebugging)) return Problem.CONNECT
                 withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
-                    pairing.state.first { it == PairingState.CONNECTED || pairing.failure.value != null }
+                    combine(pairing.state, pairing.failure) { state, failure ->
+                        state == PairingState.CONNECTED || failure != null
+                    }.first { it }
                 }
                 if (!pairing.isShellReady) return Problem.CONNECT
             }
-            pairing.shell(ownPermissionsCommand())
-            pairing.shell(probe.startCommand(probeConfiguration()))
+            if (pairing.shell(ownPermissionsCommand()).startsWith("[ADB_") ||
+                pairing.shell(probe.startCommand(probeConfiguration())).startsWith("[ADB_")) return Problem.CONNECT
             launched()
             return waitForProbe()
         } finally {
             // The monitor does not depend on ADB; never keep the session open.
-            pairing.disconnect()
+            pairing.disconnect(keepPairingInProgress = true)
         }
     }
 
@@ -946,7 +998,7 @@ class MonitorController(
         if (withTimeoutOrNull(START_TIMEOUT_MS) { probe.service.first { it != null } } == null) Problem.START else null
 
     /** Whether the chosen way can start the monitor without asking the user anything. */
-    private fun canStartUnattended(): Boolean = when (access.method.value) {
+    private fun canStartUnattended(method: AccessMethod = access.method.value): Boolean = when (method) {
         com.ybblab.jiumi.access.AccessMethod.WIRELESS -> isPaired
         AccessMethod.NETWORK -> networkAdb.savedPort.value != null
         com.ybblab.jiumi.access.AccessMethod.ROOT -> access.root.wasReady

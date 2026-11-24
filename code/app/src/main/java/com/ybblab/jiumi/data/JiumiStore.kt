@@ -290,6 +290,9 @@ class JiumiStore(context: Context, private val exclusionState: StateFlow<Monitor
         buildList { while (c.moveToNext()) add(Session(c.getLong(0), c.getLong(1), if (c.isNull(2)) null else c.getLong(2))) }
     }
 
+    fun hasOpenSession(): Boolean =
+        readableDatabase.rawQuery("SELECT 1 FROM session WHERE end_t IS NULL LIMIT 1", null).use { it.moveToFirst() }
+
     fun insertMonitorEvent(db: SQLiteDatabase, e: MonitorEvent) {
         db.insertWithOnConflict("monitor_event", null, ContentValues().apply {
             put("t", e.t); put("state", e.state); put("reason", e.reason)

@@ -4,7 +4,7 @@
 package com.ybblab.jiumi.adb
 
 import java.io.IOException
-import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLException
 
 class AirAdbAuthorizationException(
     message: String,
@@ -12,20 +12,19 @@ class AirAdbAuthorizationException(
 ) : IOException(message, cause)
 
 object AirAdbConnectionFailurePolicy {
-    private val tlsAuthorizationAlerts = listOf(
-        "bad_certificate",
-        "certificate_unknown",
-        "certificate_required",
-        "unknown_ca",
-        "access_denied"
+    // Android's Conscrypt can expose BoringSSL's reason token instead of JSSE's prose.
+    private val tlsAuthorizationAlert = Regex(
+        """\b(?:fatal alert:\s*|(?:sslv3|tlsv1|tlsv13)_alert_)""" +
+            """(?:bad_certificate|certificate_(?:unknown|required|expired|revoked)|unknown_ca|access_denied)\b""" +
+            """|\btlsv1_certificate_required\b""",
+        RegexOption.IGNORE_CASE
     )
 
     fun requiresPairing(error: Throwable): Boolean =
         generateSequence(error as Throwable?) { it.cause }
             .any { it is AirAdbAuthorizationException }
 
-    fun isExplicitTlsAuthorizationRejection(error: SSLHandshakeException): Boolean {
-        val detail = error.message.orEmpty().lowercase()
-        return detail.contains("fatal alert") && tlsAuthorizationAlerts.any(detail::contains)
-    }
+    fun isExplicitTlsAuthorizationRejection(error: SSLException): Boolean =
+        generateSequence(error as Throwable?) { it.cause }
+            .any { tlsAuthorizationAlert.containsMatchIn(it.message.orEmpty()) }
 }

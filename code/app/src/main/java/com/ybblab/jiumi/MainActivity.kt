@@ -269,11 +269,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openWirelessDebugging() {
+        controller.preparePairingSettings()
         com.ybblab.jiumi.ui.openDeveloperOptions(this)
     }
 
     private fun openPairingSettingsForInAppCode() {
         if (controller.startPairing(PairingInput.APP)) {
+            controller.preparePairingSettings()
             com.ybblab.jiumi.ui.openDeveloperOptions(this, adjacent = isInMultiWindowMode)
         }
     }

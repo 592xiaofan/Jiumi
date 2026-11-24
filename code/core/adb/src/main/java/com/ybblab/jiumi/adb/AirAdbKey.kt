@@ -6,12 +6,14 @@ package com.ybblab.jiumi.adb
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.math.BigInteger
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.KeyFactory
-import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.Principal
 import java.security.PrivateKey
@@ -21,6 +23,7 @@ import java.security.cert.X509Certificate
 import java.security.interfaces.RSAPrivateCrtKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.PKCS8EncodedKeySpec
+import java.security.spec.InvalidKeySpecException
 import java.security.spec.RSAPublicKeySpec
 import java.util.Arrays
 import java.util.Base64
@@ -107,11 +110,17 @@ class AirAdbKey private constructor(
         private val base64MimeEncoder = Base64.getMimeEncoder(64, "\n".toByteArray(Charsets.UTF_8))
 
         @Synchronized
-        fun loadOrCreate(privateKeyFile: File, publicKeyFile: File): AirAdbKey {
-            if (!privateKeyFile.exists()) {
-                generate(privateKeyFile, publicKeyFile)
+        fun loadOrCreate(privateKeyFile: File, publicKeyFile: File, replaceInvalidKey: Boolean = false): AirAdbKey {
+            val privateKey = if (!privateKeyFile.exists()) {
+                generate(privateKeyFile)
+            } else {
+                try {
+                    readPrivateKey(privateKeyFile)
+                } catch (error: InvalidAdbPrivateKeyException) {
+                    if (!replaceInvalidKey) throw error
+                    generate(privateKeyFile)
+                }
             }
-            val privateKey = readPrivateKey(privateKeyFile)
             val publicKey = derivePublicKey(privateKey)
             val publicFileBytes = adbPublicKeyFileBytes(publicKey)
             if (!publicKeyFile.exists() || !publicKeyFile.readBytes().contentEquals(publicFileBytes)) {
@@ -121,21 +130,22 @@ class AirAdbKey private constructor(
             return AirAdbKey(privateKey, publicKey, publicFileBytes + 0.toByte())
         }
 
-        private fun generate(privateKeyFile: File, publicKeyFile: File) {
-            val keyPair = KeyPairGenerator.getInstance("RSA").run {
+        private fun generate(privateKeyFile: File): RSAPrivateCrtKey {
+            val privateKey = KeyPairGenerator.getInstance("RSA").run {
                 initialize(KEY_LENGTH_BITS)
-                generateKeyPair()
+                generateKeyPair().private as RSAPrivateCrtKey
             }
             privateKeyFile.parentFile?.mkdirs()
-            publicKeyFile.parentFile?.mkdirs()
-            writePrivateKey(privateKeyFile, keyPair)
-            val publicKey = keyPair.public as RSAPublicKey
-            publicKeyFile.writeBytes(adbPublicKeyFileBytes(publicKey))
-        }
-
-        private fun writePrivateKey(file: File, keyPair: KeyPair) {
-            val encoded = base64MimeEncoder.encodeToString(keyPair.private.encoded)
-            file.writeText("-----BEGIN PRIVATE KEY-----\n$encoded\n-----END PRIVATE KEY-----", Charsets.UTF_8)
+            val encoded = base64MimeEncoder.encodeToString(privateKey.encoded)
+            val temporary = File.createTempFile("adb-key-", ".tmp", privateKeyFile.parentFile)
+            try {
+                temporary.writeText("-----BEGIN PRIVATE KEY-----\n$encoded\n-----END PRIVATE KEY-----", Charsets.UTF_8)
+                Files.move(temporary.toPath(), privateKeyFile.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            } finally {
+                temporary.delete()
+            }
+            return privateKey
         }
 
         private fun readPrivateKey(file: File): RSAPrivateCrtKey {
@@ -143,11 +153,17 @@ class AirAdbKey private constructor(
                 .replace("-----BEGIN PRIVATE KEY-----", "")
                 .replace("-----END PRIVATE KEY-----", "")
                 .filterNot { it.isWhitespace() }
-            val key = KeyFactory.getInstance("RSA").generatePrivate(
-                PKCS8EncodedKeySpec(Base64.getDecoder().decode(encoded))
-            )
-            return key as? RSAPrivateCrtKey
-                ?: error("AIR ADB private key is not an RSA CRT key")
+            val key = try {
+                KeyFactory.getInstance("RSA").generatePrivate(PKCS8EncodedKeySpec(Base64.getDecoder().decode(encoded)))
+            } catch (error: IllegalArgumentException) {
+                throw InvalidAdbPrivateKeyException(error)
+            } catch (error: InvalidKeySpecException) {
+                throw InvalidAdbPrivateKeyException(error)
+            }
+            if (key !is RSAPrivateCrtKey || key.modulus.bitLength() != KEY_LENGTH_BITS) {
+                throw InvalidAdbPrivateKeyException()
+            }
+            return key
         }
 
         private fun derivePublicKey(privateKey: RSAPrivateCrtKey): RSAPublicKey {
@@ -283,3 +299,5 @@ class AirAdbKey private constructor(
         }
     }
 }
+
+internal class InvalidAdbPrivateKeyException(cause: Throwable? = null) : IOException("Invalid local ADB private key", cause)

@@ -4,6 +4,12 @@ Notable changes to Jiumi, newest first. The English in-app update notes come fro
 Chinese in-app notes are supplied when preparing the release.
 Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+- Fix Wireless debugging pairing getting stuck after authorization expires or a pairing attempt is canceled.
+- Resume interrupted monitoring automatically when Wi-Fi and Wireless debugging become available again and the existing pairing is still valid.
+- Bound Wireless debugging discovery, release multicast resources when it ends, and recover from a damaged local key during re-pairing.
+
 ## [0.5.0] - 2026-11-23
 
 - **More ways to enter the wireless pairing code.** If notification entry is unavailable, use split screen, a small window, or the “Jiumi pairing” Quick Settings tile. The setup guide includes animations and steps.

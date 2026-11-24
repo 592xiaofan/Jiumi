@@ -5,9 +5,11 @@ package com.ybblab.jiumi.adb
 
 import android.net.ssl.SSLSockets
 import moe.shizuku.manager.adb.PairingContext
+import java.io.Closeable
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
+import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -22,7 +24,7 @@ class AirPairingClient(
     private val port: Int,
     private val pairCode: String,
     private val adbKey: AirAdbKey
-) {
+) : Closeable {
 
     companion object {
         private const val SPAKE2_MSG: Byte = 0
@@ -33,35 +35,42 @@ class AirPairingClient(
         private const val ADB_RSA_PUB_KEY: Byte = 0
         private const val KEYING_MATERIAL_LABEL = "adb-label\u0000"
         private const val KEYING_MATERIAL_LENGTH = 64
+        private const val CONNECT_TIMEOUT_MS = 3_000
+        private const val READ_TIMEOUT_MS = 8_000
     }
 
     private lateinit var inputStream: DataInputStream
     private lateinit var outputStream: DataOutputStream
-    private var socket: Socket? = null
+    private val socket = Socket()
     private var pairingContext: PairingContext? = null
 
-    fun pair(): Boolean {
-        return try {
-            setupTlsConnection()
-            doExchangeMsgs() && doExchangePeerInfo()
-        } finally {
-            pairingContext?.destroy()
-            runCatching { if (::inputStream.isInitialized) inputStream.close() }
-            runCatching { if (::outputStream.isInitialized) outputStream.close() }
-            runCatching { socket?.close() }
+    override fun close() = socket.close()
+
+    fun pair(): Boolean = use {
+        val sslSocket = try {
+            socket.tcpNoDelay = true
+            socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            adbKey.sslContext.socketFactory.createSocket(socket, host, port, true) as SSLSocket
+        } catch (error: IOException) {
+            throw PairingEndpointException(error)
+        }
+        sslSocket.use { tls ->
+            try {
+                tls.soTimeout = READ_TIMEOUT_MS
+                tls.startHandshake()
+            } catch (error: IOException) {
+                throw PairingEndpointException(error)
+            }
+            try {
+                setupTlsConnection(tls)
+                doExchangeMsgs() && doExchangePeerInfo()
+            } finally {
+                pairingContext?.destroy()
+            }
         }
     }
 
-    private fun setupTlsConnection() {
-        val tcpSocket = Socket(host, port).also {
-            it.tcpNoDelay = true
-            socket = it
-        }
-
-        val sslSocket = adbKey.sslContext.socketFactory
-            .createSocket(tcpSocket, host, port, true) as SSLSocket
-        sslSocket.startHandshake()
-
+    private fun setupTlsConnection(sslSocket: SSLSocket) {
         inputStream = DataInputStream(sslSocket.inputStream)
         outputStream = DataOutputStream(sslSocket.outputStream)
 
@@ -133,3 +142,5 @@ class AirPairingClient(
         ) ?: throw IOException("SSLSockets.exportKeyingMaterial returned null")
     }
 }
+
+internal class PairingEndpointException(cause: IOException) : IOException("Pairing endpoint unavailable", cause)

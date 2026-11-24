@@ -5,11 +5,13 @@ package com.ybblab.jiumi.adb
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.provider.Settings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -20,8 +22,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.net.InetSocketAddress
+import java.net.SocketTimeoutException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -54,11 +58,13 @@ class AirModePairingManager(
         const val TLS_CONNECT_SERVICE = "_adb-tls-connect._tcp"
         const val PAIRING_DISCOVERY_REFRESH_MS = 8_000L
         const val PAIRING_DISCOVERY_RESTART_GAP_MS = 250L
-        const val RECONNECT_DELAY_MS = 1_500L
-        const val CONNECT_RETRY_DELAY_MS = 5_000L
-        /** Seconds to wait for Wireless debugging to answer before saying it cannot be reached. */
-        const val CONNECT_GRACE_S = 5
-        const val CONNECT_GRACE_AFTER_ENABLE_S = 8
+        const val PAIRING_DISCOVERY_RESTARTS = 2
+        const val PAIRING_SERVICE_TIMEOUT_MS = 20_000L
+        const val PAIRING_TIMEOUT_MS = 20_000L
+        const val PAIRING_KEY_SETTLE_MS = 1_000L
+        const val CONNECT_TIMEOUT_MS = 25_000L
+        const val CONNECT_GRACE_MS = 5_000L
+        const val CONNECT_GRACE_AFTER_ENABLE_MS = 8_000L
         const val KEY_PAIRED = "adb_paired"
         const val KEY_PAIRING_REQUIRED = "adb_pairing_required"
         const val KEY_LAST_CONNECT_PORT = "adb_last_connect_port"
@@ -68,6 +74,7 @@ class AirModePairingManager(
         const val KEY_LOOPBACK_PORT = "adb_loopback_port"
         const val KEY_LOOPBACK_BOOT = "adb_loopback_boot"
         const val LOCAL_PORT_SOURCE = "loopback"
+        const val ADB_WIFI_ENABLED = "adb_wifi_enabled"
     }
 
     private val prefs = context.getSharedPreferences("jiumi_adb", Context.MODE_PRIVATE)
@@ -103,36 +110,46 @@ class AirModePairingManager(
 
     private val _failure = MutableStateFlow<AirPairingFailure?>(null)
     val failure: StateFlow<AirPairingFailure?> = _failure.asStateFlow()
-    @Volatile private var pairingInput = PairingInput.NOTIFICATION
 
     val isPreviouslyPaired: Boolean
         get() = _pairingTrustState.value == PairingTrustState.PAIRED && privateKeyFile().exists()
 
-    @Volatile private var pendingHost: String? = null
-    @Volatile private var pendingPort: Int = 0
+    private var pendingPairingEndpoint: InetSocketAddress? = null
+    private var pairingClient: AirPairingClient? = null
     @Volatile private var activeConnection: AirAdbClient? = null
     @Volatile private var activeEndpoint: ActiveAirEndpoint? = null
-    @Volatile private var pairingTimeoutJob: Job? = null
-    @Volatile private var discoveryTimeoutJob: Job? = null
-    @Volatile private var reconnectJob: Job? = null
-    @Volatile private var queuedPairCode: String? = null
+    private var pairingTimeoutJob: Job? = null
+    private var discoveryTimeoutJob: Job? = null
+    private var queuedPairCode: String? = null
+    @Volatile private var pairingInput = PairingInput.NOTIFICATION
     // A callback has not established Wi-Fi availability at process startup.
     @Volatile private var wifiTransportAvailable: Boolean? = null
+    private val _wirelessTransportReady = MutableStateFlow(false)
+    val wirelessTransportReady: StateFlow<Boolean> = _wirelessTransportReady.asStateFlow()
 
-    @Volatile private var pairingDiscovery: AirMdnsDiscovery? = null
-    @Volatile private var pairingDiscoveryRefreshJob: Job? = null
-    private val pairingDiscoveryGeneration = AtomicLong(0L)
-    private val pairingAttemptGeneration = AtomicLong(0L)
-    @Volatile private var connectDiscovery: AirMdnsDiscovery? = null
-    @Volatile private var connectScanJob: Job? = null
+    // Serialize discovery callbacks, attempt completion, and cancellation on the manager.
+    private var pairingDiscovery: AirMdnsDiscovery? = null
+    private var pairingDiscoveryRefreshJob: Job? = null
+    private var pairingDiscoveryGeneration = 0L
+    private var pairingAttemptGeneration = 0L
+    private var connectDiscovery: AirMdnsDiscovery? = null
+    private var connectScanJob: Job? = null
+    private var pendingConnection: AirAdbClient? = null
     private val connectionMutex = Mutex()
     private val connectAttemptGeneration = AtomicLong()
 
     init {
         if (isPairingRequired) {
-            prefs.edit().remove(KEY_PAIRED).putBoolean(KEY_PAIRING_REQUIRED, true).apply()
+            prefs.edit().remove(KEY_PAIRED).remove(KEY_LAST_CONNECT_PORT).putBoolean(KEY_PAIRING_REQUIRED, true).apply()
             _failure.value = AirPairingFailure.PAIRING_REQUIRED
         }
+        runCatching {
+            context.contentResolver.registerContentObserver(
+                Settings.Global.getUriFor(ADB_WIFI_ENABLED), false, object : ContentObserver(null) {
+                    override fun onChange(selfChange: Boolean) = updateWirelessTransportReady()
+                }
+            )
+        }.onFailure { log.event("could not observe Wireless debugging availability: ${it.javaClass.simpleName}") }
     }
 
     private fun privateKeyFile(): File = File(context.filesDir, "adb_key")
@@ -145,70 +162,105 @@ class AirModePairingManager(
         else -> PairingTrustState.UNPAIRED
     }
 
-    private fun loadOrCreateAdbKey(): AirAdbKey = AirAdbKey.loadOrCreate(privateKeyFile(), publicKeyFile())
+    private fun loadOrCreateAdbKey(replaceInvalidKey: Boolean = false): AirAdbKey =
+        AirAdbKey.loadOrCreate(privateKeyFile(), publicKeyFile(), replaceInvalidKey)
 
+    /**
+     * Starts looking for the system's pairing dialog, or switches an ongoing search to [input]. An
+     * ongoing search keeps its endpoint; one that went quiet is started again.
+     */
+    @Synchronized
     private fun startDiscovery(input: PairingInput): Boolean {
-        automaticReconnectSuspended = false
         if (_state.value in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE)) {
-            if (queuedPairCode != null) return false
             if (input == PairingInput.APP) {
                 if (pairingInput != input) {
                     pairingInput = input
                     notificationController.cancel()
                     _failure.value = null
                 }
-                return true
+            } else {
+                if (!showPairingCodeNotification(alert = false)) return false
+                pairingInput = input
             }
-            val posted = showPairingCodeNotification(alert = false)
-            if (posted) pairingInput = input
-            return posted
+            resumeIdleSearch()
+            return true
         }
         if (_state.value != PairingState.IDLE) return false
+        if (input == PairingInput.NOTIFICATION) {
+            val availability = notificationController.availability()
+            if (availability != AirPairingNotificationAvailability.AVAILABLE) {
+                _failure.value = pairingNotificationFailure(availability)
+                log.event("pairing discovery withheld: notification=${availability.name.lowercase()}")
+                return false
+            }
+        }
+        automaticReconnectSuspended = false
         _failure.value = null
-        pairingInput = input
-        if (input == PairingInput.APP) notificationController.cancel()
-        // Prepare the reply while the app is in the foreground. Discovery alerts it later.
-        if (input == PairingInput.NOTIFICATION && !showPairingCodeNotification(alert = false)) return false
         queuedPairCode = null
-        clearPendingPairingEndpoint()
+        pendingPairingEndpoint = null
         stopConnectAttempt()
+        pairingInput = input
         _state.value = PairingState.DISCOVERING
         log.event(
-            "pairing discovery started manufacturer=${android.os.Build.MANUFACTURER} " +
+            "pairing discovery started input=${input.name.lowercase()} manufacturer=${android.os.Build.MANUFACTURER} " +
                 "model=${android.os.Build.MODEL} sdk=${android.os.Build.VERSION.SDK_INT} " +
                 "wireless=${isWirelessDebuggingEnabled()}"
         )
+        if (input == PairingInput.APP) {
+            notificationController.cancel()
+        } else if (!showPairingCodeNotification(alert = false)) {
+            // Prepare a silent RemoteInput while foreground so it remains usable if frozen.
+            // Alert only after discovering the service opened by the system pairing-code dialog.
+            return false
+        }
         // Connecting before pairing grants trust can reject the new key and reset this flow.
         startPairingDiscovery()
         return true
     }
 
+    /** A search that went quiet (see [startPairingDiscovery]) listens again; a running one carries on. */
+    private fun resumeIdleSearch() {
+        if (_state.value == PairingState.DISCOVERING && queuedPairCode == null &&
+            pairingDiscoveryRefreshJob?.isActive != true) startPairingDiscovery()
+    }
+
+    /** No endpoint yet: looking for the dialog, or holding a submitted code until the dialog appears. */
+    private fun isSearchingForPairingEndpoint(): Boolean =
+        pendingPairingEndpoint == null && (_state.value == PairingState.DISCOVERING ||
+            (_state.value == PairingState.PAIRING && queuedPairCode != null))
+
     private fun startPairingDiscovery() {
         pairingDiscoveryRefreshJob?.cancel()
         installPairingDiscovery()
         pairingDiscoveryRefreshJob = appScope.launch {
-            while (isSearchingForPairingEndpoint()) {
+            repeat(PAIRING_DISCOVERY_RESTARTS) {
                 delay(PAIRING_DISCOVERY_REFRESH_MS)
                 synchronized(this@AirModePairingManager) {
                     if (!isActive || !isSearchingForPairingEndpoint()) return@launch
-                    pairingDiscoveryGeneration.incrementAndGet()
+                    pairingDiscoveryGeneration++
                     pairingDiscovery?.stop()
                     pairingDiscovery = null
                 }
                 delay(PAIRING_DISCOVERY_RESTART_GAP_MS)
                 synchronized(this@AirModePairingManager) {
-                    if (isActive && isSearchingForPairingEndpoint()) installPairingDiscovery()
+                    if (!isActive || !isSearchingForPairingEndpoint()) return@launch
+                    installPairingDiscovery()
+                }
+            }
+            delay(PAIRING_DISCOVERY_REFRESH_MS)
+            synchronized(this@AirModePairingManager) {
+                // Stop listening and release the multicast lock. The state stays DISCOVERING, since the dialog
+                // was not found; opening Wireless debugging again or submitting a code listens again.
+                if (isActive && _state.value == PairingState.DISCOVERING && queuedPairCode == null) {
+                    stopPairingDiscovery()
+                    log.event("pairing discovery paused without an endpoint")
                 }
             }
         }
     }
 
-    private fun isSearchingForPairingEndpoint(): Boolean =
-        pendingPort <= 0 && (_state.value == PairingState.DISCOVERING ||
-            (_state.value == PairingState.PAIRING && queuedPairCode != null))
-
     private fun installPairingDiscovery() {
-        val generation = pairingDiscoveryGeneration.incrementAndGet()
+        val generation = ++pairingDiscoveryGeneration
         pairingDiscovery?.stop()
         pairingDiscovery = AirMdnsDiscovery(
             context = context,
@@ -216,45 +268,82 @@ class AirModePairingManager(
             serviceType = TLS_PAIRING_SERVICE,
             onResolved = { host, port ->
                 synchronized(this) {
-                    if (generation != pairingDiscoveryGeneration.get() || !isSearchingForPairingEndpoint()) {
+                    if (generation != pairingDiscoveryGeneration || !isSearchingForPairingEndpoint()) {
                         return@AirMdnsDiscovery
                     }
-                    pendingHost = host
-                    pendingPort = port
+                    val endpoint = InetSocketAddress.createUnresolved(host, port)
                     val queued = queuedPairCode
-                    if (queued != null) doExecutePairing(host, port, queued) else moveToAwaitingCode()
+                    if (queued != null) {
+                        doExecutePairing(endpoint, queued, rediscoverOnEndpointFailure = false)
+                    } else {
+                        pendingPairingEndpoint = endpoint
+                        moveToAwaitingCode()
+                    }
                 }
             },
             onDiagnostic = { detail -> log.event("pairing mDNS: $detail") }
         ).also { it.start() }
     }
 
-    @Synchronized
-    fun stopDiscovery() {
-        if (_state.value !in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE)) return
-        pairingAttemptGeneration.incrementAndGet()
-        discoveryTimeoutJob?.cancel()
-        discoveryTimeoutJob = null
-        pairingDiscoveryGeneration.incrementAndGet()
-        queuedPairCode = null
-        clearPendingPairingEndpoint()
+    private fun stopPairingDiscovery() {
+        pairingDiscoveryGeneration++
         pairingDiscoveryRefreshJob?.cancel()
         pairingDiscoveryRefreshJob = null
         pairingDiscovery?.stop()
         pairingDiscovery = null
+    }
+
+    private fun pairingInProgress(): Boolean =
+        _state.value in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE, PairingState.PAIRING)
+
+    /**
+     * Called as Wireless debugging is opened for pairing. The system gives its code dialog a new port
+     * each time it opens, so a found endpoint is dropped and the search starts again.
+     */
+    @Synchronized
+    fun preparePairingSettings() {
+        if (_state.value !in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE) || queuedPairCode != null) return
+        if (pairingInput == PairingInput.NOTIFICATION && !showPairingCodeNotification(alert = false)) return
+        pendingPairingEndpoint = null
+        _state.value = PairingState.DISCOVERING
+        startPairingDiscovery()
+    }
+
+    @Synchronized
+    fun stopDiscovery() {
+        if (!pairingInProgress()) return
+        automaticReconnectSuspended = true
+        clearPairingAttempt()
+        _failure.value = AirPairingFailure.PAIRING_REQUIRED.takeIf { isPairingRequired }
         notificationController.cancel()
         _state.value = PairingState.IDLE
     }
 
+    /** Leaving the in-app code pad ends a search it started, but not a code already submitted. */
     @Synchronized
     fun stopInAppPairing() {
-        if (pairingInput == PairingInput.APP && queuedPairCode == null) stopDiscovery()
+        if (pairingInput == PairingInput.APP && queuedPairCode == null &&
+            _state.value in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE)) stopDiscovery()
+    }
+
+    private fun clearPairingAttempt() {
+        pairingAttemptGeneration++
+        pairingTimeoutJob?.cancel()
+        pairingTimeoutJob = null
+        pairingClient?.runCatching { close() }
+        pairingClient = null
+        discoveryTimeoutJob?.cancel()
+        discoveryTimeoutJob = null
+        queuedPairCode = null
+        pendingPairingEndpoint = null
+        stopPairingDiscovery()
     }
 
     /**
      * Opens an ADB shell with the trusted key. [restoreWirelessDebugging] turns the system switch
      * back on and is reserved for an explicit user request; background paths never change it.
      */
+    @Synchronized
     fun reconnect(restoreWirelessDebugging: Boolean): Boolean {
         if (!isPreviouslyPaired) return false
         if (isShellReady) return true
@@ -270,9 +359,12 @@ class AirModePairingManager(
         return true
     }
 
+    @Synchronized
     fun onWifiNetworkChanged(trigger: String, wifiAvailable: Boolean) {
+        if (wifiTransportAvailable == wifiAvailable) return
         wifiTransportAvailable = wifiAvailable
-        if (!isPreviouslyPaired || automaticReconnectSuspended) return
+        updateWirelessTransportReady()
+        if (!isPreviouslyPaired || automaticReconnectSuspended || pairingInProgress()) return
         log.event("wifi transport changed trigger=${trigger.take(40)} available=$wifiAvailable state=${_state.value}")
         // The local channel does not ride on Wi-Fi: a shell on it, or one being opened, carries on.
         if (hasLocalAdbPort && (activeEndpoint?.source == LOCAL_PORT_SOURCE || _state.value == PairingState.CONNECTING)) {
@@ -280,10 +372,11 @@ class AirModePairingManager(
             return
         }
         stopConnectAttempt()
-        markShellDown("Wi-Fi transport changed", scheduleReconnect = false)
+        markShellDown("Wi-Fi transport changed")
         if (wifiAvailable || hasLocalAdbPort) {
             _failure.value = null
-            scheduleReconnectIfPaired(delayMs = 0)
+            _state.value = PairingState.CONNECTING
+            startConnectDiscovery(restoreWirelessDebugging = false)
         } else {
             _failure.value = AirPairingFailure.WIFI_UNAVAILABLE
         }
@@ -292,15 +385,20 @@ class AirModePairingManager(
     fun hasSecureSettingsPermission(): Boolean =
         context.checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS") == PackageManager.PERMISSION_GRANTED
 
+    @Synchronized
+    private fun updateWirelessTransportReady() {
+        _wirelessTransportReady.value = wifiTransportAvailable == true && isWirelessDebuggingEnabled() != false
+    }
+
     fun isWirelessDebuggingEnabled(): Boolean? = runCatching {
-        Settings.Global.getInt(context.contentResolver, "adb_wifi_enabled") == 1
+        Settings.Global.getInt(context.contentResolver, ADB_WIFI_ENABLED) == 1
     }.getOrNull()
 
     private fun restoreWirelessDebugging(): Boolean {
         if (!isPreviouslyPaired || wifiTransportAvailable == false || !hasSecureSettingsPermission()) return false
         if (isWirelessDebuggingEnabled() == true) return true
         log.event("wireless debugging restored on user request")
-        return runCatching { Settings.Global.putInt(context.contentResolver, "adb_wifi_enabled", 1) }.getOrDefault(false)
+        return runCatching { Settings.Global.putInt(context.contentResolver, ADB_WIFI_ENABLED, 1) }.getOrDefault(false)
     }
 
     @Synchronized
@@ -327,7 +425,7 @@ class AirModePairingManager(
         if (failure != null) {
             record(if (!hasResults) "missing_results" else if (input == null) "missing_field" else "invalid_input")
             _failure.value = failure
-            notificationController.showPairingFailure(failure, allowRetry = true)
+            showPairingCodeNotification(alert = true)
             return
         }
         if (_state.value == PairingState.IDLE && !isPreviouslyPaired) {
@@ -362,42 +460,53 @@ class AirModePairingManager(
             return
         }
         _failure.value = null
+        val endpoint = pendingPairingEndpoint
+        if (endpoint != null) {
+            // Some devices advertise the pairing service only when the code dialog opens.
+            doExecutePairing(endpoint, code, rediscoverOnEndpointFailure = true)
+        } else {
+            waitForPairingService(code)
+        }
+    }
+
+    private fun waitForPairingService(code: String) {
         queuedPairCode = code
-        val attemptGeneration = pairingAttemptGeneration.incrementAndGet()
-        // The system allocates a fresh pairing port when its code dialog is reopened. Never
-        // bind a submitted code to the endpoint that happened to be discovered earlier.
-        pairingDiscoveryGeneration.incrementAndGet()
-        clearPendingPairingEndpoint()
+        pendingPairingEndpoint = null
+        val attemptGeneration = pairingAttemptGeneration
+        if (pairingInput == PairingInput.NOTIFICATION) {
+            runCatching { notificationController.showPairingWaitingForService(PAIRING_SERVICE_TIMEOUT_MS) }
+        }
+        // The code is in: show it as pairing while the dialog's endpoint is still being looked for.
         _state.value = PairingState.PAIRING
-        if (pairingInput == PairingInput.NOTIFICATION) runCatching { notificationController.showPairingWaitingForService() }
-        // Time the submitted request, not the user's time spent in system settings.
+        if (pairingDiscoveryRefreshJob?.isActive != true) startPairingDiscovery()
         discoveryTimeoutJob?.cancel()
         discoveryTimeoutJob = appScope.launch {
-            delay(120_000)
+            delay(PAIRING_SERVICE_TIMEOUT_MS)
             synchronized(this@AirModePairingManager) {
-                if (pairingAttemptGeneration.get() == attemptGeneration && queuedPairCode != null) {
-                    resumePairingDiscovery(
+                if (pairingAttemptGeneration == attemptGeneration && queuedPairCode != null) {
+                    awaitNewPairingCode(
                         AirPairingFailure.PAIRING_SERVICE_NOT_FOUND,
                         "pairing endpoint discovery timed out after code submission"
                     )
                 }
             }
         }
-        startPairingDiscovery()
     }
 
     private fun moveToAwaitingCode() {
-        pairingDiscoveryRefreshJob?.cancel()
-        pairingDiscoveryRefreshJob = null
+        // A new dialog was found: an earlier attempt's failure no longer applies.
+        _failure.value = null
+        if (pairingInput == PairingInput.NOTIFICATION && !showPairingCodeNotification(alert = true)) return
+        stopPairingDiscovery()
         _state.value = PairingState.AWAITING_CODE
-        if (pairingInput == PairingInput.NOTIFICATION) showPairingCodeNotification(alert = true)
     }
 
     private fun showPairingCodeNotification(alert: Boolean): Boolean {
         val postResult = notificationController.showPairingRequest(_failure.value, alert = alert)
         if (postResult.posted) return true
-        _failure.value = pairingNotificationFailure(postResult.availability)
         log.event("pairing code notification unavailable: ${postResult.availability.name.lowercase()} ${postResult.detail.take(160)}")
+        stopDiscovery()
+        _failure.value = pairingNotificationFailure(postResult.availability)
         return false
     }
 
@@ -410,71 +519,71 @@ class AirModePairingManager(
             AirPairingNotificationAvailability.AVAILABLE -> AirPairingFailure.NOTIFICATION_POST_FAILED
         }
 
-    private fun clearPendingPairingEndpoint() {
-        pendingHost = null
-        pendingPort = 0
-    }
-
-    private fun resumePairingDiscovery(failure: AirPairingFailure, diagnostic: String) {
-        pairingAttemptGeneration.incrementAndGet()
-        pairingTimeoutJob?.cancel()
-        pairingTimeoutJob = null
-        pairingDiscoveryGeneration.incrementAndGet()
-        discoveryTimeoutJob?.cancel()
-        discoveryTimeoutJob = null
-        queuedPairCode = null
-        clearPendingPairingEndpoint()
+    /**
+     * Ends a failed attempt and waits for a new code. The endpoint is dropped, since a new code means a
+     * new dialog and port, so the state is DISCOVERING; the next code or settings visit listens again.
+     */
+    private fun awaitNewPairingCode(failure: AirPairingFailure, diagnostic: String) {
+        clearPairingAttempt()
         _failure.value = failure
         _state.value = PairingState.DISCOVERING
         log.event(diagnostic)
-        if (pairingInput == PairingInput.NOTIFICATION) {
-            runCatching { notificationController.showPairingFailure(failure, allowRetry = true) }
-        }
-        startPairingDiscovery()
+        if (pairingInput == PairingInput.NOTIFICATION) showPairingCodeNotification(alert = true)
     }
 
-    private fun doExecutePairing(host: String, port: Int, code: String) {
-        val attemptGeneration = pairingAttemptGeneration.incrementAndGet()
-        queuedPairCode = null
-        discoveryTimeoutJob?.cancel()
-        discoveryTimeoutJob = null
+    private fun doExecutePairing(endpoint: InetSocketAddress, code: String, rediscoverOnEndpointFailure: Boolean) {
+        clearPairingAttempt()
+        val attemptGeneration = pairingAttemptGeneration
         _failure.value = null
-        if (pairingInput == PairingInput.NOTIFICATION) runCatching { notificationController.showPairingSubmitted() }
-        pairingDiscoveryRefreshJob?.cancel()
-        pairingDiscoveryRefreshJob = null
+        if (pairingInput == PairingInput.NOTIFICATION) {
+            runCatching { notificationController.showPairingSubmitted(PAIRING_TIMEOUT_MS) }
+        }
         _state.value = PairingState.PAIRING
-        pairingTimeoutJob?.cancel()
-        pairingTimeoutJob = appScope.launch(Dispatchers.IO) {
-            delay(20_000)
+        pairingTimeoutJob = appScope.launch {
+            delay(PAIRING_TIMEOUT_MS)
             synchronized(this@AirModePairingManager) {
-                if (_state.value == PairingState.PAIRING && pairingAttemptGeneration.get() == attemptGeneration) {
-                    resumePairingDiscovery(AirPairingFailure.PAIRING_TIMEOUT, "pairing timed out waiting for the system service")
+                if (pairingAttemptGeneration == attemptGeneration) {
+                    awaitNewPairingCode(AirPairingFailure.PAIRING_TIMEOUT, "pairing timed out waiting for the system service")
                 }
             }
         }
         appScope.launch(Dispatchers.IO) {
             val result = runCatching {
-                AirPairingClient(host, port, code, loadOrCreateAdbKey()).pair()
+                synchronized(this@AirModePairingManager) {
+                    if (pairingAttemptGeneration != attemptGeneration) return@launch
+                }
+                val key = loadOrCreateAdbKey(replaceInvalidKey = true)
+                val client = synchronized(this@AirModePairingManager) {
+                    if (pairingAttemptGeneration != attemptGeneration) return@launch
+                    AirPairingClient(endpoint.hostString, endpoint.port, code, key).also { pairingClient = it }
+                }
+                client.pair()
             }
             synchronized(this@AirModePairingManager) {
-                if (pairingAttemptGeneration.get() != attemptGeneration) return@synchronized
-                pairingTimeoutJob?.cancel()
-                pairingTimeoutJob = null
-                result.onSuccess { success ->
-                    if (success) {
+                if (pairingAttemptGeneration != attemptGeneration) return@launch
+                val error = result.exceptionOrNull()
+                when {
+                    result.getOrNull() == true -> {
+                        clearPairingAttempt()
                         markPairingTrusted()
                         if (pairingInput == PairingInput.NOTIFICATION) {
                             runCatching { notificationController.showPairingSucceeded() }
                         }
                         _state.value = PairingState.CONNECTING
-                        startConnectDiscovery(restoreWirelessDebugging = false)
-                    } else {
-                        resumePairingDiscovery(AirPairingFailure.PAIRING_REJECTED, "pairing rejected by the system service")
+                        startConnectDiscovery(restoreWirelessDebugging = false, afterPairing = true)
                     }
-                }.onFailure { e ->
-                    resumePairingDiscovery(
-                        AirPairingFailure.PAIRING_CONNECTION_FAILED,
-                        "pairing connection failed: ${e::class.java.simpleName}: ${e.message.orEmpty().take(120)}"
+                    error is PairingEndpointException && rediscoverOnEndpointFailure -> {
+                        clearPairingAttempt()
+                        log.event("previously discovered pairing endpoint unavailable; rediscovering")
+                        waitForPairingService(code)
+                    }
+                    error == null -> awaitNewPairingCode(
+                        AirPairingFailure.PAIRING_REJECTED, "pairing rejected by the system service"
+                    )
+                    else -> awaitNewPairingCode(
+                        if (error is SocketTimeoutException || error.cause is SocketTimeoutException) AirPairingFailure.PAIRING_TIMEOUT
+                        else AirPairingFailure.PAIRING_CONNECTION_FAILED,
+                        "pairing connection failed: ${error::class.java.simpleName}: ${error.message.orEmpty().take(120)}"
                     )
                 }
             }
@@ -495,25 +604,27 @@ class AirModePairingManager(
     private fun isConnectionBlockedByPairingRequirement(): Boolean =
         !isPreviouslyPaired || _state.value in setOf(PairingState.DISCOVERING, PairingState.AWAITING_CODE, PairingState.PAIRING)
 
-    private fun failConnection(connection: AirAdbClient?, failure: AirPairingFailure, diagnostic: String) {
-        markShellDown(diagnostic, connection, scheduleReconnect = false)
+    @Synchronized
+    private fun failConnection(generation: Long, failure: AirPairingFailure, diagnostic: String) {
+        if (!isCurrentConnectAttempt(generation)) return
+        automaticReconnectSuspended = true
+        stopConnectAttempt()
         _failure.value = failure
+        _state.value = PairingState.IDLE
         log.event(diagnostic)
         runCatching { notificationController.showConnectionFailure(failure) }
     }
 
-    private fun markPairingRequired(connection: AirAdbClient?, diagnostic: String) {
-        reconnectJob?.cancel()
-        reconnectJob = null
-        connectScanJob?.cancel()
-        connectScanJob = null
-        connectDiscovery?.stop()
-        connectDiscovery = null
-        markShellDown(diagnostic, connection, scheduleReconnect = false)
-        prefs.edit().remove(KEY_PAIRED).putBoolean(KEY_PAIRING_REQUIRED, true).apply()
+    @Synchronized
+    private fun markPairingRequired(generation: Long, diagnostic: String) {
+        if (!isCurrentConnectAttempt(generation)) return
+        automaticReconnectSuspended = true
+        stopConnectAttempt()
+        prefs.edit().remove(KEY_PAIRED).remove(KEY_LAST_CONNECT_PORT).putBoolean(KEY_PAIRING_REQUIRED, true).apply()
         _pairingTrustState.value = PairingTrustState.PAIRING_REQUIRED
         _failure.value = AirPairingFailure.PAIRING_REQUIRED
-        log.event("pairing authorization rejected; explicit re-pairing required")
+        _state.value = PairingState.IDLE
+        log.event(diagnostic)
         runCatching { notificationController.showPairingRequired() }
     }
 
@@ -524,182 +635,207 @@ class AirModePairingManager(
         _pairingTrustState.value = PairingTrustState.PAIRED
     }
 
+    private fun isCurrentConnectAttempt(generation: Long): Boolean =
+        generation == connectAttemptGeneration.get() && _state.value == PairingState.CONNECTING
+
     private fun stopConnectAttempt() {
         connectAttemptGeneration.incrementAndGet()
-        reconnectJob?.cancel()
-        reconnectJob = null
         connectScanJob?.cancel()
         connectScanJob = null
+        pendingConnection?.abort()
+        pendingConnection = null
         connectDiscovery?.stop()
         connectDiscovery = null
     }
 
-    private fun markShellDown(
-        message: String,
-        connection: AirAdbClient? = activeConnection,
-        scheduleReconnect: Boolean = true
-    ) {
-        if (connection != null && activeConnection != null && connection !== activeConnection) {
-            connection.runCatching { close() }
+    @Synchronized
+    private fun markShellDown(message: String, connection: AirAdbClient? = activeConnection) {
+        if (connection !== activeConnection) {
+            connection?.close()
             return
         }
-        activeConnection?.runCatching { close() }
-        if (connection !== activeConnection) connection?.runCatching { close() }
+        activeConnection?.close()
         activeConnection = null
         activeEndpoint = null
         if (_state.value == PairingState.CONNECTED || _state.value == PairingState.CONNECTING) {
             _state.value = PairingState.IDLE
         }
         log.event("shell down: ${message.take(200)}")
-        if (scheduleReconnect) scheduleReconnectIfPaired()
     }
 
-    private fun scheduleReconnectIfPaired(delayMs: Long = RECONNECT_DELAY_MS) {
-        if (!isPreviouslyPaired || automaticReconnectSuspended || (wifiTransportAvailable == false && !hasLocalAdbPort) ||
-            reconnectJob?.isActive == true) return
-        reconnectJob = appScope.launch(Dispatchers.IO) {
-            delay(delayMs)
-            if (_state.value != PairingState.IDLE || !isPreviouslyPaired || automaticReconnectSuspended) return@launch
-            _state.value = PairingState.CONNECTING
-            startConnectDiscovery(restoreWirelessDebugging = false)
-        }
-    }
-
-    private suspend fun doConnect(host: String, port: Int, source: String, generation: Long) = connectionMutex.withLock {
-        currentCoroutineContext().ensureActive()
-        check(generation == connectAttemptGeneration.get() && !automaticReconnectSuspended &&
-            !isConnectionBlockedByPairingRequirement()) { "ADB pairing authorization must be restored before reconnecting" }
-        if (isShellReady) return
-        activeConnection?.runCatching { close() }
-        activeConnection = null
-        activeEndpoint = null
+    private suspend fun doConnect(
+        host: String,
+        port: Int,
+        source: String,
+        generation: Long,
+        key: AirAdbKey,
+        allowLocalAuthorization: Boolean
+    ): Boolean = connectionMutex.withLock {
         val local = source == LOCAL_PORT_SOURCE
-        // The local listener is classic ADB: the key the TLS pairing trusted may need one approval there.
-        val connection = AirAdbClient(host, port, loadOrCreateAdbKey(), allowUserAuthorization = local)
+        val connection = synchronized(this) {
+            if (!isCurrentConnectAttempt(generation)) return@withLock false
+            AirAdbClient(host, port, key, allowUserAuthorization = local && allowLocalAuthorization, requireTls = !local)
+                .also { pendingConnection = it }
+        }
         try {
-            try {
-                connection.connect()
-            } catch (error: Throwable) {
-                if (!local && generation == connectAttemptGeneration.get() && !automaticReconnectSuspended &&
-                    AirAdbConnectionFailurePolicy.requiresPairing(error)) {
-                    markPairingRequired(connection, "ADB authorization rejected: ${error.message.orEmpty().take(120)}")
-                } else {
-                    connection.runCatching { close() }
-                }
-                throw error
-            }
+            connection.connect()
             currentCoroutineContext().ensureActive()
             val healthOutput = runCatching { connection.shell(HEALTH_CHECK_COMMAND) }.getOrElse { error ->
-                failConnection(connection, AirPairingFailure.ADB_HEALTH_CHECK_FAILED,
-                    "ADB health check failed: ${error::class.java.simpleName}: ${error.message.orEmpty().take(120)}")
-                throw error
+                if (!local) failConnection(generation, AirPairingFailure.ADB_HEALTH_CHECK_FAILED,
+                    "ADB health check failed: ${error::class.java.simpleName}")
+                return@withLock false
             }
             if (!healthOutput.contains(HEALTH_CHECK_MARKER)) {
-                failConnection(connection, AirPairingFailure.ADB_HEALTH_RESPONSE_MISSING, "ADB health check missing marker")
-                throw IllegalStateException("ADB health check did not return ready marker")
+                if (!local) failConnection(generation, AirPairingFailure.ADB_HEALTH_RESPONSE_MISSING, "ADB health check missing marker")
+                return@withLock false
             }
             val identityOutput = runCatching { connection.shell("id") }.getOrElse { error ->
-                failConnection(connection, AirPairingFailure.ADB_IDENTITY_CHECK_FAILED,
-                    "ADB identity check failed: ${error::class.java.simpleName}: ${error.message.orEmpty().take(120)}")
-                throw error
+                if (!local) failConnection(generation, AirPairingFailure.ADB_IDENTITY_CHECK_FAILED,
+                    "ADB identity check failed: ${error::class.java.simpleName}")
+                return@withLock false
             }
             if (!identityOutput.contains("uid=")) {
-                failConnection(connection, AirPairingFailure.ADB_IDENTITY_RESPONSE_MISSING, "ADB identity check missing uid")
-                throw IllegalStateException("ADB shell identity check did not return uid")
+                if (!local) failConnection(generation, AirPairingFailure.ADB_IDENTITY_RESPONSE_MISSING, "ADB shell identity check missing uid")
+                return@withLock false
             }
             currentCoroutineContext().ensureActive()
-            check(generation == connectAttemptGeneration.get()) { "ADB connection attempt was superseded" }
-            if (local && loopbackPort(connection) != port) {
-                forgetVerifiedPort()
-                error("The ADB listener is no longer limited to loopback")
+            val loopback = if (local || _persistenceEnabled.value) loopbackPort(connection) else null
+            synchronized(this) {
+                if (!isCurrentConnectAttempt(generation)) return@withLock false
+                if (local && loopback != port) {
+                    forgetVerifiedPort()
+                    return@withLock false
+                }
+                if (!local && _persistenceEnabled.value) {
+                    val boot = bootCount()
+                    if (loopback == null || boot < 0) forgetVerifiedPort()
+                    else prefs.edit().putInt(KEY_LOOPBACK_PORT, loopback).putInt(KEY_LOOPBACK_BOOT, boot).apply()
+                }
+                activeConnection = connection
+                activeEndpoint = ActiveAirEndpoint(host, port, source)
+                markPairingTrusted(connectPort = port.takeUnless { local })
+                _failure.value = null
+                log.event("ADB shell connected source=$source identity=${identityOutput.trim().take(80)}")
+                _state.value = PairingState.CONNECTED
+                true
             }
-            if (!local && _persistenceEnabled.value) {
-                val boot = bootCount()
-                val verified = loopbackPort(connection)
-                if (verified == null || boot < 0) forgetVerifiedPort()
-                else prefs.edit().putInt(KEY_LOOPBACK_PORT, verified).putInt(KEY_LOOPBACK_BOOT, boot).apply()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            if (!local && AirAdbConnectionFailurePolicy.requiresPairing(error)) throw error
+            if (isCurrentConnectAttempt(generation)) {
+                log.event("ADB connection failed source=$source: ${error.javaClass.simpleName}")
             }
-            activeConnection = connection
-            activeEndpoint = ActiveAirEndpoint(host, port, source)
-            connectDiscovery?.stop()
-            connectDiscovery = null
-            // Local reconnects keep the TLS bootstrap port as the one to try when they are not possible.
-            markPairingTrusted(connectPort = port.takeUnless { local })
-            pairingTimeoutJob?.cancel()
-            pairingTimeoutJob = null
-            _failure.value = null
-            log.event("ADB shell connected source=$source identity=${identityOutput.trim().take(80)}")
-            _state.value = PairingState.CONNECTED
+            false
         } finally {
-            if (activeConnection !== connection) connection.close()
+            synchronized(this) {
+                if (pendingConnection === connection) pendingConnection = null
+                if (activeConnection !== connection) connection.close()
+            }
         }
     }
 
-    private fun startConnectDiscovery(restoreWirelessDebugging: Boolean) {
+    private fun startConnectDiscovery(restoreWirelessDebugging: Boolean, afterPairing: Boolean = false) {
         if (isConnectionBlockedByPairingRequirement() || automaticReconnectSuspended) return
-        val generation = connectAttemptGeneration.incrementAndGet()
-        connectScanJob?.cancel()
-        connectDiscovery?.stop()
-        connectDiscovery = null
+        stopConnectAttempt()
+        val generation = connectAttemptGeneration.get()
         connectScanJob = appScope.launch(Dispatchers.IO) {
-            if (generation != connectAttemptGeneration.get() || isConnectionBlockedByPairingRequirement() ||
-                automaticReconnectSuspended) return@launch
-            _state.value = PairingState.CONNECTING
-            // The local port first: it needs no network and no Wireless debugging.
-            val localPort = verifiedPort()?.takeIf { _persistenceEnabled.value }
-            if (localPort != null) {
-                val attempt = runCatching { doConnect(LOCAL_ADB_HOST, localPort, LOCAL_PORT_SOURCE, generation) }
-                    .onFailure { if (it is CancellationException) throw it; log.event("local port $localPort connect failed: ${it.javaClass.simpleName}") }
-                if (attempt.isSuccess && isShellReady) return@launch
+            val deadline = launch {
+                delay(CONNECT_TIMEOUT_MS)
+                failConnection(generation, AirPairingFailure.ADB_ENDPOINT_NOT_FOUND, "ADB connection timed out")
             }
-            if (wifiTransportAvailable == false) {
-                _failure.value = if (localPort != null) AirPairingFailure.LOCAL_ADB_CONNECTION_FAILED else AirPairingFailure.WIFI_UNAVAILABLE
-                _state.value = PairingState.IDLE
-                return@launch
-            }
-            val turnedOn = restoreWirelessDebugging && isWirelessDebuggingEnabled() == false && restoreWirelessDebugging()
-            // With Wireless debugging off and no way to turn it on there is nothing to find: say so now.
-            if (isWirelessDebuggingEnabled() == false && !turnedOn) {
-                log.event("connect skipped: wireless debugging off")
-                _failure.value = AirPairingFailure.WIRELESS_DEBUGGING_OFF
-                _state.value = PairingState.IDLE
-                return@launch
-            }
-            connectDiscovery = AirMdnsDiscovery(
-                context = context, appScope = appScope, serviceType = TLS_CONNECT_SERVICE,
-                onResolved = { host, port ->
-                    if (generation == connectAttemptGeneration.get() && !isConnectionBlockedByPairingRequirement() &&
-                        _state.value == PairingState.CONNECTING) {
-                        appScope.launch(Dispatchers.IO) { runCatching { doConnect(host, port, "mdns", generation) } }
+            try {
+                // Android persists the newly authorized key after the pairing exchange completes.
+                if (afterPairing) delay(PAIRING_KEY_SETTLE_MS)
+                connectToAvailableEndpoint(generation, restoreWirelessDebugging, afterPairing)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: InvalidAdbPrivateKeyException) {
+                markPairingRequired(generation, "local ADB private key is invalid; explicit re-pairing required")
+            } catch (error: Exception) {
+                failConnection(generation, AirPairingFailure.ADB_CONNECTION_FAILED,
+                    "ADB connection setup failed: ${error.javaClass.simpleName}")
+            } finally {
+                deadline.cancel()
+                synchronized(this@AirModePairingManager) {
+                    if (generation == connectAttemptGeneration.get()) {
+                        connectDiscovery?.stop()
+                        connectDiscovery = null
+                        connectScanJob = null
                     }
-                },
-                onDiagnostic = { detail -> log.event("connect mDNS: $detail") }
-            ).also { it.start() }
-            val ports = AirAdbPortPolicy.connectPorts(
-                lastPort = prefs.getInt(KEY_LAST_CONNECT_PORT, -1).takeIf { it in 1..65535 },
-                settingsPort = getAdbWifiPort()
-            )
-            for (port in ports) {
-                for (host in listOfNotNull(LOCAL_ADB_HOST, getWifiIpAddress()).distinct()) {
-                    currentCoroutineContext().ensureActive()
-                    if (_state.value != PairingState.CONNECTING || isConnectionBlockedByPairingRequirement()) return@launch
-                    runCatching { doConnect(host, port, "port_scan", generation) }
-                        .onFailure { if (it is CancellationException) throw it }
-                    if (_state.value != PairingState.CONNECTING || isPairingRequired) return@launch
                 }
             }
-            // mDNS answers within a second or two once adbd listens; a moment longer when it was just turned on.
-            repeat(if (turnedOn) CONNECT_GRACE_AFTER_ENABLE_S else CONNECT_GRACE_S) {
-                delay(1_000)
-                if (_state.value != PairingState.CONNECTING || isConnectionBlockedByPairingRequirement()) return@launch
-            }
-            connectDiscovery?.stop()
-            connectDiscovery = null
-            _failure.value = AirPairingFailure.ADB_ENDPOINT_NOT_FOUND
-            log.event("ADB connect discovery timed out without a usable endpoint")
-            _state.value = PairingState.IDLE
-            scheduleReconnectIfPaired(CONNECT_RETRY_DELAY_MS)
         }
+    }
+
+    private suspend fun connectToAvailableEndpoint(
+        generation: Long,
+        restoreWirelessDebugging: Boolean,
+        afterPairing: Boolean
+    ) {
+        val key by lazy { loadOrCreateAdbKey() }
+        var retryNewAuthorization = afterPairing
+        suspend fun tryEndpoint(host: String, port: Int, source: String): Boolean {
+            while (isCurrentConnectAttempt(generation)) {
+                currentCoroutineContext().ensureActive()
+                try {
+                    return doConnect(host, port, source, generation, key, allowLocalAuthorization = restoreWirelessDebugging)
+                } catch (error: Exception) {
+                    if (!AirAdbConnectionFailurePolicy.requiresPairing(error)) throw error
+                    if (!retryNewAuthorization) {
+                        markPairingRequired(generation, "ADB authorization rejected: ${error.message.orEmpty().take(120)}")
+                        return false
+                    }
+                    retryNewAuthorization = false
+                    log.event("waiting for Android to register the newly paired key")
+                    delay(PAIRING_KEY_SETTLE_MS)
+                }
+            }
+            return false
+        }
+
+        val localPort = verifiedPort()?.takeIf { _persistenceEnabled.value }
+        if (localPort != null && tryEndpoint(LOCAL_ADB_HOST, localPort, LOCAL_PORT_SOURCE)) return
+        if (wifiTransportAvailable == false) {
+            val failure = if (localPort == null) AirPairingFailure.WIFI_UNAVAILABLE else AirPairingFailure.LOCAL_ADB_CONNECTION_FAILED
+            failConnection(generation, failure, "connect skipped: Wi-Fi unavailable")
+            return
+        }
+        currentCoroutineContext().ensureActive()
+        val wirelessEnabled = isWirelessDebuggingEnabled()
+        val turnedOn = restoreWirelessDebugging && wirelessEnabled == false && restoreWirelessDebugging()
+        if (wirelessEnabled == false && !turnedOn) {
+            failConnection(generation, AirPairingFailure.WIRELESS_DEBUGGING_OFF, "connect skipped: wireless debugging off")
+            return
+        }
+        val ports = AirAdbPortPolicy.connectPorts(
+            lastPort = prefs.getInt(KEY_LAST_CONNECT_PORT, -1).takeIf { it in 1..65535 },
+            settingsPort = getAdbWifiPort()
+        )
+        // A working saved loopback port needs neither mDNS nor a multicast lock.
+        for (port in ports) {
+            if (tryEndpoint(LOCAL_ADB_HOST, port, "port_scan")) return
+        }
+        val advertised = Channel<Pair<String, Int>>(Channel.CONFLATED)
+        synchronized(this) {
+            if (!isCurrentConnectAttempt(generation)) return
+            connectDiscovery = AirMdnsDiscovery(
+                context = context, appScope = appScope, serviceType = TLS_CONNECT_SERVICE,
+                onResolved = { host, port -> advertised.trySend(host to port) },
+                onDiagnostic = { detail -> log.event("connect mDNS: $detail") }
+            ).also { it.start() }
+        }
+        val wifiHost = getWifiIpAddress()
+        if (wifiHost != null) {
+            for (port in ports) {
+                if (tryEndpoint(wifiHost, port, "port_scan")) return
+            }
+        }
+        val grace = if (turnedOn) CONNECT_GRACE_AFTER_ENABLE_MS else CONNECT_GRACE_MS
+        val endpoint = withTimeoutOrNull(grace) { advertised.receive() }
+        // Discovery checks that the port now has a listener. It can become ready after a cached-port attempt.
+        if (endpoint != null && tryEndpoint(endpoint.first, endpoint.second, "mdns")) return
+        failConnection(generation, AirPairingFailure.ADB_ENDPOINT_NOT_FOUND, "ADB connect discovery finished without a usable endpoint")
     }
 
     private fun bootCount(): Int = Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
@@ -771,7 +907,7 @@ class AirModePairingManager(
         log.event("local listener close port=$port closed=$closed")
         if (closed) {
             prefs.edit().remove(KEY_LOCAL_PORT).remove(KEY_LOCAL_PORT_BOOT).apply()
-            markShellDown("local listener closed", scheduleReconnect = false)
+            markShellDown("local listener closed")
         } else {
             _failure.value = AirPairingFailure.LOCAL_PORT_CLOSE_FAILED
         }
@@ -786,38 +922,31 @@ class AirModePairingManager(
             future.get(timeoutMs, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
             future.cancel(true)
-            markShellDown("shell timeout after ${timeoutMs}ms", conn, scheduleReconnect = false)
+            markShellDown("shell timeout after ${timeoutMs}ms", conn)
             "[ADB_TIMEOUT]"
         } catch (e: Exception) {
-            markShellDown("shell error: ${e.cause?.message ?: e.message}", conn, scheduleReconnect = false)
+            markShellDown("shell error: ${e.cause?.message ?: e.message}", conn)
             "[ADB_ERROR] ${e.cause?.message ?: e.message}"
         }
     }
 
     /** Closes the shell and stops all reconnection; the monitor keeps running on its own. */
     @Synchronized
-    fun disconnect() {
-        pairingAttemptGeneration.incrementAndGet()
-        pairingDiscoveryGeneration.incrementAndGet()
+    fun disconnect(keepPairingInProgress: Boolean = false) {
+        if (keepPairingInProgress && pairingInProgress()) return
         automaticReconnectSuspended = true
-        discoveryTimeoutJob?.cancel()
-        discoveryTimeoutJob = null
+        clearPairingAttempt()
         stopConnectAttempt()
-        queuedPairCode = null
-        pairingTimeoutJob?.cancel()
-        pairingTimeoutJob = null
-        pairingDiscoveryRefreshJob?.cancel()
-        pairingDiscoveryRefreshJob = null
-        pairingDiscovery?.stop()
-        pairingDiscovery = null
-        markShellDown("ADB session closed", scheduleReconnect = false)
+        markShellDown("ADB session closed")
         _state.value = PairingState.IDLE
-        notificationController.cancel()
+        if (!keepPairingInProgress || !isPairingRequired) notificationController.cancel()
     }
 
+    @Synchronized
     fun resetPairing() {
         disconnect()
-        prefs.edit().clear().apply()
+        prefs.edit().remove(KEY_PAIRED).remove(KEY_PAIRING_REQUIRED).remove(KEY_LAST_CONNECT_PORT).apply()
+        forgetVerifiedPort()
         privateKeyFile().delete()
         publicKeyFile().delete()
         _pairingTrustState.value = PairingTrustState.UNPAIRED
@@ -826,9 +955,8 @@ class AirModePairingManager(
 
     @Synchronized
     fun startRequiredPairing(input: PairingInput): Boolean {
-        if (isPairingRequired && _state.value == PairingState.IDLE) {
-            disconnect()
-        }
+        if (pairingInProgress()) return startDiscovery(input)
+        if (isPairingRequired) disconnect()
         return startDiscovery(input)
     }
 }
